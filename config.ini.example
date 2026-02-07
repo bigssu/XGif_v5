@@ -1,0 +1,65 @@
+# ===================================================================
+# XGif 설정 파일 예시
+# 실제 파일 위치: %APPDATA%\XGif\config.ini
+# ===================================================================
+
+[General]
+
+# 언어 (ko = 한국어, en = English)
+language = ko
+
+# 캡처 백엔드 (gdi = 기본, dxcam = 고성능 DXGI, auto = 자동 선택)
+capture_backend = gdi
+
+# 비디오 인코더 (auto = 자동 감지, nvenc, qsv, amf, cpu)
+encoder = auto
+
+# 비디오 코덱 - MP4 전용 (h264, h265)
+codec = h264
+
+# 메모리 제한 (MB) — 녹화 중 프레임 버퍼 최대 크기
+# 값: 1024, 2048, 3072, 4096
+memory_limit_mb = 1024
+
+# HDR 모니터 보정 (true/false)
+hdr_correction = false
+
+# 마이크 오디오 녹음 - MP4 전용 (true/false)
+mic_audio = false
+
+# 워터마크 표시 (true/false)
+watermark = false
+
+# 마우스 클릭 하이라이트 (true/false)
+click_highlight = false
+
+# 키보드 입력 표시 (true/false)
+keyboard_display = false
+
+# 실시간 미리보기 (true/false)
+preview_enabled = false
+
+# 녹화 FPS (정수, 1~60)
+fps = 15
+
+# 해상도 프리셋 (예: "320 × 240", "640 × 480", "1920 × 1080")
+# resolution_preset = 320 × 240
+
+# 마지막 저장 디렉토리 (프로그램이 자동 저장)
+# last_save_dir =
+
+# ===================================================================
+# 의존성 확인 플래그 (프로그램이 자동 관리, 수동 변경 가능)
+# ===================================================================
+
+# FFmpeg 설치 확인 스킵 (true/false)
+skip_ffmpeg_check = false
+
+# CuPy(GPU 가속) 설치 확인 스킵 (true/false)
+skip_cupy_check = false
+
+# dxcam 설치 확인 스킵 (true/false)
+skip_dxcam_check = false
+
+# 시작 시 의존성 진단 완료 여부 (true/false)
+startup_dep_checked = false
