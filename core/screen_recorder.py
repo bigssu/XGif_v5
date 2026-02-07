@@ -9,11 +9,11 @@ import numpy as np
 import threading
 import time
 import logging
+from collections import deque
 from typing import Optional, List, Tuple, Callable
 
-# 로깅 설정
+# 로깅 설정 (basicConfig는 main.py에서 1회만 호출)
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # 캡처 백엔드 추상화
 from .capture_backend import (
@@ -656,7 +656,9 @@ def draw_cursor_internal(frame: np.ndarray, region_x: int, region_y: int) -> np.
         if cx < 0 or cy < 0 or cx >= w or cy >= h:
             return frame
         
-        # 복사 없이 원본 프레임에 직접 그리기 (이미 캡처된 프레임이므로 안전)
+        # read-only 배열(DXCam 등)이면 쓰기 가능한 복사본 생성
+        if not frame.flags.writeable:
+            frame = frame.copy()
         cursor_size = 8
         y1, y2 = max(0, cy - cursor_size), min(h, cy + cursor_size + 1)
         x1, x2 = max(0, cx - cursor_size), min(w, cx + cursor_size + 1)
@@ -837,7 +839,7 @@ class CaptureThread(threading.Thread):
             first_frame_captured = False
             
             # 성능 프로파일링용 타이밍 추적
-            timing_samples = {'grab': [], 'hdr': [], 'cursor': [], 'overlay': []}
+            timing_samples = {'grab': deque(maxlen=200), 'hdr': deque(maxlen=200), 'cursor': deque(maxlen=200), 'overlay': deque(maxlen=200)}
             
             logger.info(f"[CaptureThread] Starting capture at {self.fps} FPS")
             
@@ -902,16 +904,12 @@ class CaptureThread(threading.Thread):
                         
                         # 성능 로깅 (100프레임마다)
                         if self.frame_count > 0 and self.frame_count % 100 == 0:
-                            avg_grab = sum(timing_samples['grab'][-100:]) / min(100, len(timing_samples['grab']))
-                            avg_hdr = sum(timing_samples['hdr'][-100:]) / min(100, len(timing_samples['hdr']))
-                            avg_cursor = sum(timing_samples['cursor'][-100:]) / min(100, len(timing_samples['cursor']))
-                            avg_overlay = sum(timing_samples['overlay'][-100:]) / min(100, len(timing_samples['overlay']))
+                            avg_grab = sum(timing_samples['grab']) / max(1, len(timing_samples['grab']))
+                            avg_hdr = sum(timing_samples['hdr']) / max(1, len(timing_samples['hdr']))
+                            avg_cursor = sum(timing_samples['cursor']) / max(1, len(timing_samples['cursor']))
+                            avg_overlay = sum(timing_samples['overlay']) / max(1, len(timing_samples['overlay']))
                             total_avg = avg_grab + avg_hdr + avg_cursor + avg_overlay
                             logger.info(f"[Perf] Frame {self.frame_count}: grab={avg_grab*1000:.1f}ms, hdr={avg_hdr*1000:.1f}ms, cursor={avg_cursor*1000:.1f}ms, overlay={avg_overlay*1000:.1f}ms, total={total_avg*1000:.1f}ms")
-                            # timing 리스트 trim (메모리 무한 성장 방지)
-                            for key in timing_samples:
-                                if len(timing_samples[key]) > 200:
-                                    del timing_samples[key][:-200]
                         
                         # 공유 버퍼에 쓰기
                         if self.shm_processed_event.wait(timeout=0.5):
@@ -964,5 +962,12 @@ class CaptureThread(threading.Thread):
                     keyboard.stop_listening()
                 except Exception as e:
                     logger.error(f"[CaptureThread] Keyboard stop error: {e}")
-            
+
+            if watermark:
+                try:
+                    watermark._cached_text_image = None
+                    watermark._cached_image = None
+                except Exception:
+                    pass
+
             logger.debug("[CaptureThread] Cleanup complete")

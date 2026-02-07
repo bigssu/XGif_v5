@@ -4,6 +4,8 @@ TextDialog - 텍스트 추가 다이얼로그 (wxPython 버전)
 import wx
 from typing import TYPE_CHECKING, Tuple
 
+from ..style_constants_wx import Colors
+
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
@@ -21,14 +23,14 @@ class TextDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 
         # 텍스트 입력
         text_box = wx.StaticBox(self, label="텍스트")
-        text_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        text_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         text_sizer = wx.StaticBoxSizer(text_box, wx.VERTICAL)
         text_sizer.AddSpacer(10)
 
@@ -41,14 +43,14 @@ class TextDialog(wx.Dialog):
 
         # 폰트 설정
         font_box = wx.StaticBox(self, label="폰트")
-        font_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        font_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         font_sizer = wx.StaticBoxSizer(font_box, wx.VERTICAL)
         font_sizer.AddSpacer(10)
 
         # 폰트 크기
         size_sizer = wx.BoxSizer(wx.HORIZONTAL)
         size_label = wx.StaticText(self, label="크기:")
-        size_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        size_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_sizer.Add(size_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._size_spin = wx.SpinCtrl(self, min=8, max=200, initial=32)
@@ -59,11 +61,11 @@ class TextDialog(wx.Dialog):
         # 폰트 스타일
         style_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self._bold_check = wx.CheckBox(self, label="굵게")
-        self._bold_check.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._bold_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         style_sizer.Add(self._bold_check, 0, wx.ALL, 5)
 
         self._italic_check = wx.CheckBox(self, label="기울임")
-        self._italic_check.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._italic_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         style_sizer.Add(self._italic_check, 0, wx.ALL, 5)
 
         font_sizer.Add(style_sizer, 0, wx.ALL, 10)
@@ -73,14 +75,14 @@ class TextDialog(wx.Dialog):
 
         # 색상 설정
         color_box = wx.StaticBox(self, label="색상")
-        color_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        color_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_sizer = wx.StaticBoxSizer(color_box, wx.VERTICAL)
         color_sizer.AddSpacer(10)
 
         # 텍스트 색상
         text_color_sizer = wx.BoxSizer(wx.HORIZONTAL)
         text_color_label = wx.StaticText(self, label="텍스트:")
-        text_color_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        text_color_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         text_color_sizer.Add(text_color_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._text_color_btn = wx.ColourPickerCtrl(self, colour=self._text_color)
@@ -91,14 +93,14 @@ class TextDialog(wx.Dialog):
         # 배경 색상
         bg_color_sizer = wx.BoxSizer(wx.HORIZONTAL)
         bg_color_label = wx.StaticText(self, label="배경:")
-        bg_color_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        bg_color_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         bg_color_sizer.Add(bg_color_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._bg_color_btn = wx.ColourPickerCtrl(self, colour=wx.Colour(0, 0, 0))
         bg_color_sizer.Add(self._bg_color_btn, 0)
 
         self._bg_transparent_check = wx.CheckBox(self, label="투명")
-        self._bg_transparent_check.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._bg_transparent_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._bg_transparent_check.SetValue(True)
         bg_color_sizer.Add(self._bg_transparent_check, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, 10)
 
@@ -113,14 +115,14 @@ class TextDialog(wx.Dialog):
         button_sizer.AddStretchSpacer()
 
         apply_btn = wx.Button(self, wx.ID_OK, label="추가")
-        apply_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        apply_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        apply_btn.SetBackgroundColour(Colors.ACCENT)
+        apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
         cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
-        cancel_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        cancel_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 

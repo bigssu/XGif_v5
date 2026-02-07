@@ -6,6 +6,7 @@ PyQt6 QTableWidget를 wx.grid.Grid로 마이그레이션
 import wx
 import wx.grid as grid
 from typing import TYPE_CHECKING, List
+from .style_constants_wx import Colors
 from ..utils.wx_events import (
     FrameSelectedEvent, FrameDeletedEvent, FrameDelayChangedEvent,
     EVT_FRAME_SELECTED, EVT_FRAME_DELETED, EVT_FRAME_DELAY_CHANGED
@@ -57,8 +58,8 @@ class FrameListWidget(wx.Panel):
         self._grid.EnableDragGridSize(False)  # 그리드 크기 조정 비활성화
 
         # 컬럼 크기 설정
-        self._grid.SetColSize(0, 42)  # 번호 컬럼
-        self._grid.SetColSize(1, 150)  # 프레임 시간 컬럼 (자동 확장)
+        self._grid.SetColSize(0, 50)  # 번호 컬럼 (42 * 1.2)
+        self._grid.SetColSize(1, 120)  # 프레임 시간 컬럼 (150 * 0.8)
         self._grid.SetColFormatFloat(1, -1, 2)  # 시간 컬럼은 float 형식
 
         # 컬럼 0은 읽기 전용
@@ -73,13 +74,13 @@ class FrameListWidget(wx.Panel):
         self._grid.SetColAttr(1, attr_time)
 
         # 그리드 스타일 설정
-        self._grid.SetDefaultCellBackgroundColour(wx.Colour(45, 45, 45))
-        self._grid.SetDefaultCellTextColour(wx.Colour(255, 255, 255))
-        self._grid.SetLabelBackgroundColour(wx.Colour(64, 64, 64))
-        self._grid.SetLabelTextColour(wx.Colour(255, 255, 255))
-        self._grid.SetGridLineColour(wx.Colour(64, 64, 64))
-        self._grid.SetSelectionBackground(wx.Colour(0, 120, 212))
-        self._grid.SetSelectionForeground(wx.Colour(255, 255, 255))
+        self._grid.SetDefaultCellBackgroundColour(Colors.BG_PRIMARY)
+        self._grid.SetDefaultCellTextColour(Colors.TEXT_PRIMARY)
+        self._grid.SetLabelBackgroundColour(Colors.BG_TERTIARY)
+        self._grid.SetLabelTextColour(Colors.TEXT_PRIMARY)
+        self._grid.SetGridLineColour(Colors.BG_TERTIARY)
+        self._grid.SetSelectionBackground(Colors.ACCENT)
+        self._grid.SetSelectionForeground(Colors.TEXT_PRIMARY)
 
         # 이벤트 바인딩
         # 선택 변경 감지를 위한 여러 이벤트
@@ -128,7 +129,7 @@ class FrameListWidget(wx.Panel):
         self.SetSizer(main_sizer)
 
         # 배경색 설정
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
     def _on_frame_list_destroy(self, event):
         """윈도우 파괴 시 타이머 정리 (PyDeadObjectError 방지)"""
@@ -143,8 +144,8 @@ class FrameListWidget(wx.Panel):
         """아이콘 버튼 생성 (임시: 텍스트 기반)"""
         btn = wx.Button(self, label=icon_text, size=(32, 32))
         btn.SetToolTip(tooltip)
-        btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         return btn
 
     def refresh(self):
@@ -172,8 +173,6 @@ class FrameListWidget(wx.Panel):
         # 행 수 조정
         current_rows = self._grid.GetNumberRows()
         needed_rows = frames.frame_count
-
-        print(f"프레임 리스트 refresh: current_rows={current_rows}, needed_rows={needed_rows}")
 
         if current_rows < needed_rows:
             self._grid.AppendRows(needed_rows - current_rows)
@@ -206,11 +205,9 @@ class FrameListWidget(wx.Panel):
                     self._cell_data = {}
                 self._cell_data[(i, 1)] = delay_ms
 
-            except Exception as e:
-                print(f"프레임 리스트 업데이트 오류 (프레임 {i}): {e}")
+            except Exception:
                 continue
 
-        print(f"프레임 루프 완료: 처리된 프레임 수 = {frame_count}")
 
         # 선택된 프레임들을 그리드에 반영
         if not frames.is_empty:
@@ -246,8 +243,6 @@ class FrameListWidget(wx.Panel):
 
     def _on_range_select(self, event):
         """범위 선택 처리 (다중 선택 시)"""
-        print(f"[이벤트] _on_range_select 호출됨 - Selecting: {event.Selecting()}, _updating: {self._updating}")
-
         if self._updating:
             event.Skip()
             return
@@ -261,8 +256,6 @@ class FrameListWidget(wx.Panel):
 
     def _on_cell_selected(self, event):
         """단일 셀 선택 처리"""
-        print(f"[이벤트] _on_cell_selected 호출됨 - Row: {event.GetRow()}, _updating: {self._updating}")
-
         if self._updating:
             event.Skip()
             return
@@ -274,8 +267,6 @@ class FrameListWidget(wx.Panel):
 
     def _on_cell_left_click(self, event):
         """셀 클릭 처리 (모든 클릭을 감지)"""
-        print(f"[이벤트] _on_cell_left_click 호출됨 - Row: {event.GetRow()}, _updating: {self._updating}")
-
         if not self._updating:
             # 타이머를 사용하여 선택 처리 지연
             self._selection_timer.Start(50, wx.TIMER_ONE_SHOT)
@@ -284,13 +275,11 @@ class FrameListWidget(wx.Panel):
 
     def _on_selection_timer(self, event):
         """선택 변경 타이머 (지연 후 처리)"""
-        print(f"[타이머] _on_selection_timer 호출됨")
         self._process_selection_change()
 
     def _process_selection_change(self):
         """선택 변경 실제 처리 (이벤트 핸들러에서 호출)"""
         if self._updating:
-            print(f"[선택 처리] _updating=True이므로 스킵")
             return
 
         selected_rows = self._get_selected_rows()
@@ -298,32 +287,22 @@ class FrameListWidget(wx.Panel):
 
         # 중복 처리 방지 - 선택이 변경되지 않았으면 스킵
         if selected_set == self._last_selection:
-            print(f"[선택 처리] 선택이 변경되지 않음 - 스킵")
             return
 
         self._last_selection = selected_set
         frames = self._main_window.frames
 
-        print(f"[선택 처리] selected_rows={selected_rows}, frame_count={frames.frame_count}")
-
         if selected_rows:
             first_selected = selected_rows[0]
 
             # 선택된 프레임 업데이트
-            print(f"[선택 처리] deselect_all() 호출")
             frames.deselect_all()
 
             for row in selected_rows:
                 frames.select_frame(row, add_to_selection=True)
-                print(f"[선택 처리] 프레임 {row} 선택됨")
-
-            print(f"[선택 처리] 최종 selected_indices={frames.selected_indices}")
-            print(f"[선택 처리] 최종 selected_indices 타입={type(frames.selected_indices)}")
 
             # 현재 프레임을 첫 번째 선택 항목으로 설정
-            print(f"[선택 처리] current_index 변경 전: {frames.current_index}")
             frames.current_index = first_selected
-            print(f"[선택 처리] current_index 변경 후: {frames.current_index}")
 
             # 이벤트 발생
             evt = FrameSelectedEvent([first_selected])
@@ -331,12 +310,8 @@ class FrameListWidget(wx.Panel):
 
             # 프리뷰 창 즉시 업데이트 - Refresh() 후 즉시 Update() 호출하여 강제로 그리기
             if hasattr(self._main_window, '_canvas') and self._main_window._canvas:
-                print(f"[선택 처리] 캔버스 업데이트 시작: 프레임 {first_selected}")
                 self._main_window._canvas.Refresh()
                 self._main_window._canvas.Update()  # 즉시 페인트 이벤트 처리
-                print("[선택 처리] 캔버스 업데이트 완료")
-        else:
-            print(f"[선택 처리] selected_rows가 비어있음")
 
     def _on_cell_changed(self, event):
         """셀 변경 처리"""
@@ -394,8 +369,8 @@ class FrameListWidget(wx.Panel):
                 # 이벤트 발생
                 evt = FrameDelayChangedEvent(row, ms)
                 wx.PostEvent(self, evt)
-        except (IndexError, AttributeError) as e:
-            print(f"프레임 딜레이 업데이트 오류: {e}")
+        except (IndexError, AttributeError):
+            pass
 
         event.Skip()
 
@@ -573,8 +548,8 @@ class FrameListWidget(wx.Panel):
                     frame = frames[row]
                     if frame:
                         frame.delay_ms = delay_ms
-                except (IndexError, AttributeError) as e:
-                    print(f"프레임 딜레이 설정 오류 (프레임 {row}): {e}")
+                except (IndexError, AttributeError):
+                    pass
 
         self._main_window._is_modified = True
         self.refresh()
@@ -624,7 +599,7 @@ class FrameListWidget(wx.Panel):
                           style=wx.DEFAULT_DIALOG_STYLE)
 
         # 스타일 설정
-        dialog.SetBackgroundColour(wx.Colour(45, 45, 45))
+        dialog.SetBackgroundColour(Colors.BG_PRIMARY)
 
         # 레이아웃
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -636,7 +611,7 @@ class FrameListWidget(wx.Panel):
 
         time_label_text = translations.tr("frame_list_time_label") if translations else "시간 (초):"
         label = wx.StaticText(dialog, label=time_label_text)
-        label.SetForegroundColour(wx.Colour(200, 200, 200))
+        label.SetForegroundColour(Colors.TEXT_SECONDARY)
         input_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 스핀 컨트롤
@@ -657,15 +632,15 @@ class FrameListWidget(wx.Panel):
 
         apply_text = translations.tr("frame_list_apply") if translations else "적용"
         ok_btn = wx.Button(dialog, label=apply_text, size=(60, -1))
-        ok_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        ok_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        ok_btn.SetBackgroundColour(Colors.ACCENT)
+        ok_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         ok_btn.Bind(wx.EVT_BUTTON, lambda e: dialog.EndModal(wx.ID_OK))
         button_sizer.Add(ok_btn, 0, wx.RIGHT, 5)
 
         cancel_text = translations.tr("frame_list_cancel") if translations else "취소"
         cancel_btn = wx.Button(dialog, label=cancel_text, size=(60, -1))
-        cancel_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        cancel_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.Bind(wx.EVT_BUTTON, lambda e: dialog.EndModal(wx.ID_CANCEL))
         button_sizer.Add(cancel_btn, 0, wx.RIGHT, 12)
 

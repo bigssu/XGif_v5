@@ -4,7 +4,7 @@ import sys
 import os
 import logging
 
-__version__ = "0.55"
+from core.version import APP_VERSION as __version__
 
 
 def build_parser() -> argparse.ArgumentParser:

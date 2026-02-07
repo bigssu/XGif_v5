@@ -161,8 +161,7 @@ class EffectsToolbar(InlineToolbarBase):
                     self._original_images.append(f.image.copy())
                 else:
                     self._original_images.append(None)
-        except Exception as e:
-            print(f"원본 이미지 저장 오류: {e}")
+        except Exception:
             self._original_images = []
 
     def _on_deactivated(self):
@@ -207,8 +206,8 @@ class EffectsToolbar(InlineToolbarBase):
                     frame._image = processed
                 else:
                     frame._image = self._original_images[i].copy()
-            except Exception as e:
-                print(f"효과 적용 오류 (프레임 {i}): {e}")
+            except Exception:
+                pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -272,8 +271,8 @@ class EffectsToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류: {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
 
@@ -299,13 +298,13 @@ class EffectsToolbar(InlineToolbarBase):
                 try:
                     processed = self._apply_effects(self._original_images[i])
                     frame._image = processed
-                except Exception as e:
-                    print(f"효과 적용 오류: {e}")
+                except Exception:
+                    pass
             else:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류: {e}")
+                except Exception:
+                    pass
 
         if hasattr(self._main_window, '_is_modified'):
             self._main_window._is_modified = True
@@ -321,8 +320,8 @@ class EffectsToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류: {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         super()._on_cancel(event)

@@ -447,10 +447,10 @@ class CaptureOverlay(wx.Frame):
         
         # 테두리 영역이면 이동
         border_rect = self._get_border_rect()
-        expanded_border = wx.Rect(border_rect.x - 5, border_rect.y - 5,
-                                   border_rect.width + 10, border_rect.height + 10)
-        inner_area = wx.Rect(border_rect.x + 10, border_rect.y + 10,
-                             border_rect.width - 20, border_rect.height - 20)
+        expanded_border = wx.Rect(border_rect.x - 8, border_rect.y - 8,
+                                   border_rect.width + 16, border_rect.height + 16)
+        inner_area = wx.Rect(border_rect.x + 15, border_rect.y + 15,
+                             border_rect.width - 30, border_rect.height - 30)
         
         if expanded_border.Contains(pos) and not inner_area.Contains(pos):
             return self.HANDLE_MOVE

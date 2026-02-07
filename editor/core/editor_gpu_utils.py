@@ -796,6 +796,9 @@ def gpu_batch_process(images: list, operation: str, **kwargs) -> list:
         if is_gpu_enabled() and (i + internal_batch_size) < len(images):
             clear_gpu_memory()
     
+    if is_gpu_enabled():
+        clear_gpu_memory()
+
     _logger.debug(f"배치 처리 완료: {len(results)}개 이미지")
     return results
 

@@ -1,41 +1,240 @@
 import os
 import subprocess
 import sys
+import json
+import re
 import venv
 import shutil
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = PROJECT_DIR
 BUILD_VENV = os.path.join(PROJECT_DIR, "build_venv")
+DOT_VENV = os.path.join(PROJECT_DIR, ".venv")
 REQ_MINIMAL = os.path.join(PROJECT_DIR, "requirements_minimal.txt")
 MAIN_SCRIPT = os.path.join(PROJECT_DIR, "main.py")
 
+
+def _get_python_exe(venv_dir):
+    """Return the python executable path for a given venv directory."""
+    if os.name == 'nt':
+        return os.path.join(venv_dir, "Scripts", "python.exe")
+    return os.path.join(venv_dir, "bin", "python")
+
+
+def _get_pip_exe(venv_dir):
+    """Return the pip executable path for a given venv directory."""
+    if os.name == 'nt':
+        return os.path.join(venv_dir, "Scripts", "pip.exe")
+    return os.path.join(venv_dir, "bin", "pip")
+
+
+def _parse_requirements(req_file):
+    """Parse requirements file and return list of (name, min_version_or_None)."""
+    requirements = []
+    with open(req_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Match: package_name>=version or just package_name
+            m = re.match(r'^([A-Za-z0-9_.-]+)\s*(?:>=\s*([0-9][0-9.]*))?\s*', line)
+            if m:
+                name = m.group(1).lower()
+                version = m.group(2)  # None if no version specified
+                requirements.append((name, version))
+    return requirements
+
+
+def _version_tuple(version_str):
+    """Convert version string to tuple for comparison."""
+    parts = []
+    for p in version_str.split("."):
+        try:
+            parts.append(int(p))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+def check_dependencies(python_exe, req_file=None):
+    """Check if all required packages are installed in the given Python environment.
+
+    Returns:
+        (all_ok, missing, found) where:
+        - all_ok: bool - True if all dependencies are satisfied
+        - missing: list of (name, required_version) tuples
+        - found: list of (name, installed_version) tuples
+    """
+    if req_file is None:
+        req_file = REQ_MINIMAL
+
+    requirements = _parse_requirements(req_file)
+
+    # Get installed packages via pip list --format=json
+    try:
+        result = subprocess.run(
+            [python_exe, "-m", "pip", "list", "--format=json"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            return False, [(name, ver) for name, ver in requirements], []
+        installed_raw = json.loads(result.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        return False, [(name, ver) for name, ver in requirements], []
+
+    # Build lookup: lowercase name -> version
+    installed = {}
+    for pkg in installed_raw:
+        installed[pkg["name"].lower()] = pkg["version"]
+
+    missing = []
+    found = []
+
+    print("\n=== Dependency Check ===")
+    for req_name, req_version in requirements:
+        # pip normalizes names: underscores become hyphens
+        lookup_names = [req_name, req_name.replace("-", "_"), req_name.replace("_", "-")]
+
+        inst_version = None
+        for lookup in lookup_names:
+            if lookup in installed:
+                inst_version = installed[lookup]
+                break
+
+        if inst_version is None:
+            print(f"  [MISSING] {req_name}")
+            missing.append((req_name, req_version))
+        elif req_version and _version_tuple(inst_version) < _version_tuple(req_version):
+            print(f"  [OLD]     {req_name} {inst_version} (need >={req_version})")
+            missing.append((req_name, req_version))
+        else:
+            print(f"  [OK]      {req_name} {inst_version}")
+            found.append((req_name, inst_version))
+
+    total = len(requirements)
+    print(f"\n  Found: {len(found)}/{total}, Missing: {len(missing)}")
+
+    all_ok = len(missing) == 0
+    return all_ok, missing, found
+
+
+def install_missing_only(pip_exe, missing):
+    """Install only the missing packages."""
+    if not missing:
+        return
+
+    # Build pip install args: "name>=version" or just "name"
+    specs = []
+    for name, version in missing:
+        if version:
+            specs.append(f"{name}>={version}")
+        else:
+            specs.append(name)
+
+    print(f"\nInstalling {len(specs)} missing package(s)...")
+    print(f"  pip install {' '.join(specs)}")
+    subprocess.run([pip_exe, "install"] + specs, check=True)
+
+
+def _is_valid_venv(venv_dir):
+    """Check if a venv directory exists and has a working python executable."""
+    python_exe = _get_python_exe(venv_dir)
+    if not os.path.isfile(python_exe):
+        return False
+    # Quick sanity check: can it run?
+    try:
+        result = subprocess.run(
+            [python_exe, "-c", "import sys; print(sys.version)"],
+            capture_output=True, text=True, timeout=10
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+
+
 def setup_venv():
-    """Build를 위한 깨끗한 가상환경 구축"""
+    """Build를 위한 가상환경 구축 (기존 venv 재사용 우선)"""
+    global BUILD_VENV
+
+    # Strategy 1: Try reusing existing .venv
+    if _is_valid_venv(DOT_VENV):
+        print(f"\nFound existing .venv at {DOT_VENV}")
+        python_exe = _get_python_exe(DOT_VENV)
+        all_ok, missing, found = check_dependencies(python_exe)
+
+        if all_ok:
+            print("\nReusing .venv — all dependencies satisfied!")
+            BUILD_VENV = DOT_VENV
+            return
+        else:
+            print(f"\n.venv has {len(missing)} missing package(s), installing...")
+            pip_exe = _get_pip_exe(DOT_VENV)
+            install_missing_only(pip_exe, missing)
+            BUILD_VENV = DOT_VENV
+            return
+
+    # Strategy 2: Try reusing existing build_venv
+    if _is_valid_venv(BUILD_VENV):
+        print(f"\nFound existing build_venv at {BUILD_VENV}")
+        python_exe = _get_python_exe(BUILD_VENV)
+        all_ok, missing, found = check_dependencies(python_exe)
+
+        if all_ok:
+            print("\nReusing build_venv — all dependencies satisfied!")
+            return
+        else:
+            print(f"\nbuild_venv has {len(missing)} missing package(s), installing...")
+            pip_exe = _get_pip_exe(BUILD_VENV)
+            install_missing_only(pip_exe, missing)
+            return
+
+    # Strategy 3: Create fresh build_venv
+    print("\nNo usable venv found. Creating clean virtual environment for build...")
+    BUILD_VENV = os.path.join(PROJECT_DIR, "build_venv")
+
     if os.path.exists(BUILD_VENV):
-        print(f"Removing existing venv: {BUILD_VENV}")
+        print(f"Removing broken venv: {BUILD_VENV}")
         shutil.rmtree(BUILD_VENV)
-    
-    print("Creating clean virtual environment for build...")
+
     venv.create(BUILD_VENV, with_pip=True)
-    
-    # Pip upgrades and installation
-    pip_exe = os.path.join(BUILD_VENV, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(BUILD_VENV, "bin", "pip")
-    
-    print("Installing minimal dependencies...")
-    # pip 업그레이드는 선택적 (실패해도 계속 진행)
+
+    pip_exe = _get_pip_exe(BUILD_VENV)
+
+    # pip upgrade (optional, non-fatal)
     try:
         subprocess.run([pip_exe, "install", "--upgrade", "pip"], check=False)
     except Exception:
         pass
+
+    print("Installing all dependencies...")
     subprocess.run([pip_exe, "install", "-r", REQ_MINIMAL], check=True)
-    
-    # Install Nuitka for smaller build
-    print("Installing Nuitka for optimized build...")
-    subprocess.run([pip_exe, "install", "nuitka", "zstandard"], check=True)
+
+
+def _ensure_build_tool(tool_name, pip_packages):
+    """Ensure a build tool is installed, skip if already present."""
+    python_exe = _get_python_exe(BUILD_VENV)
+
+    # Check if the main tool is already importable
+    try:
+        result = subprocess.run(
+            [python_exe, "-c", f"import {tool_name}; print({tool_name}.__version__)"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            print(f"  [OK] {tool_name} {version} already installed")
+            return
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
+
+    print(f"  Installing {', '.join(pip_packages)}...")
+    pip_exe = _get_pip_exe(BUILD_VENV)
+    subprocess.run([pip_exe, "install"] + pip_packages, check=True)
+
 
 def run_nuitka_build():
     """Nuitka를 사용한 최적화된 빌드 실행"""
-    python_exe = os.path.join(BUILD_VENV, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(BUILD_VENV, "bin", "python")
+    python_exe = _get_python_exe(BUILD_VENV)
     nuitka_cmd = [
         python_exe, "-m", "nuitka",
         "--standalone",
@@ -48,9 +247,50 @@ def run_nuitka_build():
         "--remove-output",
         MAIN_SCRIPT
     ]
-    
+
     print("Starting Nuitka build process... (This may take a while)")
     subprocess.run(nuitka_cmd, check=True)
+
+def create_version_file():
+    """PyInstaller용 Windows exe 버전 메타데이터 파일 생성"""
+    sys.path.insert(0, PROJECT_DIR)
+    from core.version import APP_VERSION
+    sys.path.pop(0)
+    parts = APP_VERSION.split(".")
+    major = int(parts[0]) if len(parts) > 0 else 0
+    minor = int(parts[1]) if len(parts) > 1 else 0
+    version_file = os.path.join(PROJECT_DIR, "file_version_info.txt")
+    content = f"""VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({major}, {minor}, 0, 0),
+    prodvers=({major}, {minor}, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable('040904B0', [
+        StringStruct('CompanyName', 'XGif'),
+        StringStruct('FileDescription', 'XGif Screen Recorder'),
+        StringStruct('FileVersion', '{APP_VERSION}'),
+        StringStruct('InternalName', 'XGif'),
+        StringStruct('OriginalFilename', 'XGif.exe'),
+        StringStruct('ProductName', 'XGif'),
+        StringStruct('ProductVersion', '{APP_VERSION}')])
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+"""
+    with open(version_file, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"  Version file created: {APP_VERSION}")
+    return version_file
+
 
 def create_ico_from_png():
     """resources/Xgif_icon.png 또는 xgif_icon.png를 .ico로 변환 (빌드용). build_venv의 Python으로 실행."""
@@ -68,7 +308,7 @@ def create_ico_from_png():
     if not os.path.exists(script):
         print("Warning: scripts/create_ico.py not found, skipping icon")
         return None
-    python_exe = os.path.join(BUILD_VENV, "Scripts", "python.exe") if os.name == 'nt' else os.path.join(BUILD_VENV, "bin", "python")
+    python_exe = _get_python_exe(BUILD_VENV)
     try:
         subprocess.run([python_exe, script, png_path, ico_path], check=True, cwd=PROJECT_DIR)
         print(f"Created {ico_path}")
@@ -80,23 +320,17 @@ def create_ico_from_png():
 
 def run_pyinstaller_build():
     """PyInstaller를 사용한 빌드 (Nuitka가 너무 느릴 경우 대안)"""
-    pip_exe = os.path.join(BUILD_VENV, "Scripts", "pip.exe") if os.name == 'nt' else os.path.join(BUILD_VENV, "bin", "pip")
-    subprocess.run([pip_exe, "install", "pyinstaller"], check=True)
-    
-    # 앱 아이콘 .ico 생성 (빌드된 exe 아이콘용)
+    print("\n=== Build Tool Check ===")
+    _ensure_build_tool("PyInstaller", ["pyinstaller"])
+
+    # 앱 아이콘 .ico 생성 + 버전 메타데이터 파일 생성
     icon_ico = create_ico_from_png()
-    
-    # ffmpeg 폴더 경로 확인
-    ffmpeg_dir = os.path.join(PROJECT_DIR, "ffmpeg")
-    if os.path.exists(ffmpeg_dir):
-        # Windows: 세미콜론(;) 구분자, Linux/Mac: 콜론(:) 구분자
-        path_separator = ";" if os.name == 'nt' else ":"
-        add_data_arg = f"ffmpeg{path_separator}ffmpeg"
-        print(f"Including ffmpeg folder: {ffmpeg_dir}")
-    else:
-        print(f"Warning: ffmpeg folder not found at {ffmpeg_dir}, skipping...")
-        add_data_arg = None
-    
+    version_file = create_version_file()
+
+    # ffmpeg는 빌드에 포함하지 않음 (약 380MB, 런타임에 자동 다운로드)
+    # resources 폴더는 포함 (아이콘, 이미지)
+    resources_data = os.path.join(PROJECT_ROOT, "resources") + os.pathsep + "resources"
+
     pyinstaller_exe = os.path.join(BUILD_VENV, "Scripts", "pyinstaller.exe")
     cmd = [
         pyinstaller_exe,
@@ -105,14 +339,14 @@ def run_pyinstaller_build():
         "--onefile",
         "--name", "XGif",
         "--copy-metadata", "imageio",
-        
+
         # GPU 및 선택적 의존성 제외
         "--exclude-module", "cupy",
         "--exclude-module", "scipy",
         "--exclude-module", "cv2",
         "--exclude-module", "numba",
         "--exclude-module", "llvmlite",
-        
+
         # 개발 도구 제외
         "--exclude-module", "tkinter",
         "--exclude-module", "matplotlib",
@@ -121,50 +355,64 @@ def run_pyinstaller_build():
         "--exclude-module", "pytest",
         "--exclude-module", "setuptools",
         "--exclude-module", "distutils",
-        "--exclude-module", "email",
-        "--exclude-module", "http",
         "--exclude-module", "xmlrpc",
         "--exclude-module", "unittest",
         "--exclude-module", "doctest",
         "--exclude-module", "pdb",
-        
+        # NOTE: email, http are needed by urllib (used by ffmpeg_installer)
+
+        # 동적 import 패키지 (PyInstaller 자동 감지 불가)
+        "--hidden-import", "comtypes",
+        "--hidden-import", "pynput.keyboard",
+        "--hidden-import", "pynput.mouse",
+        "--hidden-import", "pynput.keyboard._win32",
+        "--hidden-import", "pynput.mouse._win32",
+        "--hidden-import", "sounddevice",
+        "--hidden-import", "soundfile",
+
         # 최적화 옵션
         "--strip",  # 디버그 정보 제거 (크기 감소)
     ]
-    
-    # ffmpeg 폴더가 있으면 추가
-    if add_data_arg:
-        cmd.extend(["--add-data", add_data_arg])
-    
+
+    # 리소스 폴더 추가
+    cmd.extend(["--add-data", resources_data])
+
     # exe 아이콘 지정
     if icon_ico and os.path.exists(icon_ico):
         cmd.extend(["--icon", icon_ico])
-    
+
+    # Windows exe 버전 메타데이터
+    if version_file and os.path.exists(version_file):
+        cmd.extend(["--version-file", version_file])
+
     cmd.append(MAIN_SCRIPT)
-    
+
     print("Starting PyInstaller build process...")
     subprocess.run(cmd, check=True)
 
 if __name__ == "__main__":
     try:
         setup_venv()
+
         # 기본적으로 PyInstaller 방식 사용 (빠른 빌드)
         print("\nBuild system comparison:")
         print("1. PyInstaller: Faster build, medium size")
         print("2. Nuitka: Much slower build, smaller size, faster performance")
-        
+
         # 환경 변수로 빌드 도구 선택 가능, 기본값은 PyInstaller
         build_tool = os.environ.get("XGIF_BUILD_TOOL", "1").strip()
         if build_tool not in ["1", "2"]:
             build_tool = "1"
-        
+
         print(f"\nUsing build tool: {'PyInstaller' if build_tool == '1' else 'Nuitka'}")
-        
+
         if build_tool == "2":
+            print("\n=== Build Tool Check ===")
+            _ensure_build_tool("nuitka", ["nuitka", "zstandard"])
             run_nuitka_build()
         else:
             run_pyinstaller_build()
-            
+
         print("\nBuild finished successfully!")
     except Exception as e:
         print(f"\nBuild failed: {e}")

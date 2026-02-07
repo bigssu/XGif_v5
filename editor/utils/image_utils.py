@@ -56,8 +56,7 @@ def pil_to_qimage(pil_image: Image.Image) -> Optional['QImage']:
 
         # 데이터 복사 (메모리 안전성)
         return qimage.copy()
-    except Exception as e:
-        print(f"PIL to QImage 변환 오류: {e}")
+    except Exception:
         return None
 
 
@@ -101,8 +100,7 @@ def pil_to_wx_image(pil_image: Image.Image) -> Optional['wx.Image']:
             wx_image.SetAlpha(alpha_data)
 
         return wx_image
-    except Exception as e:
-        print(f"PIL to wx.Image 변환 오류: {e}")
+    except Exception:
         return None
 
 
@@ -125,8 +123,7 @@ def pil_to_wx_bitmap(pil_image: Image.Image) -> Optional['wx.Bitmap']:
 
     try:
         return wx.Bitmap(wx_image)
-    except Exception as e:
-        print(f"wx.Image to wx.Bitmap 변환 오류: {e}")
+    except Exception:
         return None
 
 
@@ -162,8 +159,7 @@ def wx_image_to_pil(wx_image: 'wx.Image') -> Optional[Image.Image]:
             pil_image.putalpha(alpha_image)
 
         return pil_image
-    except Exception as e:
-        print(f"wx.Image to PIL 변환 오류: {e}")
+    except Exception:
         return None
 
 
@@ -183,8 +179,7 @@ def wx_bitmap_to_pil(wx_bitmap: 'wx.Bitmap') -> Optional[Image.Image]:
     try:
         wx_image = wx_bitmap.ConvertToImage()
         return wx_image_to_pil(wx_image)
-    except Exception as e:
-        print(f"wx.Bitmap to PIL 변환 오류: {e}")
+    except Exception:
         return None
 
 
@@ -212,8 +207,7 @@ def qimage_to_wx_image(qimage: QImage) -> Optional['wx.Image']:
 
         # PIL -> wx.Image
         return pil_to_wx_image(pil_image)
-    except Exception as e:
-        print(f"QImage to wx.Image 변환 오류: {e}")
+    except Exception:
         return None
 
 
@@ -236,6 +230,5 @@ def wx_image_to_qimage(wx_image: 'wx.Image') -> Optional[QImage]:
 
         # PIL -> QImage
         return pil_to_qimage(pil_image)
-    except Exception as e:
-        print(f"wx.Image to QImage 변환 오류: {e}")
+    except Exception:
         return None

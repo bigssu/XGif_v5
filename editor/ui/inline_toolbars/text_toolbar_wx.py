@@ -258,8 +258,7 @@ class TextToolbar(InlineToolbarBase):
                     self._original_images.append(f.image.copy())
                 else:
                     self._original_images.append(None)
-        except Exception as e:
-            print(f"원본 이미지 저장 오류: {e}")
+        except Exception:
             self._original_images = []
 
         # 캔버스 이벤트 연결 (wxPython 방식)
@@ -269,9 +268,8 @@ class TextToolbar(InlineToolbarBase):
                 from ...utils.wx_events import EVT_TEXT_MOVED, EVT_TEXT_RESIZED
                 canvas.Bind(EVT_TEXT_MOVED, self._on_canvas_text_moved)
                 canvas.Bind(EVT_TEXT_RESIZED, self._on_canvas_text_resized)
-                print("[TextToolbar] 캔버스 텍스트 이벤트 바인딩 완료")
-            except Exception as e:
-                print(f"[TextToolbar] 텍스트 이벤트 바인딩 오류: {e}")
+            except Exception:
+                pass
 
         if not self._text_input.GetValue():
             self._text_input.SetValue("텍스트")
@@ -293,7 +291,6 @@ class TextToolbar(InlineToolbarBase):
                 from ...utils.wx_events import EVT_TEXT_MOVED, EVT_TEXT_RESIZED
                 canvas.Unbind(EVT_TEXT_MOVED, handler=self._on_canvas_text_moved)
                 canvas.Unbind(EVT_TEXT_RESIZED, handler=self._on_canvas_text_resized)
-                print("[TextToolbar] 캔버스 텍스트 이벤트 언바인딩 완료")
             except Exception:
                 pass
 
@@ -338,12 +335,11 @@ class TextToolbar(InlineToolbarBase):
                     self._text_width, self._text_height,
                     self._size_spin.GetValue()
                 )
-        except Exception as e:
-            print(f"텍스트 영역 업데이트 오류: {e}")
+        except Exception:
+            pass
 
     def _on_canvas_text_moved(self, event):
         """캔버스에서 텍스트가 이동됨 (wxPython 이벤트)"""
-        print(f"[TextToolbar] _on_canvas_text_moved: x={event.x}, y={event.y}")
         self._updating_from_canvas = True
         self._text_x = event.x
         self._text_y = event.y
@@ -356,7 +352,6 @@ class TextToolbar(InlineToolbarBase):
         원본 PyQt6 로직: 캔버스가 리사이즈 시 폰트 크기를 계산하여 직접 전달
         """
         font_size = event.font_size
-        print(f"[TextToolbar] _on_canvas_text_resized: font_size={font_size}")
 
         self._updating_from_canvas = True
         self._size_spin.SetValue(font_size)
@@ -412,8 +407,8 @@ class TextToolbar(InlineToolbarBase):
                     processed = self._apply_text(self._original_images[current_idx])
                     if current_idx < len(self.frames):
                         self.frames[current_idx]._image = processed
-                except Exception as e:
-                    print(f"텍스트 적용 오류: {e}")
+                except Exception:
+                    pass
                 self._safe_canvas_update()
                 self.update_preview()
             return
@@ -453,8 +448,8 @@ class TextToolbar(InlineToolbarBase):
                         frame._image = processed
                 else:
                     frame._image = self._original_images[i].copy()
-            except Exception as e:
-                print(f"텍스트 처리 오류 (프레임 {i}): {e}")
+            except Exception:
+                pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -509,8 +504,8 @@ class TextToolbar(InlineToolbarBase):
             if i < len(animated_images) and animated_images[i] is not None:
                 try:
                     frame._image = animated_images[i]
-                except Exception as e:
-                    print(f"애니메이션 적용 오류: {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -589,8 +584,8 @@ class TextToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류: {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
 
@@ -603,15 +598,6 @@ class TextToolbar(InlineToolbarBase):
         # selected_indices가 property로 리스트를 반환하는지 확인
         if isinstance(selected_indices, (list, tuple)):
             selected_indices = set(selected_indices)
-
-        print(f"텍스트 적용: target={target}, selected_indices={selected_indices}, current_idx={current_idx}")
-        print(f"텍스트 내용: '{self._text_input.GetValue()}'")
-        print(f"총 프레임 수: {len(self.frames)}, 원본 이미지 수: {len(self._original_images)}")
-
-        # 타겟 설명
-        target_names = ["모두", "선택", "현재"]
-        if target < len(target_names):
-            print(f"적용 대상: {target_names[target]}")
 
         blink_pattern = self._calculate_blink_pattern() if self._blink_enabled else None
 
@@ -671,21 +657,18 @@ class TextToolbar(InlineToolbarBase):
                             if blink_pattern[i]:
                                 processed = self._apply_text(self._original_images[i])
                                 frame._image = processed
-                                print(f"  프레임 {i}: 텍스트 적용 (blink=True)")
                             else:
                                 frame._image = self._original_images[i].copy()
-                                print(f"  프레임 {i}: 텍스트 숨김 (blink=False)")
                         else:
                             processed = self._apply_text(self._original_images[i])
                             frame._image = processed
-                            print(f"  프레임 {i}: 텍스트 적용")
-                    except Exception as e:
-                        print(f"텍스트 적용 오류 (프레임 {i}): {e}")
+                    except Exception:
+                        pass
                 else:
                     try:
                         frame._image = self._original_images[i].copy()
-                    except Exception as e:
-                        print(f"원본 복원 오류: {e}")
+                    except Exception:
+                        pass
 
         self._on_deactivated()
         if hasattr(self._main_window, '_is_modified'):
@@ -702,8 +685,8 @@ class TextToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류: {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         super()._on_cancel(event)

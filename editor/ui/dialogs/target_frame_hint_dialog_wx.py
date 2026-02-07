@@ -5,6 +5,7 @@ TargetFrameHintDialog - 대상 프레임 선택 안내 팝업 (wxPython 버전)
 "다음 부터 안보기" 체크 시 이후에는 표시하지 않음.
 """
 import wx
+from ..style_constants_wx import Colors
 
 
 class TargetFrameHintDialog(wx.Dialog):
@@ -37,14 +38,14 @@ class TargetFrameHintDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 
         # 안내 메시지
         msg_label = wx.StaticText(self, label=self._tr("target_frame_hint_message"))
-        msg_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        msg_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         msg_label.Wrap(360)
         font = msg_label.GetFont()
         font.SetPointSize(11)
@@ -55,7 +56,7 @@ class TargetFrameHintDialog(wx.Dialog):
 
         # "다음 부터 안보기" 체크박스
         self._dont_show_checkbox = wx.CheckBox(self, label=self._tr("dont_show_again"))
-        self._dont_show_checkbox.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._dont_show_checkbox.SetForegroundColour(Colors.TEXT_SECONDARY)
         main_sizer.Add(self._dont_show_checkbox, 0, wx.LEFT, 20)
 
         main_sizer.AddSpacer(20)
@@ -65,8 +66,8 @@ class TargetFrameHintDialog(wx.Dialog):
         button_sizer.AddStretchSpacer()
 
         ok_btn = wx.Button(self, wx.ID_OK, label="확인")
-        ok_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        ok_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        ok_btn.SetBackgroundColour(Colors.ACCENT)
+        ok_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         ok_btn.SetMinSize((80, 32))
         ok_btn.Bind(wx.EVT_BUTTON, self._on_accept)
         button_sizer.Add(ok_btn, 0, wx.ALL, 5)

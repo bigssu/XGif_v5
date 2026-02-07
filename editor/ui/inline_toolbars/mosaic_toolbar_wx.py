@@ -98,8 +98,7 @@ class MosaicToolbar(InlineToolbarBase):
                     self._original_images.append(f.image.copy())
                 else:
                     self._original_images.append(None)
-        except Exception as e:
-            print(f"원본 이미지 저장 오류: {e}")
+        except Exception:
             self._original_images = []
 
         # 기본 영역 설정
@@ -121,8 +120,8 @@ class MosaicToolbar(InlineToolbarBase):
                         self._region_x1, self._region_y1,
                         self._region_x2, self._region_y2
                     )
-            except Exception as e:
-                print(f"모자이크 모드 시작 오류: {e}")
+            except Exception:
+                pass
 
         self._update_preview()
 
@@ -136,13 +135,13 @@ class MosaicToolbar(InlineToolbarBase):
             try:
                 if hasattr(canvas, 'mosaic_region_changed'):
                     canvas.mosaic_region_changed.disconnect(self._on_canvas_region_changed)
-            except:
+            except Exception:
                 pass
             try:
                 if hasattr(canvas, 'stop_mosaic_mode'):
                     canvas.stop_mosaic_mode()
-            except Exception as e:
-                print(f"모자이크 모드 종료 오류: {e}")
+            except Exception:
+                pass
 
     def _on_type_changed(self, event):
         """검열 타입 변경"""
@@ -210,8 +209,8 @@ class MosaicToolbar(InlineToolbarBase):
                     frame._image = processed
                 else:
                     frame._image = self._original_images[i].copy()
-            except Exception as e:
-                print(f"검열 처리 오류 (프레임 {i}): {e}")
+            except Exception:
+                pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -262,8 +261,8 @@ class MosaicToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
 
@@ -290,13 +289,13 @@ class MosaicToolbar(InlineToolbarBase):
                 try:
                     processed = self._apply_censor(self._original_images[i])
                     frame._image = processed
-                except Exception as e:
-                    print(f"모자이크 적용 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
             else:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._on_deactivated()
         if hasattr(self._main_window, '_is_modified'):
@@ -313,8 +312,8 @@ class MosaicToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         super()._on_cancel(event)

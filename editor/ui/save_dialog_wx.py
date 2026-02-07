@@ -9,6 +9,7 @@ from PIL import Image
 from typing import Optional, Dict, List
 from pathlib import Path
 
+from .style_constants_wx import Colors
 from ..core.editor_gif_encoder import GifEncoder, EncoderSettings, QuantizationMethod
 
 
@@ -30,14 +31,14 @@ class SaveDialog(wx.Dialog):
 
     # === 클래스 상수 ===
     # 색상 상수
-    COLOR_DARK_BG = wx.Colour(45, 45, 45)
-    COLOR_PREVIEW_BG = wx.Colour(26, 26, 26)
-    COLOR_WHITE = wx.Colour(255, 255, 255)
-    COLOR_LABEL = wx.Colour(204, 204, 204)
-    COLOR_BUTTON_BG = wx.Colour(80, 80, 80)
+    COLOR_DARK_BG = Colors.BG_PRIMARY
+    COLOR_PREVIEW_BG = Colors.BG_SECONDARY
+    COLOR_WHITE = Colors.TEXT_PRIMARY
+    COLOR_LABEL = Colors.TEXT_SECONDARY
+    COLOR_BUTTON_BG = Colors.BG_HOVER
     COLOR_BUTTON_SAVE = wx.Colour(211, 47, 47)
-    COLOR_SIZE_TEXT = wx.Colour(79, 195, 247)
-    COLOR_SUBTEXT = wx.Colour(136, 136, 136)
+    COLOR_SIZE_TEXT = Colors.INFO
+    COLOR_SUBTEXT = Colors.TEXT_MUTED
 
     # 수치 상수
     BYTES_PER_MB = 1024 * 1024
@@ -200,8 +201,8 @@ class SaveDialog(wx.Dialog):
 
         self._quant_combo = wx.ComboBox(self, style=wx.CB_READONLY, size=(200, -1))
         self._populate_quant_combo()
-        self._quant_combo.SetBackgroundColour(wx.Colour(64, 64, 64))
-        self._quant_combo.SetForegroundColour(wx.Colour(255, 255, 255))
+        self._quant_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._quant_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         quant_sizer.Add(self._quant_combo, 0, wx.ALL, 5)
 
         # 알고리즘 설명
@@ -227,7 +228,7 @@ class SaveDialog(wx.Dialog):
 
         self._colors_label = wx.StaticText(self, label="256")
         self._colors_label.SetMinSize((40, -1))
-        self._colors_label.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._colors_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         colors_sizer.Add(self._colors_label, 0, wx.ALIGN_CENTER_VERTICAL)
 
         quality_sizer.Add(colors_sizer, 0, wx.ALL | wx.EXPAND, 5)
@@ -235,13 +236,13 @@ class SaveDialog(wx.Dialog):
         # 디더링
         self._dither_check = wx.CheckBox(self, label=self._get_translation("save_dialog_dither", "디더링 사용"))
         self._dither_check.SetValue(True)
-        self._dither_check.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._dither_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         quality_sizer.Add(self._dither_check, 0, wx.ALL, 5)
 
         # 최적화
         self._optimize_check = wx.CheckBox(self, label=self._get_translation("save_dialog_optimize", "파일 크기 최적화"))
         self._optimize_check.SetValue(True)
-        self._optimize_check.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._optimize_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         quality_sizer.Add(self._optimize_check, 0, wx.ALL, 5)
 
         settings_sizer.Add(quality_sizer, 0, wx.ALL | wx.EXPAND, 5)
@@ -269,7 +270,7 @@ class SaveDialog(wx.Dialog):
 
         self._save_btn = wx.Button(self, label=self._get_translation("save_dialog_save", "저장"), size=(-1, 40))
         self._save_btn.SetBackgroundColour(self.COLOR_BUTTON_SAVE)
-        self._save_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        self._save_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._save_btn.Bind(wx.EVT_BUTTON, self._on_save)
         button_sizer.Add(self._save_btn, 1, wx.ALL, 5)
 
@@ -374,7 +375,7 @@ class SaveDialog(wx.Dialog):
 
         try:
             dc = wx.PaintDC(self._preview_panel)
-            dc.SetBackground(wx.Brush(wx.Colour(26, 26, 26)))
+            dc.SetBackground(wx.Brush(Colors.BG_SECONDARY))
             dc.Clear()
 
             # 줌 적용
@@ -417,8 +418,8 @@ class SaveDialog(wx.Dialog):
                 img_y = (panel_height - scaled_height) // 2
 
             dc.DrawBitmap(scaled_bitmap, img_x, img_y, True)
-        except Exception as e:
-            print(f"Preview paint error: {e}")
+        except Exception:
+            pass
 
     def _init_preview_slider(self):
         """프리뷰 슬라이더 초기화"""
@@ -476,11 +477,8 @@ class SaveDialog(wx.Dialog):
                 )
                 self._comparison_label.Wrap(300)
         except Exception as e:
-            import traceback
             error_text = self._get_translation("msg_error", "오류")
             self._size_label.SetLabel(f"{error_text}: {str(e)}")
-            print(f"Size estimate error: {e}")
-            traceback.print_exc()
 
     def _update_settings(self):
         """현재 UI에서 설정 가져오기"""
@@ -561,10 +559,8 @@ class SaveDialog(wx.Dialog):
             preview_info_text = self._get_translation("save_dialog_preview_info", "원본 vs 압축 미리보기")
             self._preview_info.SetLabel(f"{preview_info_text} (원본)")
 
-        except Exception as e:
-            import traceback
-            print(f"Fast preview error: {e}")
-            traceback.print_exc()
+        except Exception:
+            pass
 
     def _update_preview(self):
         """프리뷰 업데이트 (양자화 적용)"""
@@ -625,10 +621,7 @@ class SaveDialog(wx.Dialog):
             self._preview_info.SetLabel(f"프레임 {frame_index + 1}/{frames.frame_count} - {quant_name} - {self._settings.colors}색")
 
         except Exception as e:
-            import traceback
             self._preview_info.SetLabel(f"프리뷰 오류: {str(e)}")
-            print(f"Preview error: {e}")
-            print(traceback.format_exc())
             # 에러 발생 시 원본 프레임 이미지 표시 시도
             try:
                 original_img = preview_frame.image.copy()
@@ -683,10 +676,7 @@ class SaveDialog(wx.Dialog):
             bitmap = wx.Bitmap(wx_image)
             return bitmap if bitmap.IsOk() else None
 
-        except Exception as e:
-            print(f"PIL to Bitmap conversion error: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
             return None
 
     def _on_save(self, event):

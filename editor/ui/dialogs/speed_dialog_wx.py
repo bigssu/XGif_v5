@@ -6,6 +6,8 @@ PyQt6 QDialog를 wx.Dialog로 마이그레이션
 import wx
 from typing import TYPE_CHECKING
 
+from ..style_constants_wx import Colors
+
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
@@ -23,7 +25,7 @@ class SpeedDialog(wx.Dialog):
     def _setup_ui(self):
         """UI 초기화"""
         # 배경색 설정
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         # 메인 레이아웃
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -31,7 +33,7 @@ class SpeedDialog(wx.Dialog):
 
         # 현재 정보
         self._info_label = wx.StaticText(self, label="")
-        self._info_label.SetForegroundColour(wx.Colour(150, 150, 150))
+        self._info_label.SetForegroundColour(Colors.TEXT_MUTED)
         font = self._info_label.GetFont()
         font.SetPointSize(10)
         self._info_label.SetFont(font)
@@ -39,7 +41,7 @@ class SpeedDialog(wx.Dialog):
 
         # 속도 배율 그룹
         speed_box = wx.StaticBox(self, label="속도 배율")
-        speed_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        speed_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         speed_sizer = wx.StaticBoxSizer(speed_box, wx.VERTICAL)
         speed_sizer.AddSpacer(10)
 
@@ -69,7 +71,7 @@ class SpeedDialog(wx.Dialog):
             self,
             label="1.0x = 원래 속도, 2.0x = 2배 빠르게, 0.5x = 2배 느리게"
         )
-        desc_label.SetForegroundColour(wx.Colour(150, 150, 150))
+        desc_label.SetForegroundColour(Colors.TEXT_MUTED)
         font = desc_label.GetFont()
         font.SetPointSize(9)
         desc_label.SetFont(font)
@@ -85,8 +87,8 @@ class SpeedDialog(wx.Dialog):
         for speed in [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]:
             btn = wx.Button(self, label=f"{speed}x")
             btn.SetMinSize((60, -1))
-            btn.SetBackgroundColour(wx.Colour(60, 60, 60))
-            btn.SetForegroundColour(wx.Colour(255, 255, 255))
+            btn.SetBackgroundColour(Colors.BORDER)
+            btn.SetForegroundColour(Colors.TEXT_PRIMARY)
             btn.Bind(wx.EVT_BUTTON, lambda e, s=speed: self._apply_preset(s))
             preset_sizer.Add(btn, 0, wx.ALL, 3)
 
@@ -96,7 +98,7 @@ class SpeedDialog(wx.Dialog):
 
         # 결과 예상
         self._result_label = wx.StaticText(self, label="")
-        self._result_label.SetForegroundColour(wx.Colour(100, 180, 255))
+        self._result_label.SetForegroundColour(Colors.INFO)
         font = self._result_label.GetFont()
         font.SetPointSize(11)
         self._result_label.SetFont(font)
@@ -109,14 +111,14 @@ class SpeedDialog(wx.Dialog):
         button_sizer.AddStretchSpacer()
 
         apply_btn = wx.Button(self, wx.ID_OK, label="적용")
-        apply_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        apply_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        apply_btn.SetBackgroundColour(Colors.ACCENT)
+        apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
         cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
-        cancel_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        cancel_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
@@ -138,8 +140,8 @@ class SpeedDialog(wx.Dialog):
                 f"현재 재생 시간: {total_ms / 1000:.2f}초 ({frame_count}프레임)"
             )
             self._update_result()
-        except Exception as e:
-            print(f"정보 로드 오류: {e}")
+        except Exception:
+            pass
 
     def _on_slider_changed(self, event):
         """슬라이더 변경"""
@@ -173,8 +175,8 @@ class SpeedDialog(wx.Dialog):
                 self._result_label.SetLabel(
                     f"변경 후 재생 시간: {new_duration / 1000:.2f}초"
                 )
-        except Exception as e:
-            print(f"결과 업데이트 오류: {e}")
+        except Exception:
+            pass
 
     def get_speed_multiplier(self) -> float:
         """속도 배율 반환"""

@@ -24,7 +24,7 @@ from .canvas_widget_wx import CanvasWidget
 from .frame_list_widget_wx import FrameListWidget
 from .icon_toolbar_wx import IconToolbar
 from .icon_utils_wx import IconFactory, IconColors
-from .style_constants_wx import Colors, Sizes
+from .style_constants_wx import Colors, Sizes, Fonts
 
 # ── FlatMenuBar / FlatMenuLabel ──────────────────────────────
 
@@ -45,20 +45,14 @@ class _FlatMenuLabel(wx.Control):
         self._fg = Colors.TEXT_SECONDARY if Colors else wx.Colour(204, 204, 204)
         self._fg_hover = Colors.TEXT_PRIMARY if Colors else wx.Colour(255, 255, 255)
 
-        font = wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
-        # Segoe UI 우선
-        for name in ("Segoe UI Variable", "Segoe UI", ""):
-            if name:
-                font.SetFaceName(name)
-                if font.IsOk():
-                    break
+        font = Fonts.get_font(16) if Fonts else wx.Font(16, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         self.SetFont(font)
 
         # 크기 계산
         dc = wx.ScreenDC()
         dc.SetFont(font)
         tw, th = dc.GetTextExtent(label)
-        self.SetMinSize((tw + 20, Sizes.MENUBAR_HEIGHT if Sizes else 32))
+        self.SetMinSize((tw + 30, Sizes.MENUBAR_HEIGHT if Sizes else 48))
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
 
@@ -198,15 +192,18 @@ class MainWindow(wx.Frame):
     """Honeycam 스타일 GIF 에디터 메인 윈도우 (wxPython)"""
 
     def __init__(self):
-        super().__init__(None, title="XGif Editor", size=(1200, 800))
+        super().__init__(None, title="XGif Editor", size=(1680, 1120))
+        if Colors:
+            self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         # 로거 초기화
         self._logger = get_logger()
 
         # 윈도우 아이콘 설정
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'resources', 'xgif_icon.ico')
+        from core.utils import get_resource_path
+        icon_path = get_resource_path(os.path.join('resources', 'xgif_icon.ico'))
         if not os.path.exists(icon_path):
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'resources', 'Xgif_icon.png')
+            icon_path = get_resource_path(os.path.join('resources', 'Xgif_icon.png'))
         if os.path.exists(icon_path):
             icon = wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
             self.SetIcon(icon)
@@ -336,8 +333,8 @@ class MainWindow(wx.Frame):
     def _setup_ui(self):
         """Honeycam 스타일 UI 초기화"""
         self.SetTitle("GIF Editor")
-        self.SetMinSize((900, 600))
-        self.SetSize((900, 700))
+        self.SetMinSize((1260, 840))
+        self.SetSize((1260, 980))
 
         # 중앙 패널 (Frame sizer로 관리하여 리사이즈 시 정확히 채움)
         central_panel = wx.Panel(self)
@@ -365,30 +362,30 @@ class MainWindow(wx.Frame):
         app_name_label = wx.StaticText(self._info_bar, label="XGif")
         font_bold = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
         app_name_label.SetFont(font_bold)
-        app_name_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        app_name_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         info_sizer.Add(app_name_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         version_label = wx.StaticText(self._info_bar, label=f"v{__version__}")
         font_version = wx.Font(11, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
         version_label.SetFont(font_version)
-        version_label.SetForegroundColour(wx.Colour(0, 170, 255))
+        version_label.SetForegroundColour(Colors.VERSION_ACCENT)
         info_sizer.Add(version_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         date_label = wx.StaticText(self._info_bar, label=f"({__last_modified__})")
         font_date = wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         date_label.SetFont(font_date)
-        date_label.SetForegroundColour(wx.Colour(136, 136, 136))
+        date_label.SetForegroundColour(Colors.TEXT_MUTED)
         info_sizer.Add(date_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 구분선
         sep_app = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep_app.SetBackgroundColour(wx.Colour(85, 85, 85))
+        sep_app.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep_app, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 줌 레벨
         self._zoom_label = wx.StaticText(self._info_bar, label="1x")
         self._zoom_label.SetFont(font_version)
-        self._zoom_label.SetForegroundColour(wx.Colour(0, 170, 255))
+        self._zoom_label.SetForegroundColour(Colors.VERSION_ACCENT)
         self._zoom_label.SetMinSize((30, -1))
         info_sizer.Add(self._zoom_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
@@ -398,58 +395,58 @@ class MainWindow(wx.Frame):
         size_text = self._translations.tr("info_size_empty")
         self._size_info = wx.StaticText(self._info_bar, label=size_text)
         self._size_info.SetMinSize((100, -1))
-        self._size_info.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._size_info.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._size_info.SetToolTip(self._translations.tr("info_size_tooltip") if hasattr(self._translations, 'tr') else "이미지 크기 (가로x세로)")
         info_sizer.Add(self._size_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 구분선
         sep1 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep1.SetBackgroundColour(wx.Colour(85, 85, 85))
+        sep1.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep1, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 프레임 수
         frame_count_text = self._translations.tr("info_frame_count_empty")
         self._frame_count_info = wx.StaticText(self._info_bar, label=frame_count_text)
         self._frame_count_info.SetMinSize((80, -1))
-        self._frame_count_info.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._frame_count_info.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._frame_count_info.SetToolTip(self._translations.tr("info_frame_count_tooltip") if hasattr(self._translations, 'tr') else "총 프레임 수")
         info_sizer.Add(self._frame_count_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 구분선
         sep2 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep2.SetBackgroundColour(wx.Colour(85, 85, 85))
+        sep2.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep2, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 재생 시간
         duration_text = self._translations.tr("info_duration_empty")
         self._duration_info = wx.StaticText(self._info_bar, label=duration_text)
         self._duration_info.SetMinSize((100, -1))
-        self._duration_info.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._duration_info.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._duration_info.SetToolTip(self._translations.tr("info_duration_tooltip") if hasattr(self._translations, 'tr') else "총 재생 시간")
         info_sizer.Add(self._duration_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 구분선
         sep3 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep3.SetBackgroundColour(wx.Colour(85, 85, 85))
+        sep3.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep3, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 메모리 사용량
         self._memory_info = wx.StaticText(self._info_bar, label="메모리:")
-        self._memory_info.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._memory_info.SetForegroundColour(Colors.TEXT_SECONDARY)
         if not self._is_low_end_mode:
             self._memory_info.Hide()
         info_sizer.Add(self._memory_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         self._memory_value = wx.StaticText(self._info_bar, label="0MB")
-        self._memory_value.SetBackgroundColour(wx.Colour(80, 80, 80))
-        self._memory_value.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._memory_value.SetBackgroundColour(Colors.BG_HOVER)
+        self._memory_value.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._memory_value.SetMinSize((60, -1))
         self._memory_value.SetToolTip(self._translations.tr("info_memory_tooltip") if hasattr(self._translations, 'tr') else "메모리 사용량")
         info_sizer.Add(self._memory_value, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 구분선
         sep4 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep4.SetBackgroundColour(wx.Colour(85, 85, 85))
+        sep4.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep4, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # GPU 상태
@@ -515,7 +512,7 @@ class MainWindow(wx.Frame):
 
         self._frame_indicator = wx.StaticText(slider_container, label="0/0")
         self._frame_indicator.SetMinSize((60, -1))
-        self._frame_indicator.SetForegroundColour(wx.Colour(204, 204, 204))
+        self._frame_indicator.SetForegroundColour(Colors.TEXT_SECONDARY)
         slider_sizer.Add(self._frame_indicator, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         slider_container.SetSizer(slider_sizer)
@@ -667,6 +664,7 @@ class MainWindow(wx.Frame):
         # 메인 sizer에 메뉴바 삽입 (icon_toolbar 위에)
         main_sizer = central_panel.GetSizer()
         main_sizer.Insert(0, self._flat_menubar, 0, wx.EXPAND)
+        self._flat_menubar.Raise()  # Z-order 최상위로 (나중에 생성되어 다른 위젯에 가려지는 것 방지)
         central_panel.Layout()
 
     def _setup_shortcuts(self):
@@ -759,16 +757,12 @@ class MainWindow(wx.Frame):
 
             if result.frames:
                 self._frames = result.frames
-                print(f"파일 로드 완료: {self._frames.frame_count} 프레임")
-            else:
-                print("경고: result.frames가 None입니다")
 
             self._current_file_path = file_path
             self._is_modified = False
             self._add_recent_file(file_path)
             self._update_title()
             self._update_info_bar()
-            print(f"_refresh_all() 호출 전: frame_count={self._frames.frame_count}")
             self._refresh_all()
 
         except Exception as e:
@@ -971,14 +965,14 @@ class MainWindow(wx.Frame):
 
                     # 경고 색상 설정
                     if memory_mb > 500:
-                        self._memory_value.SetBackgroundColour(wx.Colour(255, 107, 107))
-                        self._memory_value.SetForegroundColour(wx.Colour(255, 255, 255))
+                        self._memory_value.SetBackgroundColour(Colors.DANGER)
+                        self._memory_value.SetForegroundColour(Colors.TEXT_PRIMARY)
                     elif memory_mb > 300:
-                        self._memory_value.SetBackgroundColour(wx.Colour(255, 165, 0))
-                        self._memory_value.SetForegroundColour(wx.Colour(255, 255, 255))
+                        self._memory_value.SetBackgroundColour(Colors.WARNING)
+                        self._memory_value.SetForegroundColour(Colors.TEXT_PRIMARY)
                     else:
-                        self._memory_value.SetBackgroundColour(wx.Colour(80, 80, 80))
-                        self._memory_value.SetForegroundColour(wx.Colour(204, 204, 204))
+                        self._memory_value.SetBackgroundColour(Colors.BG_HOVER)
+                        self._memory_value.SetForegroundColour(Colors.TEXT_SECONDARY)
                     self._memory_value.Refresh()
 
                     # 저사양 모드 라벨 표시/숨기기
@@ -1035,10 +1029,10 @@ class MainWindow(wx.Frame):
 
             if is_gpu_mode and gpu_info.get('available', False):
                 self._gpu_label.SetLabel("GPU")
-                self._gpu_label.SetForegroundColour(wx.Colour(76, 175, 80))
+                self._gpu_label.SetForegroundColour(Colors.GPU_ON)
             else:
                 self._gpu_label.SetLabel("CPU")
-                self._gpu_label.SetForegroundColour(wx.Colour(136, 136, 136))
+                self._gpu_label.SetForegroundColour(Colors.GPU_OFF)
 
             # 상세 GPU 정보 툴팁
             status_text = "GPU" if is_gpu_mode else "CPU"
@@ -1072,7 +1066,6 @@ class MainWindow(wx.Frame):
 
     def play(self):
         """재생 시작"""
-        print(f"play() 호출됨: is_empty={self._frames.is_empty}, frame_count={self._frames.frame_count}")
         if self._frames.is_empty:
             return
 
@@ -1083,7 +1076,6 @@ class MainWindow(wx.Frame):
         delay = 100  # 기본값
         if frame and hasattr(frame, 'delay_ms'):
             delay = max(10, frame.delay_ms)  # 최소 10ms
-        print(f"재생 시작: delay={delay}ms")
         self._play_timer.Start(delay)
 
     def pause(self):
@@ -1102,24 +1094,24 @@ class MainWindow(wx.Frame):
     def _on_play_timer(self, event):
         """재생 타이머"""
         if not self._is_playing or self._frames.is_empty:
-            print(f"재생 타이머 중단: is_playing={self._is_playing}, is_empty={self._frames.is_empty}")
             return
 
         if self._frames.frame_count == 0:
             return
         next_idx = (self._frames.current_index + 1) % self._frames.frame_count
-        print(f"재생 중: 프레임 {self._frames.current_index} → {next_idx}")
 
         # current_index 직접 변경 (select_frame은 selected_indices만 변경함)
         self._frames.current_index = next_idx
 
         self._update_slider()
         self._canvas.Refresh()
-        print(f"캔버스 Refresh() 호출됨 (현재 인덱스: {self._frames.current_index})")
 
-        if self._frames.current_frame:
-            delay = self._frames.current_frame.delay_ms
-            self._play_timer.Start(delay, wx.TIMER_ONE_SHOT)
+        current = self._frames.current_frame
+        if current:
+            delay = current.delay_ms
+        else:
+            delay = 100
+        self._play_timer.Start(max(delay, 1), wx.TIMER_ONE_SHOT)
 
     def _on_slider_changed(self, value: int) -> None:
         """슬라이더 변경 (사용자가 직접 조작한 경우만 처리)"""
@@ -1438,14 +1430,13 @@ class MainWindow(wx.Frame):
         get_worker_manager().start(worker)
 
     def _on_video_load_progress(self, current: int, total: int):
-        """비디오 로드 진행률 업데이트"""
-        if hasattr(self, '_video_progress') and self._video_progress:
-            percent = int((current / total) * 100) if total > 0 else 0
-            wx.CallAfter(
-                self._video_progress.Update,
-                percent,
-                f"프레임 추출 중... ({current}/{total})"
-            )
+        """비디오 로드 진행률 업데이트 (이미 wx.CallAfter 경유로 메인 스레드)"""
+        try:
+            if hasattr(self, '_video_progress') and self._video_progress:
+                percent = int((current / total) * 100) if total > 0 else 0
+                self._video_progress.Update(percent, f"프레임 추출 중... ({current}/{total})")
+        except (RuntimeError, wx.PyDeadObjectError):
+            pass
 
     def _on_video_load_finished(self, result):
         """비디오 로드 완료"""
@@ -1662,13 +1653,11 @@ class MainWindow(wx.Frame):
             return
 
         try:
-            # Undo 등록 (딜레이만 변경하므로 메모리 사용량은 0)
-            old_frames = self._frames.clone()
+            old_delays = [f.delay_ms for f in self._frames]
             factor_str = f"{int(factor * 100)}%"
 
             def execute():
                 try:
-                    # factor가 2.0이면 딜레이를 0.5배로 (더 빠르게)
                     self._frames.scale_delays(1.0 / factor)
                     self._refresh_all()
                 except Exception as e:
@@ -1677,13 +1666,14 @@ class MainWindow(wx.Frame):
 
             def undo():
                 try:
-                    self._frames = old_frames
+                    for i, delay in enumerate(old_delays):
+                        if i < self._frames.frame_count:
+                            self._frames[i].delay_ms = delay
                     self._refresh_all()
                 except Exception as e:
                     wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
                     raise
 
-            # 딜레이만 변경하므로 메모리 사용량은 0 (이미지 복제 없음)
             self._undo_manager.execute_lambda(f"속도 조절 ({factor_str})", execute, undo, 0)
             self._is_modified = True
 
@@ -1716,8 +1706,7 @@ class MainWindow(wx.Frame):
             delay = dlg.GetValue()
 
             try:
-                # Undo 등록 (딜레이만 변경하므로 메모리 사용량은 0)
-                old_frames = self._frames.clone()
+                old_delays = [f.delay_ms for f in self._frames]
 
                 def execute():
                     try:
@@ -1729,13 +1718,14 @@ class MainWindow(wx.Frame):
 
                 def undo():
                     try:
-                        self._frames = old_frames
+                        for i, old_delay in enumerate(old_delays):
+                            if i < self._frames.frame_count:
+                                self._frames[i].delay_ms = old_delay
                         self._refresh_all()
                     except Exception as e:
                         wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
                         raise
 
-                # 딜레이만 변경하므로 메모리 사용량은 0
                 self._undo_manager.execute_lambda(f"모든 프레임 딜레이 설정 ({delay}ms)", execute, undo, 0)
                 self._is_modified = True
 
@@ -1850,8 +1840,8 @@ class MainWindow(wx.Frame):
                 self._split_frame_count = len(selected)
 
                 # 비동기 저장 작업 시작
-                from ..core import SaveWorker, get_worker_manager
-                worker = SaveWorker(GifEncoder.save, file_path, new_collection)
+                from ..core import get_worker_manager
+                worker = FunctionWorker(GifEncoder.save, new_collection, file_path)
                 worker.signals.connect('finished', self._on_split_gif_finished)
                 worker.signals.connect('error', self._on_split_gif_error)
                 get_worker_manager().start(worker)
@@ -2059,7 +2049,7 @@ class MainWindow(wx.Frame):
         info.SetLicense(f"Last Modified: {__last_modified__}")
 
         # 아이콘 설정
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'resources', 'Xgif_icon.png')
+        icon_path = get_resource_path(os.path.join('resources', 'Xgif_icon.png'))
         if os.path.exists(icon_path):
             icon = wx.Icon(icon_path, wx.BITMAP_TYPE_PNG)
             info.SetIcon(icon)
@@ -2146,6 +2136,13 @@ class MainWindow(wx.Frame):
         """백그라운드 스레드로 CuPy pip install"""
         import threading
 
+        if getattr(sys, 'frozen', False):
+            wx.MessageBox(
+                "패키징된 환경에서는 pip install을 실행할 수 없습니다.",
+                "경고", wx.OK | wx.ICON_WARNING
+            )
+            return
+
         busy = wx.BusyInfo(self._translations.tr("cupy_installing", package=package_name))
 
         def do_install():
@@ -2209,6 +2206,10 @@ class MainWindow(wx.Frame):
         self._play_timer.Stop()
         self._gpu_update_timer.Stop()
         self._cleanup_workers()
+
+        from ..core.worker_wx import shutdown_worker_manager
+        shutdown_worker_manager()
+
         event.Skip()
 
     def _cleanup_workers(self):
@@ -2565,7 +2566,7 @@ class MainWindow(wx.Frame):
 
         # wxPython 펜슬 툴바 생성
         self._pencil_toolbar = wx.Panel(self._canvas)
-        self._pencil_toolbar.SetBackgroundColour(wx.Colour(53, 53, 53))
+        self._pencil_toolbar.SetBackgroundColour(Colors.BG_TOOLBAR)
 
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
@@ -2574,7 +2575,7 @@ class MainWindow(wx.Frame):
 
         # 적용 대상
         target_label = wx.StaticText(self._pencil_toolbar, label="대상:")
-        target_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        target_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         controls_sizer.Add(target_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._pencil_target_combo = wx.ComboBox(
@@ -2609,12 +2610,12 @@ class MainWindow(wx.Frame):
         controls_sizer.Add(self._pencil_width_slider, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._pencil_width_label = wx.StaticText(self._pencil_toolbar, label=f"{self._pencil_width}px")
-        self._pencil_width_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        self._pencil_width_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         controls_sizer.Add(self._pencil_width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 지속 시간
         duration_label = wx.StaticText(self._pencil_toolbar, label="시간:")
-        duration_label.SetForegroundColour(wx.Colour(255, 255, 255))
+        duration_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         controls_sizer.Add(duration_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._pencil_duration_spin = wx.SpinCtrlDouble(
@@ -2659,7 +2660,7 @@ class MainWindow(wx.Frame):
 
         # 액션 버튼 위젯 (캔버스 오른쪽 하단)
         self._pencil_action_buttons_widget = wx.Panel(self._canvas)
-        self._pencil_action_buttons_widget.SetBackgroundColour(wx.Colour(53, 53, 53))
+        self._pencil_action_buttons_widget.SetBackgroundColour(Colors.BG_TOOLBAR)
 
         buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
@@ -3067,23 +3068,23 @@ class MainWindow(wx.Frame):
                     self._canvas.Refresh()
                     self._canvas.Update()  # 즉시 그리기
                 self._update_slider()  # 슬라이더 위치 업데이트
-        except Exception as e:
-            print(f"프레임 선택 오류: {e}")
+        except Exception:
+            pass
 
     def _on_delay_changed(self, event):
         """프레임 딜레이 변경 이벤트 핸들러"""
         try:
             self._update_info_bar()
-        except Exception as e:
-            print(f"딜레이 변경 이벤트 오류: {e}")
+        except Exception:
+            pass
 
     def _on_frames_deleted(self, event):
         """프레임 삭제 이벤트 핸들러"""
         try:
             self._update_info_bar()
             self._refresh_all()
-        except Exception as e:
-            print(f"프레임 삭제 이벤트 오류: {e}")
+        except Exception:
+            pass
 
     # ==================== 언어 전환 ====================
 

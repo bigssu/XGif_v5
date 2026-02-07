@@ -117,19 +117,12 @@ class XGifApp(wx.App):
         except Exception as e:
             print(f"Warning: Crash handler installation failed: {e}")
         
-        # HDR 비교용 폴더 생성 (녹화/캡처 시 before·after PNG 자동 저장)
-        try:
-            import tempfile
-            debug_dir = os.path.join(tempfile.gettempdir(), "xgif_hdr_debug")
-            os.makedirs(debug_dir, exist_ok=True)
-        except Exception:
-            pass
-        
         # 앱 아이콘 설정
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'xgif_icon.ico')
+            from core.utils import get_resource_path
+            icon_path = get_resource_path(os.path.join('resources', 'xgif_icon.ico'))
             if not os.path.exists(icon_path):
-                icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'Xgif_icon.png')
+                icon_path = get_resource_path(os.path.join('resources', 'Xgif_icon.png'))
             if os.path.exists(icon_path):
                 icon = wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
                 self.SetTopWindow(None)  # SetTopWindow는 나중에 설정됨
@@ -196,6 +189,9 @@ class XGifApp(wx.App):
             window.Show()
             self.SetTopWindow(window)
             logger.info("Main window created and shown")
+
+            # 시작 시 의존성 진단 (1.5초 후 비동기)
+            wx.CallLater(1500, window._run_startup_dependency_check)
         except Exception as e:
             import traceback
             logger.critical(f"Cannot create main window: {e}")

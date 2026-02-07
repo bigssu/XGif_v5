@@ -101,9 +101,11 @@ class MainWindow(wx.Frame):
     STATE_PAUSED = 2
     
     def __init__(self, parent=None):
-        wx.Frame.__init__(self, parent, title=f"{APP_NAME} v{VERSION}", 
-                         size=(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT))
+        wx.Frame.__init__(self, parent, title=f"{APP_NAME} v{VERSION}",
+                         size=(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT),
+                         style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
         self.capture_overlay = None
+        self._last_pos = None  # 메인 윈도우 이전 위치 (오버레이 델타 이동용)
         self.recorder = None
         self.encoder = None
         self.record_state = self.STATE_READY
@@ -156,10 +158,10 @@ class MainWindow(wx.Frame):
         self._capability_manager = get_capability_manager()
         
         # 윈도우 아이콘 설정
-        import os
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'xgif_icon.ico')
+        from core.utils import get_resource_path
+        icon_path = get_resource_path(os.path.join('resources', 'xgif_icon.ico'))
         if not os.path.exists(icon_path):
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'Xgif_icon.png')
+            icon_path = get_resource_path(os.path.join('resources', 'Xgif_icon.png'))
         if os.path.exists(icon_path):
             icon = wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
             self.SetIcon(icon)
@@ -186,7 +188,8 @@ class MainWindow(wx.Frame):
             self.preview_enabled = True
             self._start_preview()
         
-        # 종료 이벤트 바인딩
+        # 이벤트 바인딩
+        self.Bind(wx.EVT_MOVE, self.OnMove)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
     
     def _init_ui(self):
@@ -196,9 +199,6 @@ class MainWindow(wx.Frame):
 
         # 전역 Segoe UI 폰트 설정
         self.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
-
-        # 항상 위에 표시
-        self.SetWindowStyle(self.GetWindowStyle() | wx.STAY_ON_TOP)
 
         # 메인 패널 (툴바·프로그레스 영역·미리보기 영역 포함) - Windows 11 Dark Theme
         main_panel = wx.Panel(self)
@@ -547,96 +547,93 @@ class MainWindow(wx.Frame):
         # HDR 보정 설정: 사용자 설정값만 사용 (기본 OFF)
         hdr_on = self.settings.get('General', 'hdr_correction', fallback='false') == "true"
         self.recorder.set_hdr_correction(hdr_on)
-        
-        # FFmpeg 확인 및 자동 설치
-        if not self.encoder.is_ffmpeg_available():
-            wx.CallLater(1000, self._check_and_install_ffmpeg)
     
-    def _check_and_install_ffmpeg(self):
-        """FFmpeg 확인 및 자동 설치"""
-        from core.ffmpeg_installer import FFmpegManager, FFmpegDownloader
-        
-        if FFmpegManager.is_available():
-            self.encoder.refresh_ffmpeg_path()
+    # ── 의존성 관리 ──
+
+    def _run_startup_dependency_check(self):
+        """시작 시 의존성 진단 (백그라운드 감지 후 다이얼로그 표시)"""
+        # 이미 진단 완료된 경우 스킵
+        if self.settings.get('General', 'startup_dep_checked', fallback='false') == 'true':
             return
-        
-        dlg = wx.MessageDialog(
-            self,
-            tr('ffmpeg_install_msg'),
-            tr('ffmpeg_install_title'),
-            wx.YES_NO | wx.ICON_QUESTION | wx.YES_DEFAULT
-        )
-        reply = dlg.ShowModal()
+        from core.dependency_checker import check_all_async
+        check_all_async(self._on_startup_dep_results)
+
+    def _on_startup_dep_results(self, results):
+        """시작 진단 결과 콜백"""
+        from core.dependency_checker import DependencyState
+        # 모두 설치됨이면 다이얼로그 표시하지 않음
+        missing = [r for r in results if r.state != DependencyState.INSTALLED]
+        if not missing:
+            return
+        from ui.startup_check_dialog import StartupCheckDialog
+        dlg = StartupCheckDialog(self, results)
+        dlg.ShowModal()
         dlg.Destroy()
-        
-        if reply == wx.ID_YES:
-            self._start_ffmpeg_download()
-        else:
-            self.status_msg_label.SetLabel("FFmpeg 없이 실행 (Pillow 인코딩)")
-    
-    def _start_ffmpeg_download(self):
-        """FFmpeg 다운로드 시작"""
-        from core.ffmpeg_installer import FFmpegDownloader
-        
-        self.ffmpeg_progress = wx.ProgressDialog(
-            tr('ffmpeg_install_title'),
-            tr('ffmpeg_downloading'),
-            maximum=100,
-            parent=self,
-            style=wx.PD_APP_MODAL | wx.PD_CAN_ABORT
-        )
-        
-        self.ffmpeg_downloader = FFmpegDownloader(
-            progress_callback=self._on_ffmpeg_download_progress,
-            status_callback=self._on_ffmpeg_status,
-            finished_callback=self._on_ffmpeg_download_finished
-        )
-        
-        self.ffmpeg_downloader.start()
-    
-    def _on_ffmpeg_download_progress(self, downloaded, total):
-        """FFmpeg 다운로드 진행률"""
-        if total > 0 and self.ffmpeg_progress:
-            percent = int((downloaded / total) * 100)
-            downloaded_mb = downloaded / (1024 * 1024)
-            total_mb = total / (1024 * 1024)
-            keep_going, skip = self.ffmpeg_progress.Update(
-                percent,
-                f"FFmpeg 다운로드 중...\n{downloaded_mb:.1f} MB / {total_mb:.1f} MB"
-            )
-            if not keep_going:
-                self.ffmpeg_downloader.cancel()
-    
-    def _on_ffmpeg_status(self, status):
-        """FFmpeg 설치 상태"""
-        if self.ffmpeg_progress:
-            self.ffmpeg_progress.Update(self.ffmpeg_progress.GetValue(), status)
-    
-    def _on_ffmpeg_download_finished(self, success, message):
-        """FFmpeg 다운로드 완료"""
-        dlg = getattr(self, 'ffmpeg_progress', None)
-        self.ffmpeg_progress = None
-        if dlg is not None:
-            try:
-                dlg.Destroy()
-            except (RuntimeError, AttributeError):
-                pass
-        
-        if success:
+        # 진단 완료 플래그 저장
+        if not self.settings.has_section('General'):
+            self.settings.add_section('General')
+        self.settings.set('General', 'startup_dep_checked', 'true')
+        self._save_settings_to_disk()
+        # FFmpeg 설치 후 인코더 경로 갱신
+        if self.encoder:
             self.encoder.refresh_ffmpeg_path()
-            wx.MessageBox(
-                tr('ffmpeg_install_success'),
-                tr('install_complete'),
-                wx.OK | wx.ICON_INFORMATION
-            )
-            self.status_msg_label.SetLabel(tr('ffmpeg_install_success'))
-        else:
-            wx.MessageBox(
-                tr('ffmpeg_install_failed').format(message),
-                tr('install_failed'),
-                wx.OK | wx.ICON_WARNING
-            )
-            self.status_msg_label.SetLabel(tr('install_failed'))
+
+    def _check_dep_for_feature(self, dep_name, skip_flag_key, feature_desc, disable_label=None):
+        """기능 선택 시 의존성 확인 통합 헬퍼
+
+        Returns:
+            True=사용 가능 (설치됨 또는 설치 성공), False=사용 불가
+        """
+        # skip 플래그 확인
+        if self.settings.get('General', skip_flag_key, fallback='false') == 'true':
+            return False  # 이전에 "다시 묻지 않기" 선택 → 대안 사용
+
+        # 동기 감지 (각 <100ms)
+        from core.dependency_checker import check_ffmpeg, check_cupy, check_dxcam, DependencyState
+        checkers = {"FFmpeg": check_ffmpeg, "CuPy": check_cupy, "dxcam": check_dxcam}
+        check_fn = checkers.get(dep_name)
+        if not check_fn:
+            return True
+        status = check_fn()
+        if status.state == DependencyState.INSTALLED:
+            return True
+
+        # 3버튼 모달 표시
+        from ui.dependency_dialogs import (
+            DependencyInstallDialog, ID_INSTALL, ID_DISABLE, ID_CANCEL_DEP,
+            show_install_flow,
+        )
+        dlg = DependencyInstallDialog(self, status, feature_desc, disable_label)
+        ret = dlg.ShowModal()
+        dont_ask = dlg.dont_ask_again
+        dlg.Destroy()
+
+        if dont_ask:
+            if not self.settings.has_section('General'):
+                self.settings.add_section('General')
+            self.settings.set('General', skip_flag_key, 'true')
+            self._save_settings_to_disk()
+
+        if ret == ID_INSTALL.GetId():
+            success = show_install_flow(self, dep_name, status, self.settings)
+            if success and self.encoder:
+                self.encoder.refresh_ffmpeg_path()
+            return success
+        # ID_DISABLE 또는 ID_CANCEL_DEP
+        return False
+
+    def _save_settings_to_disk(self):
+        """config.ini에 설정 저장"""
+        try:
+            from core.utils import APP_SETTINGS_NAME
+            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+            config_dir = os.path.join(appdata, APP_SETTINGS_NAME)
+            os.makedirs(config_dir, exist_ok=True)
+            config_path = os.path.join(config_dir, 'config.ini')
+            with open(config_path, 'w', encoding='utf-8') as f:
+                self.settings.write(f)
+        except Exception as e:
+            logger.warning("설정 저장 실패: %s", e)
     
     def _show_capture_overlay(self):
         """캡처 오버레이 표시"""
@@ -688,13 +685,21 @@ class MainWindow(wx.Frame):
             self.capture_overlay.SetPosition((new_x, new_y))
     
     def OnMove(self, event):
-        """메인 윈도우 이동 시 오버레이도 함께 이동"""
+        """메인 윈도우 이동 시 오버레이도 같은 방향으로 이동 (델타 기반)"""
         event.Skip()
+        current_pos = self.GetPosition()
+        if self._last_pos is None:
+            self._last_pos = current_pos
+            return
         if self.capture_overlay and self.capture_overlay.IsShown():
             if self.record_state == self.STATE_READY:
-                # 녹화 전에만 자동 연동
-                self._position_overlay_below_window()
-    
+                dx = current_pos.x - self._last_pos.x
+                dy = current_pos.y - self._last_pos.y
+                if dx != 0 or dy != 0:
+                    overlay_pos = self.capture_overlay.GetPosition()
+                    self.capture_overlay.SetPosition((overlay_pos.x + dx, overlay_pos.y + dy))
+        self._last_pos = current_pos
+
     def _on_region_changed(self, x, y, w, h):
         """캡처 영역 변경됨"""
         if self.recorder is not None:
@@ -730,11 +735,23 @@ class MainWindow(wx.Frame):
             self.settings.set("General", "fps", text)
     
     def _on_format_changed(self, format_text):
-        """출력 포맷 변경 시 FPS 자동 조정"""
+        """출력 포맷 변경 시 FPS 자동 조정 + FFmpeg 인터셉트"""
         if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
             if format_text == "GIF":
                 self.capture_control_bar.set_fps(15)
             elif format_text == "MP4":
+                # FFmpeg 확인
+                from core.ffmpeg_installer import FFmpegManager
+                if not FFmpegManager.is_available():
+                    available = self._check_dep_for_feature(
+                        "FFmpeg", "skip_ffmpeg_check",
+                        tr('dep_ffmpeg_required_for_record'),
+                        disable_label=tr('dep_use_gif_instead'),
+                    )
+                    if not available:
+                        # GIF로 되돌리기
+                        wx.CallAfter(self.capture_control_bar.set_format, "GIF")
+                        return
                 self.capture_control_bar.set_fps(30)
     
     def _on_resolution_preset_changed(self, text):
@@ -875,13 +892,30 @@ class MainWindow(wx.Frame):
         if self.record_state != self.STATE_READY:
             logger.warning("Cannot start recording: already recording")
             return
-        
+
         # recorder 확인
         if self.recorder is None:
             logger.error("Recorder not initialized")
             wx.MessageBox(tr('recorder_not_init'), tr('warning'), wx.OK | wx.ICON_WARNING)
             return
-        
+
+        # MP4 포맷인데 FFmpeg 없으면 녹화 차단
+        if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
+            fmt = self.capture_control_bar.get_format()
+            if fmt == "MP4":
+                from core.ffmpeg_installer import FFmpegManager
+                if not FFmpegManager.is_available():
+                    available = self._check_dep_for_feature(
+                        "FFmpeg", "skip_ffmpeg_check",
+                        tr('dep_ffmpeg_required_for_record'),
+                        disable_label=tr('dep_use_gif_instead'),
+                    )
+                    if not available:
+                        wx.CallAfter(self.capture_control_bar.set_format, "GIF")
+                        return
+                    elif self.encoder:
+                        self.encoder.refresh_ffmpeg_path()
+
         # 녹화 영역 확인
         if self.capture_overlay is None:
             logger.error("Capture overlay not initialized")
@@ -1145,8 +1179,8 @@ class MainWindow(wx.Frame):
                 )
         
         if frame_count > 0:
-            # 현재 출력 포맷 확인 (현재 GIF만 지원)
-            output_format = "GIF"  # TODO: capture_control_bar 구현 후 수정
+            # 현재 출력 포맷 확인
+            output_format = self.capture_control_bar.get_format() if hasattr(self, 'capture_control_bar') else "GIF"
             
             if output_format == "MP4":
                 # MP4는 편집 불가 → 바로 저장으로 이동
@@ -1201,8 +1235,6 @@ class MainWindow(wx.Frame):
         """
         from PIL import Image
         import tempfile
-        import subprocess
-        import sys
         
         try:
             self.status_msg_label.SetLabel(tr('opening_editor'))
@@ -1272,32 +1304,24 @@ class MainWindow(wx.Frame):
             if self.recorder:
                 self.recorder.clear_frames()
             
-            # 편집기를 별도 프로세스로 실행 (PyQt6 충돌 방지)
-            editor_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'editor', '__main__.py')
-            
-            if os.path.exists(editor_script):
-                # editor 패키지를 직접 실행
-                try:
-                    subprocess.Popen([sys.executable, '-m', 'editor', temp_path], 
-                                   cwd=os.path.dirname(os.path.dirname(__file__)))
-                    self.status_msg_label.SetLabel(f"편집기 실행 중... ({frame_count}프레임)")
-                    logger.info(f"Editor launched with {frame_count} frames")
-                except Exception as e:
-                    logger.error(f"Failed to launch editor process: {e}")
-                    # 편집기 실행 실패 시 파일 위치 알림
-                    wx.MessageBox(
-                        f"편집기 실행에 실패했습니다.\n\n임시 파일 위치:\n{temp_path}",
-                        tr('warning'),
-                        wx.OK | wx.ICON_WARNING
-                    )
-            else:
-                # editor 스크립트가 없으면 파일 위치만 알림
+            # 같은 프로세스 내에서 에디터 창 열기 (PyInstaller 빌드 호환)
+            try:
+                from editor.ui.editor_main_window_wx import MainWindow as EditorMainWindow
+                editor_window = EditorMainWindow()
+                editor_window.open_file(temp_path)
+                editor_window.Show()
+                logger.info(f"Editor launched with {frame_count} frames, closing recorder")
+                # 에디터 열렸으면 레코더 종료
+                self.Close()
+                return
+            except Exception as e:
+                logger.error(f"Failed to launch editor: {e}")
                 wx.MessageBox(
-                    f"편집기를 찾을 수 없습니다.\n\n임시 파일 위치:\n{temp_path}",
+                    f"편집기 실행에 실패했습니다.\n\n임시 파일 위치:\n{temp_path}",
                     tr('warning'),
                     wx.OK | wx.ICON_WARNING
                 )
-            
+
             self._reset_ui()
             
         except Exception as e:
@@ -1363,7 +1387,7 @@ class MainWindow(wx.Frame):
             
             # 메모리 임계값 도달 시 강제 중지
             if memory_mb >= max_mem_mb:
-                wx.CallAfter(wx.MessageBox, tr('memory_limit_reached').format(max_mem_mb), tr('warning'), wx.OK | wx.ICON_WARNING)
+                wx.CallAfter(wx.MessageBox, tr('mem_limit_msg').format(max_mem_mb), tr('mem_limit_reached'), wx.OK | wx.ICON_WARNING)
                 wx.CallAfter(self._stop_recording)
                 return
 
@@ -1385,7 +1409,7 @@ class MainWindow(wx.Frame):
             if memory_mb > max_mem_mb * MEMORY_WARNING_RATIO and not hasattr(self, '_memory_warned'):
                 self._memory_warned = True
                 if hasattr(self, 'status_msg_label') and self.status_msg_label:
-                    self.status_msg_label.SetLabel(tr('memory_warning').format(memory_mb, max_mem_mb))
+                    self.status_msg_label.SetLabel(tr('mem_warning').format(memory_mb, max_mem_mb))
             
             # 오디오 버퍼 상한 도달 시 녹화 중지 (메모리 안전성)
             if hasattr(self, 'audio_recorder') and self.audio_recorder and self.audio_recorder.buffer_limit_reached:
@@ -1400,7 +1424,6 @@ class MainWindow(wx.Frame):
                     self.status_msg_label.SetLabel(tr('capture_no_frames_warning'))
             
             rec_info = f"{minutes:02d}:{seconds:02d} | {frame_count}f | {memory_mb:.1f}MB"
-            self.info_label.SetLabel(rec_info)
             if hasattr(self, 'info_label') and self.info_label:
                 self.info_label.SetLabel(rec_info)
         except (RuntimeError, AttributeError, wx.PyDeadObjectError) as e:
@@ -1736,7 +1759,6 @@ class MainWindow(wx.Frame):
                     self.encoder.set_preferred_encoder(encoder_type)
                 
                 logger.info("[MainWindow] 최적 파이프라인 적용: %s", pipeline.name)
-                self.status_msg_label.SetLabel(f"최적화 완료: {pipeline.name}")
             
             # GPU 상태 업데이트
             self._update_gpu_status_label()

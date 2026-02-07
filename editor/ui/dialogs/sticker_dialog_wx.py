@@ -8,6 +8,7 @@ import math
 from PIL import Image, ImageDraw
 from typing import TYPE_CHECKING, Optional
 from ...utils.image_utils import pil_to_wx_bitmap
+from ..style_constants_wx import Colors
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -21,8 +22,8 @@ class ShapeButton(wx.Button):
         self._shape_type = shape_type
         self.SetMinSize((80, 60))
 
-        self.SetBackgroundColour(wx.Colour(64, 64, 64))
-        self.SetForegroundColour(wx.Colour(255, 255, 255))
+        self.SetBackgroundColour(Colors.BG_TERTIARY)
+        self.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     @property
     def shape_type(self) -> str:
@@ -31,9 +32,9 @@ class ShapeButton(wx.Button):
     def set_selected(self, selected: bool):
         """선택 상태 설정"""
         if selected:
-            self.SetBackgroundColour(wx.Colour(0, 120, 212))
+            self.SetBackgroundColour(Colors.ACCENT)
         else:
-            self.SetBackgroundColour(wx.Colour(64, 64, 64))
+            self.SetBackgroundColour(Colors.BG_TERTIARY)
         self.Refresh()
 
 
@@ -58,7 +59,7 @@ class StickerDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         main_sizer.AddSpacer(15)
@@ -69,7 +70,7 @@ class StickerDialog(wx.Dialog):
 
         self._preview_label = wx.StaticBitmap(self)
         self._preview_label.SetMinSize((300, 300))
-        self._preview_label.SetBackgroundColour(wx.Colour(26, 26, 26))
+        self._preview_label.SetBackgroundColour(Colors.BG_SECONDARY)
         preview_sizer.Add(self._preview_label, 1, wx.EXPAND)
 
         main_sizer.Add(preview_sizer, 1, wx.EXPAND | wx.RIGHT, 15)
@@ -80,7 +81,7 @@ class StickerDialog(wx.Dialog):
 
         # 도형 선택
         shape_box = wx.StaticBox(self, label="도형 선택")
-        shape_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        shape_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         shape_sizer = wx.StaticBoxSizer(shape_box, wx.VERTICAL)
         shape_sizer.AddSpacer(10)
 
@@ -110,14 +111,14 @@ class StickerDialog(wx.Dialog):
 
         # 크기/위치
         pos_box = wx.StaticBox(self, label="크기 및 위치")
-        pos_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        pos_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         pos_sizer = wx.StaticBoxSizer(pos_box, wx.VERTICAL)
         pos_sizer.AddSpacer(10)
 
         # 위치
         pos_row = wx.BoxSizer(wx.HORIZONTAL)
         x_label = wx.StaticText(self, label="X:")
-        x_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        x_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         pos_row.Add(x_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._x_spin = wx.SpinCtrl(self, min=0, max=10000, initial=50)
@@ -127,7 +128,7 @@ class StickerDialog(wx.Dialog):
         pos_row.AddSpacer(10)
 
         y_label = wx.StaticText(self, label="Y:")
-        y_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        y_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         pos_row.Add(y_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._y_spin = wx.SpinCtrl(self, min=0, max=10000, initial=50)
@@ -139,7 +140,7 @@ class StickerDialog(wx.Dialog):
         # 크기
         size_row = wx.BoxSizer(wx.HORIZONTAL)
         w_label = wx.StaticText(self, label="너비:")
-        w_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        w_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_row.Add(w_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._width_spin = wx.SpinCtrl(self, min=10, max=1000, initial=100)
@@ -149,7 +150,7 @@ class StickerDialog(wx.Dialog):
         size_row.AddSpacer(10)
 
         h_label = wx.StaticText(self, label="높이:")
-        h_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        h_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_row.Add(h_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._height_spin = wx.SpinCtrl(self, min=10, max=1000, initial=100)
@@ -163,7 +164,7 @@ class StickerDialog(wx.Dialog):
 
         # 색상 설정
         color_box = wx.StaticBox(self, label="색상")
-        color_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        color_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_sizer = wx.StaticBoxSizer(color_box, wx.VERTICAL)
         color_sizer.AddSpacer(10)
 
@@ -171,7 +172,7 @@ class StickerDialog(wx.Dialog):
         fill_row = wx.BoxSizer(wx.HORIZONTAL)
         self._fill_check = wx.CheckBox(self, label="채우기")
         self._fill_check.SetValue(True)
-        self._fill_check.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._fill_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._fill_check.Bind(wx.EVT_CHECKBOX, self._on_setting_changed)
         fill_row.Add(self._fill_check, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
@@ -186,7 +187,7 @@ class StickerDialog(wx.Dialog):
         stroke_row = wx.BoxSizer(wx.HORIZONTAL)
         self._stroke_check = wx.CheckBox(self, label="테두리")
         self._stroke_check.SetValue(True)
-        self._stroke_check.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._stroke_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._stroke_check.Bind(wx.EVT_CHECKBOX, self._on_setting_changed)
         stroke_row.Add(self._stroke_check, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
@@ -204,7 +205,7 @@ class StickerDialog(wx.Dialog):
         # 투명도
         opacity_row = wx.BoxSizer(wx.HORIZONTAL)
         opacity_label = wx.StaticText(self, label="투명도:")
-        opacity_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        opacity_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         opacity_row.Add(opacity_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._opacity_slider = wx.Slider(self, value=100, minValue=0, maxValue=100,
@@ -214,7 +215,7 @@ class StickerDialog(wx.Dialog):
 
         self._opacity_label = wx.StaticText(self, label="100%")
         self._opacity_label.SetMinSize((40, -1))
-        self._opacity_label.SetForegroundColour(wx.Colour(136, 136, 136))
+        self._opacity_label.SetForegroundColour(Colors.TEXT_MUTED)
         opacity_row.Add(self._opacity_label, 0, wx.LEFT, 10)
 
         color_sizer.Add(opacity_row, 0, wx.EXPAND | wx.ALL, 10)
@@ -224,7 +225,7 @@ class StickerDialog(wx.Dialog):
 
         # 적용 대상
         target_box = wx.StaticBox(self, label="적용 대상")
-        target_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
@@ -240,14 +241,14 @@ class StickerDialog(wx.Dialog):
         button_sizer.AddStretchSpacer()
 
         apply_btn = wx.Button(self, wx.ID_OK, label="적용")
-        apply_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        apply_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        apply_btn.SetBackgroundColour(Colors.ACCENT)
+        apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
         cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
-        cancel_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        cancel_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
@@ -273,8 +274,8 @@ class StickerDialog(wx.Dialog):
                 self._y_spin.SetMax(current_frame.height)
 
                 self._update_preview()
-        except Exception as e:
-            print(f"프레임 로드 오류: {e}")
+        except Exception:
+            pass
 
     def _on_shape_clicked(self, event):
         """도형 버튼 클릭"""
@@ -337,8 +338,8 @@ class StickerDialog(wx.Dialog):
             scaled_img = img.Scale(new_w, new_h, wx.IMAGE_QUALITY_HIGH)
             self._preview_label.SetBitmap(wx.Bitmap(scaled_img))
 
-        except Exception as e:
-            print(f"Preview error: {e}")
+        except Exception:
+            pass
 
     def apply_shape_to_image(self, image: Image.Image) -> Image.Image:
         """이미지에 도형 적용"""

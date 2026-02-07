@@ -8,6 +8,7 @@ from PIL import Image
 from typing import TYPE_CHECKING, Dict, Any, Optional
 from ...core.image_effects import ImageEffects
 from ...utils.image_utils import pil_to_wx_bitmap
+from ..style_constants_wx import Colors
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -29,7 +30,7 @@ class EffectSlider(wx.Panel):
         # 라벨
         self._label = wx.StaticText(self, label=f"{name}:")
         self._label.SetMinSize((80, -1))
-        self._label.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._label.SetForegroundColour(Colors.TEXT_SECONDARY)
         sizer.Add(self._label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 슬라이더
@@ -42,7 +43,7 @@ class EffectSlider(wx.Panel):
         # 값 표시
         self._value_label = wx.StaticText(self, label=f"{default}{suffix}")
         self._value_label.SetMinSize((50, -1))
-        self._value_label.SetForegroundColour(wx.Colour(136, 136, 136))
+        self._value_label.SetForegroundColour(Colors.TEXT_MUTED)
         sizer.Add(self._value_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
 
         self.SetSizer(sizer)
@@ -77,8 +78,8 @@ class FilterButton(wx.Button):
         self._filter_type = filter_type
         self.SetMinSize((100, 80))
 
-        self.SetBackgroundColour(wx.Colour(64, 64, 64))
-        self.SetForegroundColour(wx.Colour(255, 255, 255))
+        self.SetBackgroundColour(Colors.BG_TERTIARY)
+        self.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     @property
     def filter_type(self) -> str:
@@ -87,9 +88,9 @@ class FilterButton(wx.Button):
     def set_selected(self, selected: bool):
         """선택 상태 설정"""
         if selected:
-            self.SetBackgroundColour(wx.Colour(0, 120, 212))
+            self.SetBackgroundColour(Colors.ACCENT)
         else:
-            self.SetBackgroundColour(wx.Colour(64, 64, 64))
+            self.SetBackgroundColour(Colors.BG_TERTIARY)
         self.Refresh()
 
 
@@ -112,7 +113,7 @@ class EffectsDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         main_sizer.AddSpacer(15)
@@ -123,7 +124,7 @@ class EffectsDialog(wx.Dialog):
 
         self._preview_label = wx.StaticBitmap(self)
         self._preview_label.SetMinSize((300, 300))
-        self._preview_label.SetBackgroundColour(wx.Colour(26, 26, 26))
+        self._preview_label.SetBackgroundColour(Colors.BG_SECONDARY)
         preview_sizer.Add(self._preview_label, 1, wx.EXPAND)
 
         main_sizer.Add(preview_sizer, 1, wx.EXPAND | wx.RIGHT, 15)
@@ -134,12 +135,12 @@ class EffectsDialog(wx.Dialog):
 
         # 탭 위젯
         tabs = wx.Notebook(self)
-        tabs.SetBackgroundColour(wx.Colour(45, 45, 45))
-        tabs.SetForegroundColour(wx.Colour(255, 255, 255))
+        tabs.SetBackgroundColour(Colors.BG_PRIMARY)
+        tabs.SetForegroundColour(Colors.TEXT_PRIMARY)
 
         # === 조정 탭 ===
         adjust_panel = wx.Panel(tabs)
-        adjust_panel.SetBackgroundColour(wx.Colour(45, 45, 45))
+        adjust_panel.SetBackgroundColour(Colors.BG_PRIMARY)
         adjust_sizer = wx.BoxSizer(wx.VERTICAL)
         adjust_sizer.AddSpacer(10)
 
@@ -169,7 +170,7 @@ class EffectsDialog(wx.Dialog):
 
         # === 필터 탭 ===
         filter_panel = wx.Panel(tabs)
-        filter_panel.SetBackgroundColour(wx.Colour(45, 45, 45))
+        filter_panel.SetBackgroundColour(Colors.BG_PRIMARY)
         filter_layout = wx.BoxSizer(wx.VERTICAL)
         filter_layout.AddSpacer(10)
 
@@ -209,7 +210,7 @@ class EffectsDialog(wx.Dialog):
 
         # 적용 대상
         target_box = wx.StaticBox(self, label="적용 대상")
-        target_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
@@ -224,22 +225,22 @@ class EffectsDialog(wx.Dialog):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         reset_btn = wx.Button(self, label="초기화")
-        reset_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        reset_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        reset_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        reset_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         reset_btn.Bind(wx.EVT_BUTTON, self._reset_effects)
         button_sizer.Add(reset_btn, 0, wx.ALL, 5)
 
         button_sizer.AddStretchSpacer()
 
         apply_btn = wx.Button(self, wx.ID_OK, label="적용")
-        apply_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        apply_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        apply_btn.SetBackgroundColour(Colors.ACCENT)
+        apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
         cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
-        cancel_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        cancel_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
@@ -261,8 +262,8 @@ class EffectsDialog(wx.Dialog):
             if current_frame:
                 self._original_image = current_frame.image.copy()
                 self._update_preview()
-        except Exception as e:
-            print(f"프레임 로드 오류: {e}")
+        except Exception:
+            pass
 
     def _on_effect_changed(self):
         """효과 변경됨"""
@@ -315,8 +316,8 @@ class EffectsDialog(wx.Dialog):
             scaled_img = img.Scale(new_w, new_h, wx.IMAGE_QUALITY_HIGH)
             self._preview_label.SetBitmap(wx.Bitmap(scaled_img))
 
-        except Exception as e:
-            print(f"Preview error: {e}")
+        except Exception:
+            pass
 
     def _apply_current_effects(self, image: Image.Image) -> Image.Image:
         """현재 설정된 효과 적용"""

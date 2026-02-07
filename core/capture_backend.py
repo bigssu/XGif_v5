@@ -157,7 +157,7 @@ class DXCamBackend(CaptureBackend):
                 except TypeError:
                     # video_mode 파라미터 미지원 시 기본 모드
                     self._camera.start(region=self._region, target_fps=target_fps)
-            self._running = True
+                self._running = True
             
             # 빠른 워밍업 (짧게)
             import time
@@ -288,7 +288,8 @@ class FastGdiBackend(CaptureBackend):
                     return False
 
                 self._old_bitmap = self.gdi32.SelectObject(self._hdc_mem, self._hbitmap)
-                self._bitmap_buffer = np.zeros((h, w, 4), dtype=np.uint8)
+                if self._bitmap_buffer is None or self._bitmap_buffer.shape != (h, w, 4):
+                    self._bitmap_buffer = np.zeros((h, w, 4), dtype=np.uint8)
             except Exception:
                 self.stop()
                 raise
@@ -320,12 +321,12 @@ class FastGdiBackend(CaptureBackend):
                 self.user32.ReleaseDC(0, self._hdc_screen)
         except Exception:
             pass
-        
+
         self._hdc_screen = None
         self._hdc_mem = None
         self._hbitmap = None
         self._old_bitmap = None
-        self._bitmap_buffer = None
+        # _bitmap_buffer는 유지하여 동일 해상도 재시작 시 재사용
     
     def grab(self) -> Optional[np.ndarray]:
         """BitBlt + GetDIBits로 고속 캡처 (DC 재사용). 실패 시 PIL 폴백."""

@@ -181,9 +181,8 @@ class GifEncoder:
                 rgb_img = cls._rgba_to_rgb(img)
                 try:
                     img_p = rgb_img.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=dither)
-                except (AttributeError, ValueError, TypeError) as e:
+                except (AttributeError, ValueError, TypeError):
                     # quantize()가 실패하면 convert() 사용 (ADAPTIVE 팔레트)
-                    print(f"MEDIANCUT quantize() failed, using convert(): {e}")
                     if settings.dithering:
                         img_p = rgb_img.convert('P', palette=Image.Palette.ADAPTIVE, colors=colors)
                     else:
@@ -460,11 +459,8 @@ class GifEncoder:
                 quantized_rgba = quantized_rgba.resize(original_img.size, Image.Resampling.NEAREST)
             
             return quantized_rgba
-        except Exception as e:
+        except Exception:
             # 변환 실패 시 원본 반환
-            print(f"Preview quantization error: {e}")
-            import traceback
-            traceback.print_exc()
             return original_img
     
     @classmethod

@@ -5,6 +5,7 @@ PyQt6 QDialog를 wx.Dialog로 마이그레이션
 """
 import wx
 from typing import TYPE_CHECKING, Tuple
+from ..style_constants_wx import Colors
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -27,14 +28,14 @@ class PencilDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(15)
 
         # === 미리보기 ===
         preview_box = wx.StaticBox(self, label="미리보기")
-        preview_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        preview_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preview_sizer = wx.StaticBoxSizer(preview_box, wx.VERTICAL)
         preview_sizer.AddSpacer(10)
 
@@ -48,7 +49,7 @@ class PencilDialog(wx.Dialog):
 
         # === 색상 설정 ===
         color_box = wx.StaticBox(self, label="펜 색상")
-        color_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        color_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_sizer = wx.StaticBoxSizer(color_box, wx.HORIZONTAL)
         color_sizer.AddSpacer(10)
 
@@ -57,8 +58,8 @@ class PencilDialog(wx.Dialog):
         color_sizer.Add(self._color_preview, 0, wx.ALL, 5)
 
         color_btn = wx.Button(self, label="색상 선택")
-        color_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        color_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        color_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        color_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_btn.Bind(wx.EVT_BUTTON, self._select_color)
         color_sizer.Add(color_btn, 0, wx.ALL, 5)
 
@@ -69,7 +70,7 @@ class PencilDialog(wx.Dialog):
 
         # === 두께 설정 ===
         width_box = wx.StaticBox(self, label="펜 두께")
-        width_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        width_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         width_sizer = wx.StaticBoxSizer(width_box, wx.VERTICAL)
         width_sizer.AddSpacer(10)
 
@@ -83,7 +84,7 @@ class PencilDialog(wx.Dialog):
 
         self._width_label = wx.StaticText(self, label=f"{self._pencil_width}px")
         self._width_label.SetMinSize((50, -1))
-        self._width_label.SetForegroundColour(wx.Colour(136, 136, 136))
+        self._width_label.SetForegroundColour(Colors.TEXT_MUTED)
         width_control.Add(self._width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
 
         width_sizer.Add(width_control, 0, wx.EXPAND | wx.ALL, 10)
@@ -93,7 +94,7 @@ class PencilDialog(wx.Dialog):
 
         # === 지속 시간 설정 ===
         duration_box = wx.StaticBox(self, label="표시 지속 시간")
-        duration_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        duration_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         duration_sizer = wx.StaticBoxSizer(duration_box, wx.VERTICAL)
         duration_sizer.AddSpacer(10)
 
@@ -107,14 +108,14 @@ class PencilDialog(wx.Dialog):
         duration_row.Add(self._duration_spin, 0, wx.ALIGN_CENTER_VERTICAL)
 
         unit_label = wx.StaticText(self, label=" 초")
-        unit_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        unit_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         duration_row.Add(unit_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
 
         duration_row.AddStretchSpacer()
 
         # 설명
         desc_label = wx.StaticText(self, label="선택한 프레임부터 지정된 시간 동안\n그린 선이 표시됩니다.")
-        desc_label.SetForegroundColour(wx.Colour(120, 120, 120))
+        desc_label.SetForegroundColour(Colors.TEXT_MUTED)
         font = desc_label.GetFont()
         font.SetPointSize(9)
         desc_label.SetFont(font)
@@ -127,12 +128,12 @@ class PencilDialog(wx.Dialog):
 
         # === 적용 대상/애니메이션 설정 ===
         target_box = wx.StaticBox(self, label="적용 대상")
-        target_box.SetForegroundColour(wx.Colour(255, 255, 255))
+        target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
         target_sizer.AddSpacer(10)
 
         target_label = wx.StaticText(self, label="대상:")
-        target_label.SetForegroundColour(wx.Colour(200, 200, 200))
+        target_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         target_sizer.Add(target_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
@@ -145,7 +146,7 @@ class PencilDialog(wx.Dialog):
 
         self._auto_anim_check = wx.CheckBox(self, label="Auto Animation")
         self._auto_anim_check.SetValue(self._auto_animation)
-        self._auto_anim_check.SetForegroundColour(wx.Colour(200, 200, 200))
+        self._auto_anim_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         target_sizer.Add(self._auto_anim_check, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         main_sizer.Add(target_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 20)
@@ -157,14 +158,14 @@ class PencilDialog(wx.Dialog):
         button_sizer.AddStretchSpacer()
 
         cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
-        cancel_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        cancel_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
         ok_btn = wx.Button(self, wx.ID_OK, label="그리기 시작")
-        ok_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        ok_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        ok_btn.SetBackgroundColour(Colors.ACCENT)
+        ok_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         ok_btn.SetMinSize((100, 32))
         button_sizer.Add(ok_btn, 0, wx.ALL, 5)
 

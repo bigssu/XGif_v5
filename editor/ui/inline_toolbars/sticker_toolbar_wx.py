@@ -132,8 +132,7 @@ class StickerToolbar(InlineToolbarBase):
                     self._original_images.append(f.image.copy())
                 else:
                     self._original_images.append(None)
-        except Exception as e:
-            print(f"원본 이미지 저장 오류: {e}")
+        except Exception:
             self._original_images = []
 
         # 캔버스 스티커 모드 시작
@@ -143,14 +142,13 @@ class StickerToolbar(InlineToolbarBase):
                 # wxPython: Bind 방식으로 이벤트 연결
                 from ...utils.wx_events import EVT_STICKER_CHANGED
                 canvas.Bind(EVT_STICKER_CHANGED, self._on_canvas_sticker_changed)
-                print("[StickerToolbar] 캔버스 스티커 이벤트 바인딩 완료")
 
                 if hasattr(canvas, 'start_sticker_mode'):
                     canvas.start_sticker_mode(
                         self._shape_x, self._shape_y, self._size_spin.GetValue()
                     )
-            except Exception as e:
-                print(f"[StickerToolbar] 스티커 모드 시작 오류: {e}")
+            except Exception:
+                pass
 
         self._update_preview()
 
@@ -165,17 +163,26 @@ class StickerToolbar(InlineToolbarBase):
                 # wxPython: Unbind 방식으로 이벤트 연결 해제
                 from ...utils.wx_events import EVT_STICKER_CHANGED
                 canvas.Unbind(EVT_STICKER_CHANGED)
-                print("[StickerToolbar] 캔버스 스티커 이벤트 언바인딩 완료")
-            except:
+            except Exception:
                 pass
             try:
                 if hasattr(canvas, 'stop_sticker_mode'):
                     canvas.stop_sticker_mode()
-            except Exception as e:
-                print(f"스티커 모드 종료 오류: {e}")
+            except Exception:
+                pass
 
     def _on_setting_changed(self):
-        """설정 변경됨"""
+        """설정 변경됨 — 현재 프레임을 즉시 원본 복원 (오버레이가 새 스타일을 그리므로 겹침 방지)"""
+        if self._original_images and self.frames and not getattr(self.frames, 'is_empty', True):
+            current_idx = getattr(self.frames, 'current_index', 0)
+            if 0 <= current_idx < len(self._original_images) and self._original_images[current_idx]:
+                try:
+                    frame = self.frames[current_idx]
+                    if frame:
+                        frame._image = self._original_images[current_idx].copy()
+                except Exception:
+                    pass
+
         if not self._updating_from_canvas:
             self._update_canvas_sticker_rect()
         self._preview_timer.Start(100, wx.TIMER_ONE_SHOT)
@@ -191,12 +198,11 @@ class StickerToolbar(InlineToolbarBase):
                         self._shape_y,
                         self._size_spin.GetValue()
                     )
-            except Exception as e:
-                print(f"스티커 영역 업데이트 오류: {e}")
+            except Exception:
+                pass
 
     def _on_canvas_sticker_changed(self, event):
         """캔버스에서 스티커가 변경됨 (wxPython 이벤트)"""
-        print(f"[StickerToolbar] _on_canvas_sticker_changed: x={event.x}, y={event.y}, w={event.width}, h={event.height}")
         self._updating_from_canvas = True
         self._shape_x = event.x
         self._shape_y = event.y
@@ -256,8 +262,8 @@ class StickerToolbar(InlineToolbarBase):
                     frame._image = processed
                 else:
                     frame._image = self._original_images[i].copy()
-            except Exception as e:
-                print(f"스티커 처리 오류 (프레임 {i}): {e}")
+            except Exception:
+                pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -415,8 +421,8 @@ class StickerToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
 
@@ -444,8 +450,8 @@ class StickerToolbar(InlineToolbarBase):
                 if i < len(animated_images) and animated_images[i] is not None:
                     try:
                         frame._image = animated_images[i]
-                    except Exception as e:
-                        print(f"애니메이션 적용 오류 (프레임 {i}): {e}")
+                    except Exception:
+                        pass
         else:
             # 일반 적용
             for i, frame in enumerate(self.frames):
@@ -464,13 +470,13 @@ class StickerToolbar(InlineToolbarBase):
                     try:
                         processed = self._apply_shape(self._original_images[i])
                         frame._image = processed
-                    except Exception as e:
-                        print(f"스티커 적용 오류 (프레임 {i}): {e}")
+                    except Exception:
+                        pass
                 else:
                     try:
                         frame._image = self._original_images[i].copy()
-                    except Exception as e:
-                        print(f"원본 복원 오류 (프레임 {i}): {e}")
+                    except Exception:
+                        pass
 
         self._on_deactivated()
         if hasattr(self._main_window, '_is_modified'):
@@ -487,8 +493,8 @@ class StickerToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         super()._on_cancel(event)

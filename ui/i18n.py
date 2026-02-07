@@ -98,6 +98,38 @@ class TranslationManager:
             'dxcam_install_success': 'dxcam이 설치되었습니다. 적용하려면 앱을 재시작하세요.',
             'dxcam_install_failed': 'dxcam 설치 실패: {}',
 
+            # 의존성 다이얼로그
+            'dep_dialog_title': '의존성 설치',
+            'dep_install_btn': '설치',
+            'dep_download_btn': '다운로드',
+            'dep_rescan_btn': '재검사',
+            'dep_skip_btn': '건너뛰기',
+            'dep_close_btn': '닫기',
+            'dep_dont_ask_again': '다시 묻지 않기',
+            'dep_state_installed': '설치됨',
+            'dep_state_missing': '미설치',
+            'dep_state_version_low': '버전 낮음 ({})',
+            'dep_state_error': '오류',
+            'dep_ffmpeg_desc': 'MP4 녹화 및 고화질 GIF 생성에 필수',
+            'dep_ffmpeg_required_for_record': 'MP4 녹화에 FFmpeg가 필요합니다.\n자동으로 다운로드하여 설치하시겠습니까?',
+            'dep_use_gif_instead': 'GIF로 녹화',
+            'dep_ffmpeg_install_guide': '1. 아래 "다운로드" 버튼으로 자동 설치\n2. 또는 ffmpeg.org에서 직접 다운로드',
+            'dep_ffmpeg_manual_url': 'https://ffmpeg.org/download.html',
+            'dep_cupy_desc': 'GPU 가속에 필요 (CuPy 12.0 이상)\n미설치 시 CPU 모드로 동작',
+            'dep_use_cpu_instead': 'CPU 모드 사용',
+            'dep_cupy_install_guide': '터미널에서 다음 명령어를 실행하세요:\n\npip install cupy-cuda12x\n\nCUDA 버전에 맞는 패키지를 설치해야 합니다.',
+            'dep_cupy_installed_ok': 'CuPy가 정상적으로 감지되었습니다!',
+            'dep_cupy_still_missing': 'CuPy를 찾을 수 없습니다.\n설치 후 다시 시도하세요.',
+            'dep_dxcam_desc': 'GPU 가속 캡처 (DXGI)\nHDR 환경에서 색상이 부정확할 수 있음',
+            'dep_use_gdi_instead': 'GDI (색상 정확) 사용',
+            'dep_startup_title': '환경 진단',
+            'dep_startup_desc': '앱을 최대한 활용하기 위해 아래 항목을 확인하세요.',
+            'dep_rescan_title': '재검사',
+            'dep_reset_skip_flags': '의존성 확인 초기화',
+            'dep_reset_skip_flags_tooltip': '건너뛴 의존성 확인을 모두 초기화합니다',
+            'dep_skip_flags_reset': '의존성 확인이 초기화되었습니다',
+            'dep_ffmpeg_download_failed': 'FFmpeg 다운로드에 실패했습니다.\n브라우저에서 직접 다운로드하시겠습니까?',
+
             # Hardware / Status
             'webcam_unavailable': '웹캠을 사용할 수 없습니다.\nOpenCV가 설치되어 있는지 확인하세요.',
             'keyboard_unavailable': '키보드 입력 감지를 사용할 수 없습니다.\npynput 라이브러리가 설치되어 있는지 확인하세요.',
@@ -240,6 +272,38 @@ class TranslationManager:
             'dxcam_installing': 'Installing dxcam... Please wait.',
             'dxcam_install_success': 'dxcam has been installed. Restart the app to apply.',
             'dxcam_install_failed': 'Failed to install dxcam: {}',
+
+            # Dependency dialogs
+            'dep_dialog_title': 'Dependency Installation',
+            'dep_install_btn': 'Install',
+            'dep_download_btn': 'Download',
+            'dep_rescan_btn': 'Rescan',
+            'dep_skip_btn': 'Skip',
+            'dep_close_btn': 'Close',
+            'dep_dont_ask_again': "Don't ask again",
+            'dep_state_installed': 'Installed',
+            'dep_state_missing': 'Not installed',
+            'dep_state_version_low': 'Version too low ({})',
+            'dep_state_error': 'Error',
+            'dep_ffmpeg_desc': 'Required for MP4 recording and high-quality GIF creation',
+            'dep_ffmpeg_required_for_record': 'FFmpeg is required for MP4 recording.\nWould you like to download and install it automatically?',
+            'dep_use_gif_instead': 'Record as GIF',
+            'dep_ffmpeg_install_guide': '1. Click "Download" below for automatic installation\n2. Or download manually from ffmpeg.org',
+            'dep_ffmpeg_manual_url': 'https://ffmpeg.org/download.html',
+            'dep_cupy_desc': 'Required for GPU acceleration (CuPy 12.0+)\nFalls back to CPU mode if not installed',
+            'dep_use_cpu_instead': 'Use CPU mode',
+            'dep_cupy_install_guide': 'Run the following command in terminal:\n\npip install cupy-cuda12x\n\nMake sure to install the package matching your CUDA version.',
+            'dep_cupy_installed_ok': 'CuPy was detected successfully!',
+            'dep_cupy_still_missing': 'CuPy was not found.\nPlease try again after installation.',
+            'dep_dxcam_desc': 'GPU-accelerated capture (DXGI)\nColors may be inaccurate in HDR environments',
+            'dep_use_gdi_instead': 'Use GDI (color accurate)',
+            'dep_startup_title': 'Environment Check',
+            'dep_startup_desc': 'Check the following items to get the most out of the app.',
+            'dep_rescan_title': 'Rescan',
+            'dep_reset_skip_flags': 'Reset Dependency Checks',
+            'dep_reset_skip_flags_tooltip': 'Resets all skipped dependency checks',
+            'dep_skip_flags_reset': 'Dependency checks have been reset',
+            'dep_ffmpeg_download_failed': 'FFmpeg download failed.\nWould you like to download it manually in the browser?',
 
             # Hardware / Status
             'webcam_unavailable': 'Webcam is unavailable.\nPlease check if OpenCV is installed.',
@@ -444,6 +508,15 @@ class TranslationManager:
             "target_current": "현재",
             "target_tooltip": "적용 대상 프레임",
             "target_frame_hint_message": "왼쪽 프레임 창에서 효과가 적용되길 원하는 프레임을 여러 개 선택해 주세요.",
+
+            # 말풍선 툴바
+            "speech_bubble_text": "말풍선 텍스트",
+            "speech_bubble_text_placeholder": "텍스트를 입력하세요",
+            "speech_bubble_font_size": "폰트 크기",
+            "speech_bubble_style": "말풍선 스타일",
+            "speech_bubble_tail": "꼬리 방향",
+            "speech_bubble_bg_color": "배경색",
+            "speech_bubble_text_color": "텍스트 색상",
             "dont_show_again": "다음 부터 안보기",
             
             # 효과 툴바
@@ -832,6 +905,15 @@ class TranslationManager:
             "target_current": "Current",
             "target_tooltip": "Target Frames",
             "target_frame_hint_message": "Please select multiple frames in the left frame pane where you want the effect to be applied.",
+
+            # Speech Bubble Toolbar
+            "speech_bubble_text": "Bubble Text",
+            "speech_bubble_text_placeholder": "Enter text",
+            "speech_bubble_font_size": "Font Size",
+            "speech_bubble_style": "Bubble Style",
+            "speech_bubble_tail": "Tail Direction",
+            "speech_bubble_bg_color": "Background Color",
+            "speech_bubble_text_color": "Text Color",
             "dont_show_again": "Don't show again",
             
             # 효과 툴바
@@ -1104,7 +1186,7 @@ class TranslationManager:
         if lang in self._translations and lang != self._current_lang:
             self._current_lang = lang
             # 모든 콜백 호출
-            for callback in self._callbacks:
+            for callback in list(self._callbacks):
                 try:
                     callback(lang)
                 except Exception:

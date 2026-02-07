@@ -4,6 +4,7 @@ ResizeToolbar - 크기 조절 인라인 툴바 (wxPython 버전)
 import wx
 from PIL import Image
 from typing import TYPE_CHECKING, Tuple, List, Optional
+from ..style_constants_wx import Colors
 from .base_toolbar_wx import InlineToolbarBase
 
 if TYPE_CHECKING:
@@ -60,7 +61,7 @@ class ResizeToolbar(InlineToolbarBase):
         self._keep_ratio_check.SetValue(True)
         keep_ratio_tooltip = translations.tr("resize_keep_ratio") if translations else "비율 유지"
         self._keep_ratio_check.SetToolTip(keep_ratio_tooltip)
-        self._keep_ratio_check.SetForegroundColour(wx.Colour(255, 255, 255))
+        self._keep_ratio_check.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.add_control(self._keep_ratio_check)
 
         self.add_separator()
@@ -105,16 +106,14 @@ class ResizeToolbar(InlineToolbarBase):
                     self._original_images.append(f.image.copy())
                 else:
                     self._original_images.append(None)
-        except Exception as e:
-            print(f"원본 이미지 저장 오류: {e}")
+        except Exception:
             self._original_images = []
 
         try:
             self._original_width = getattr(frames, 'width', 1)
             self._original_height = getattr(frames, 'height', 1)
             self._aspect_ratio = self._original_width / self._original_height if self._original_height > 0 else 1.0
-        except Exception as e:
-            print(f"프레임 크기 접근 오류: {e}")
+        except Exception:
             self._original_width = 1
             self._original_height = 1
             self._aspect_ratio = 1.0
@@ -191,8 +190,8 @@ class ResizeToolbar(InlineToolbarBase):
                         frame._image = self._original_images[i].copy()
                         if hasattr(frame, '_image_size'):
                             frame._image_size = self._original_images[i].size
-                    except Exception as e:
-                        print(f"원본 복원 오류 (프레임 {i}): {e}")
+                    except Exception:
+                        pass
         else:
             # 프레임에 리사이즈 적용
             for i, frame in enumerate(self.frames):
@@ -204,8 +203,8 @@ class ResizeToolbar(InlineToolbarBase):
                         frame._image = resized
                         if hasattr(frame, '_image_size'):
                             frame._image_size = resized.size
-                    except Exception as e:
-                        print(f"리사이즈 오류 (프레임 {i}): {e}")
+                    except Exception:
+                        pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -224,8 +223,8 @@ class ResizeToolbar(InlineToolbarBase):
                     frame._image = self._original_images[i].copy()
                     if hasattr(frame, '_image_size'):
                         frame._image_size = self._original_images[i].size
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
 
@@ -243,8 +242,8 @@ class ResizeToolbar(InlineToolbarBase):
                         frame._image = self._original_images[i].copy()
                         if hasattr(frame, '_image_size'):
                             frame._image_size = self._original_images[i].size
-                    except Exception as e:
-                        print(f"원본 복원 오류 (프레임 {i}): {e}")
+                    except Exception:
+                        pass
             self.hide_from_canvas()
             return
 
@@ -274,8 +273,8 @@ class ResizeToolbar(InlineToolbarBase):
                     frame._image = self._original_images[i].copy()
                     if hasattr(frame, '_image_size'):
                         frame._image_size = self._original_images[i].size
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         super()._on_cancel(event)

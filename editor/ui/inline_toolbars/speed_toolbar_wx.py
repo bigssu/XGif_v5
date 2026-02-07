@@ -3,6 +3,7 @@ SpeedToolbar - 속도 조절 인라인 툴바 (wxPython 버전)
 """
 import wx
 from typing import TYPE_CHECKING
+from ..style_constants_wx import Colors
 from .base_toolbar_wx import InlineToolbarBase
 
 if TYPE_CHECKING:
@@ -52,8 +53,8 @@ class SpeedToolbar(InlineToolbarBase):
         for speed in [0.5, 0.75, 1.0, 1.5, 2.0]:
             btn = wx.Button(self._controls_widget, label=f"{speed}x")
             btn.SetMinSize((48, 26))
-            btn.SetBackgroundColour(wx.Colour(80, 80, 80))
-            btn.SetForegroundColour(wx.Colour(255, 255, 255))
+            btn.SetBackgroundColour(Colors.BG_HOVER)
+            btn.SetForegroundColour(Colors.TEXT_PRIMARY)
             btn.Bind(wx.EVT_BUTTON, lambda e, s=speed: self._apply_preset(s))
             self.add_control(btn)
 
@@ -64,7 +65,7 @@ class SpeedToolbar(InlineToolbarBase):
         self.add_icon_label("clock", 20, result_time_tooltip)
 
         self._result_label = wx.StaticText(self._controls_widget, label="")
-        self._result_label.SetForegroundColour(wx.Colour(79, 195, 247))
+        self._result_label.SetForegroundColour(Colors.INFO)
         font = self._result_label.GetFont()
         font.SetPointSize(9)
         self._result_label.SetFont(font)
@@ -99,12 +100,10 @@ class SpeedToolbar(InlineToolbarBase):
 
     def _apply_preset(self, speed: float):
         """프리셋 적용"""
-        print(f"[SpeedToolbar] 프리셋 적용: {speed}x")
         self._speed_spin.SetValue(speed)
         # SetValue가 이벤트를 발생시키지 않을 수 있으므로 수동으로 업데이트
         self._speed_slider.SetValue(int(speed * 100))
         self._update_preview()
-        print(f"[SpeedToolbar] 프리셋 적용 완료")
 
     def _update_preview(self):
         """미리보기 업데이트 (실시간 프리뷰)"""

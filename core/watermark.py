@@ -150,12 +150,12 @@ class Watermark:
             return self._cached_image
         
         try:
-            img = Image.open(self.image_path)
-            # RGBA로 변환
-            if img.mode != 'RGBA':
-                img = img.convert('RGBA')
-            
-            img_array = np.array(img)
+            with Image.open(self.image_path) as img:
+                # RGBA로 변환
+                if img.mode != 'RGBA':
+                    img = img.convert('RGBA')
+
+                img_array = np.array(img)
             self._cached_image = img_array
             return img_array
         except (IOError, OSError, ValueError) as e:

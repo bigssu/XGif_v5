@@ -252,11 +252,15 @@ class KeyboardDisplay:
             
             # 알파 블렌딩 적용 (RGBA 자동 처리)
             roi = frame[y:y+img_height, x:x+img_width]
-            if text_array.shape[2] == 4:  # RGBA
-                alpha = text_array[:, :, 3:4] / 255.0
-                rgb = text_array[:, :, :3]
+            roi_h, roi_w = roi.shape[:2]
+            if roi_h <= 0 or roi_w <= 0:
+                return frame
+            ta = text_array[:roi_h, :roi_w]
+            if ta.shape[2] == 4:  # RGBA
+                alpha = ta[:, :, 3:4] / 255.0
+                rgb = ta[:, :, :3]
                 blended = (roi * (1.0 - alpha) + rgb * alpha).astype(np.uint8)
-                frame[y:y+img_height, x:x+img_width] = blended
+                frame[y:y+roi_h, x:x+roi_w] = blended
             
             return frame
         except (ImportError, OSError, ValueError, IndexError) as e:

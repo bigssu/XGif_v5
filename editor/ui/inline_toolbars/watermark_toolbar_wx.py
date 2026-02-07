@@ -143,8 +143,7 @@ class WatermarkToolbar(InlineToolbarBase):
                     self._original_images.append(f.image.copy())
                 else:
                     self._original_images.append(None)
-        except Exception as e:
-            print(f"원본 이미지 저장 오류: {e}")
+        except Exception:
             self._original_images = []
 
         self._update_preview()
@@ -209,8 +208,8 @@ class WatermarkToolbar(InlineToolbarBase):
             try:
                 processed = self._apply_watermark(self._original_images[i])
                 frame._image = processed
-            except Exception as e:
-                print(f"워터마크 적용 오류 (프레임 {i}): {e}")
+            except Exception:
+                pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -357,8 +356,8 @@ class WatermarkToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
 
@@ -378,8 +377,8 @@ class WatermarkToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         super()._on_cancel(event)

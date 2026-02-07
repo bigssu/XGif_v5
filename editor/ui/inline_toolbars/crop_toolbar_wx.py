@@ -3,6 +3,7 @@ CropToolbar - 이미지 자르기 인라인 툴바 (wxPython 버전)
 """
 import wx
 from typing import TYPE_CHECKING, Tuple
+from ..style_constants_wx import Colors
 from .base_toolbar_wx import InlineToolbarBase
 
 if TYPE_CHECKING:
@@ -66,7 +67,7 @@ class CropToolbar(InlineToolbarBase):
 
         # 결과 정보
         self._info_label = wx.StaticText(self._controls_widget, label="")
-        self._info_label.SetForegroundColour(wx.Colour(79, 195, 247))
+        self._info_label.SetForegroundColour(Colors.INFO)
         font = self._info_label.GetFont()
         font.SetPointSize(8)
         self._info_label.SetFont(font)
@@ -74,14 +75,11 @@ class CropToolbar(InlineToolbarBase):
 
     def _on_activated(self):
         """툴바 활성화"""
-        print("[CropToolbar] _on_activated 호출됨")
         if not self.frames or getattr(self.frames, 'is_empty', False):
-            print("[CropToolbar] 프레임이 없어서 활성화 중단")
             return
 
         self._original_width = getattr(self.frames, 'width', 100)
         self._original_height = getattr(self.frames, 'height', 100)
-        print(f"[CropToolbar] 원본 크기: {self._original_width}x{self._original_height}")
         self._updating_from_canvas = False
 
         # 스핀박스 범위 설정
@@ -93,7 +91,6 @@ class CropToolbar(InlineToolbarBase):
         self._y_value = 0
         self._w_spin.SetValue(self._original_width)
         self._h_spin.SetValue(self._original_height)
-        print(f"[CropToolbar] 초기 값 설정: w={self._w_spin.GetValue()}, h={self._h_spin.GetValue()}")
 
         # 캔버스 이벤트 연결 (wxPython 방식)
         canvas = self._safe_get_canvas()
@@ -102,27 +99,22 @@ class CropToolbar(InlineToolbarBase):
                 # wxPython: Bind 방식으로 이벤트 연결
                 from ...utils.wx_events import EVT_CROP_CHANGED
                 canvas.Bind(EVT_CROP_CHANGED, self._on_canvas_crop_changed)
-                print("[CropToolbar] 캔버스 CropChanged 이벤트 바인딩 완료")
 
                 # 캔버스에 크롭 모드 활성화
                 if hasattr(canvas, 'start_crop_mode'):
                     canvas.start_crop_mode(0, 0, self._original_width, self._original_height)
-                    print("[CropToolbar] 캔버스 크롭 모드 시작됨")
-            except Exception as e:
-                print(f"[CropToolbar] 크롭 모드 시작 오류: {e}")
+            except Exception:
+                pass
 
         self._update_info()
-        print("[CropToolbar] _on_activated 완료")
 
     def _on_value_changed(self, event):
         """값 변경 (W, H만 변경 가능, X, Y는 캔버스에서만 조절)"""
         if self._updating_from_canvas:
-            print("[CropToolbar] _on_value_changed: 캔버스에서 업데이트 중이므로 무시")
             return
 
         w = self._w_spin.GetValue()
         h = self._h_spin.GetValue()
-        print(f"[CropToolbar] _on_value_changed: w={w}, h={h}")
 
         # W/H 최대값 조정
         max_w = self._original_width - self._x_value
@@ -153,12 +145,11 @@ class CropToolbar(InlineToolbarBase):
                 self._w_spin.GetValue(),
                 self._h_spin.GetValue()
             )
-        except Exception as e:
-            print(f"크롭 영역 업데이트 오류: {e}")
+        except Exception:
+            pass
 
     def _on_canvas_crop_changed(self, event):
         """캔버스에서 크롭 영역이 변경됨 (wxPython 이벤트)"""
-        print(f"[CropToolbar] _on_canvas_crop_changed 호출됨: x={event.x}, y={event.y}, w={event.width}, h={event.height}")
         self._updating_from_canvas = True
 
         # X, Y는 내부 변수로만 저장
@@ -170,7 +161,6 @@ class CropToolbar(InlineToolbarBase):
 
         self._update_info()
         self._updating_from_canvas = False
-        print(f"[CropToolbar] 툴바 값 업데이트 완료: w={self._w_spin.GetValue()}, h={self._h_spin.GetValue()}")
 
     def _update_info(self):
         """정보 라벨 업데이트"""
@@ -181,17 +171,13 @@ class CropToolbar(InlineToolbarBase):
     def _on_preset_changed(self, event):
         """프리셋 드롭다운 변경"""
         index = self._preset_combo.GetSelection()
-        print(f"[CropToolbar] _on_preset_changed: index={index}")
         if index == 0:  # None - 아무것도 하지 않음
             return
         elif index == 1:  # 50%
-            print("[CropToolbar] 50% 프리셋 적용")
             self._apply_center_50()
         elif index == 2:  # 75%
-            print("[CropToolbar] 75% 프리셋 적용")
             self._apply_center_75()
         elif index == 3:  # 정사각형
-            print("[CropToolbar] 정사각형 프리셋 적용")
             self._apply_square()
 
     def _apply_center_50(self):
@@ -201,14 +187,11 @@ class CropToolbar(InlineToolbarBase):
         x = (self._original_width - w) // 2
         y = (self._original_height - h) // 2
 
-        print(f"[CropToolbar] _apply_center_50: x={x}, y={y}, w={w}, h={h}")
-
         self._x_value = x
         self._y_value = y
         self._w_spin.SetValue(w)
         self._h_spin.SetValue(h)
         self._update_canvas_crop_rect()
-        print(f"[CropToolbar] _apply_center_50 완료: _x_value={self._x_value}, _y_value={self._y_value}, w={self._w_spin.GetValue()}, h={self._h_spin.GetValue()}")
 
     def _apply_center_75(self):
         """중앙 75% 프리셋"""
@@ -243,14 +226,13 @@ class CropToolbar(InlineToolbarBase):
                 # wxPython: Unbind 방식으로 이벤트 연결 해제
                 from ...utils.wx_events import EVT_CROP_CHANGED
                 canvas.Unbind(EVT_CROP_CHANGED, handler=self._on_canvas_crop_changed)
-                print("[CropToolbar] 캔버스 CropChanged 이벤트 언바인딩 완료")
             except Exception:
                 pass
             try:
                 if hasattr(canvas, 'stop_crop_mode'):
                     canvas.stop_crop_mode()
-            except Exception as e:
-                print(f"[CropToolbar] 크롭 모드 종료 오류: {e}")
+            except Exception:
+                pass
 
     def _on_clear(self, event):
         """초기화 - 전체 선택"""
@@ -262,54 +244,39 @@ class CropToolbar(InlineToolbarBase):
 
     def _on_apply(self, event):
         """적용 - 모든 프레임 자르기"""
-        print(f"[CropToolbar] _on_apply 호출됨")
-
         # PyQt6 원본과 동일한 순서:
         # 1. 먼저 _on_deactivated() 호출 (캔버스 시그널 연결 해제, 크롭 모드 종료)
         self._on_deactivated()
-        print("[CropToolbar] 크롭 모드 종료됨")
 
         # 2. 크롭 영역 가져오기
         x, y, w, h = self.get_crop_rect()
-        print(f"[CropToolbar] 크롭 영역: x={x}, y={y}, w={w}, h={h}")
-        print(f"[CropToolbar] 원본 크기: {self._original_width}x{self._original_height}")
 
         # 3. 변화가 없으면 무시
         if x == 0 and y == 0 and w == self._original_width and h == self._original_height:
-            print("[CropToolbar] 변화가 없어서 무시")
             self.hide_from_canvas()
             return
 
         # 4. 모든 프레임에 적용
-        print(f"[CropToolbar] 프레임 수: {len(list(self.frames))}")
         for i, frame in enumerate(self.frames):
             if hasattr(frame, 'crop'):
-                print(f"[CropToolbar] 프레임 {i} 자르기 중...")
                 frame.crop(x, y, w, h)
-            else:
-                print(f"[CropToolbar] 경고: 프레임 {i}에 crop 메서드가 없음")
 
         # 5. 수정 플래그 설정
         if hasattr(self._main_window, '_is_modified'):
             self._main_window._is_modified = True
-            print("[CropToolbar] 수정 플래그 설정됨")
 
         # 6. 캔버스 업데이트
         self._safe_canvas_update()
-        print("[CropToolbar] 캔버스 업데이트 완료")
 
         # 7. 정보 바 업데이트
         if hasattr(self._main_window, '_update_info_bar'):
             self._main_window._update_info_bar()
-            print("[CropToolbar] 정보 바 업데이트 완료")
 
         # 8. 부모 클래스 _on_apply 호출 (PyQt6 원본: super()._on_apply(), 시그널만 발생)
         super()._on_apply(event)
-        print("[CropToolbar] 부모 _on_apply 호출 완료")
 
         # 9. 툴바 숨기기 (PyQt6 원본과 동일)
         self.hide_from_canvas()
-        print("[CropToolbar] _on_apply 완료")
 
     def _on_cancel(self, event):
         """취소"""

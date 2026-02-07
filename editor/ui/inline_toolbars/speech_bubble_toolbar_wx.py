@@ -142,8 +142,7 @@ class SpeechBubbleToolbar(InlineToolbarBase):
                     self._original_images.append(f.image.copy())
                 else:
                     self._original_images.append(None)
-        except Exception as e:
-            print(f"원본 이미지 저장 오류: {e}")
+        except Exception:
             self._original_images = []
 
         if not getattr(self.frames, 'is_empty', True):
@@ -169,8 +168,8 @@ class SpeechBubbleToolbar(InlineToolbarBase):
                         self._bubble_x, self._bubble_y,
                         self._bubble_width, self._bubble_height
                     )
-            except Exception as e:
-                print(f"말풍선 모드 시작 오류: {e}")
+            except Exception:
+                pass
 
         self._update_preview()
 
@@ -190,11 +189,21 @@ class SpeechBubbleToolbar(InlineToolbarBase):
             try:
                 if hasattr(canvas, 'stop_speech_bubble_mode'):
                     canvas.stop_speech_bubble_mode()
-            except Exception as e:
-                print(f"말풍선 모드 종료 오류: {e}")
+            except Exception:
+                pass
 
     def _on_setting_changed(self):
-        """설정 변경됨"""
+        """설정 변경됨 — 현재 프레임을 즉시 원본 복원 (오버레이가 새 스타일을 그리므로 겹침 방지)"""
+        if self._original_images and self.frames and not getattr(self.frames, 'is_empty', True):
+            current_idx = getattr(self.frames, 'current_index', 0)
+            if 0 <= current_idx < len(self._original_images) and self._original_images[current_idx]:
+                try:
+                    frame = self.frames[current_idx]
+                    if frame:
+                        frame._image = self._original_images[current_idx].copy()
+                except Exception:
+                    pass
+
         if not self._updating_from_canvas:
             self._update_canvas_speech_bubble_rect()
         self._preview_timer.Start(100, wx.TIMER_ONE_SHOT)
@@ -214,8 +223,8 @@ class SpeechBubbleToolbar(InlineToolbarBase):
                         self._bubble_width,
                         self._bubble_height
                     )
-            except Exception as e:
-                print(f"말풍선 영역 업데이트 오류: {e}")
+            except Exception:
+                pass
 
     def _on_canvas_speech_bubble_changed(self, event):
         """캔버스에서 말풍선이 변경됨 (wxPython 이벤트)"""
@@ -271,8 +280,8 @@ class SpeechBubbleToolbar(InlineToolbarBase):
                     frame._image = processed
                 else:
                     frame._image = self._original_images[i].copy()
-            except Exception as e:
-                print(f"말풍선 처리 오류 (프레임 {i}): {e}")
+            except Exception:
+                pass
 
         self._safe_canvas_update()
         self.update_preview()
@@ -332,15 +341,24 @@ class SpeechBubbleToolbar(InlineToolbarBase):
         return result
 
     def _on_clear(self, event):
-        """초기화"""
+        """초기화 — 스티커와 동일 구조 (좌표/크기/텍스트 리셋 + 캔버스 업데이트)"""
         self._text_input.SetValue("")
+
+        # 좌표/크기 초기화
+        w = getattr(self.frames, 'width', 100)
+        h = getattr(self.frames, 'height', 100)
+        self._bubble_x = w // 4
+        self._bubble_y = h // 6
+        self._bubble_width = 150
+        self._bubble_height = 80
+        self._update_canvas_speech_bubble_rect()
 
         for i, frame in enumerate(self.frames):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
 
@@ -368,13 +386,13 @@ class SpeechBubbleToolbar(InlineToolbarBase):
                 try:
                     processed = self._apply_bubble(self._original_images[i], bubble_img)
                     frame._image = processed
-                except Exception as e:
-                    print(f"말풍선 적용 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
             else:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._on_deactivated()
         if hasattr(self._main_window, '_is_modified'):
@@ -391,8 +409,8 @@ class SpeechBubbleToolbar(InlineToolbarBase):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     frame._image = self._original_images[i].copy()
-                except Exception as e:
-                    print(f"원본 복원 오류 (프레임 {i}): {e}")
+                except Exception:
+                    pass
 
         self._safe_canvas_update()
         super()._on_cancel(event)

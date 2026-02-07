@@ -8,6 +8,7 @@ import wx
 import math
 from typing import Optional, List, Tuple, TYPE_CHECKING
 from PIL import Image
+from .style_constants_wx import Colors
 from ..utils.image_utils import pil_to_wx_bitmap
 from ..utils.wx_paint_utils import draw_checkerboard, draw_handle, get_handle_rects, get_cursor_for_handle
 from ..utils.wx_events import (
@@ -76,7 +77,7 @@ class CanvasWidget(wx.Panel):
         self._is_panning = False
 
         # 배경 색상
-        self._bg_color = wx.Colour(60, 60, 60)
+        self._bg_color = Colors.BG_CANVAS
         self._checker_color1 = wx.Colour(255, 255, 255)
         self._checker_color2 = wx.Colour(200, 200, 200)
         self._checker_size = 10
@@ -207,8 +208,8 @@ class CanvasWidget(wx.Panel):
 
             self.zoom = min(zoom_x, zoom_y)
             self._pan_offset = wx.Point(0, 0)
-        except Exception as e:
-            print(f"zoom_fit 오류: {e}")
+        except Exception:
+            pass
 
     def zoom_actual(self):
         """원본 크기 (100%)"""
@@ -283,7 +284,7 @@ class CanvasWidget(wx.Panel):
             frames = getattr(self._main_window, 'frames', None)
             if not frames or getattr(frames, 'is_empty', True):
                 # "No frame" 메시지
-                dc.SetTextForeground(wx.Colour(150, 150, 150))
+                dc.SetTextForeground(Colors.TEXT_MUTED)
                 text = "No frame loaded"
                 tw, th = dc.GetTextExtent(text)
                 dc.DrawText(text,
@@ -294,10 +295,8 @@ class CanvasWidget(wx.Panel):
             current_index = getattr(frames, 'current_index', 0)
             frame = getattr(frames, 'current_frame', None) if hasattr(frames, 'current_frame') else None
             if not frame:
-                print(f"_on_paint: frame is None (current_index={current_index})")
                 return
 
-            print(f"_on_paint: 프레임 {current_index} 그리기 시작 (frame object: {id(frame)})")
             img_rect = self._get_image_rect()
 
             # 체커보드 배경 (투명도 표시)
@@ -327,7 +326,7 @@ class CanvasWidget(wx.Panel):
             self._draw_handles(dc)
         except Exception as e:
             # 크래시 방지: 에러 발생 시 에러 메시지 표시
-            dc.SetTextForeground(wx.Colour(255, 100, 100))
+            dc.SetTextForeground(Colors.DANGER)
             error_text = f"Rendering error: {str(e)}"
             dc.DrawText(error_text, 10, 10)
 
@@ -375,8 +374,8 @@ class CanvasWidget(wx.Panel):
             # 비트맵 그리기
             dc.DrawBitmap(scaled_bitmap, img_rect.x, img_rect.y, True)
 
-        except Exception as e:
-            print(f"프레임 그리기 오류: {e}")
+        except Exception:
+            pass
 
     def _draw_overlays(self, dc: wx.DC, img_rect: wx.Rect):
         """모든 오버레이 그리기 (Phase 2.3b에서 구현)"""
@@ -407,7 +406,7 @@ class CanvasWidget(wx.Panel):
 
     def _draw_text_overlay(self, dc: wx.DC, screen_rect: wx.Rect):
         """텍스트 편집 오버레이 (파란색 점선 사각형)"""
-        dc.SetPen(wx.Pen(wx.Colour(0, 120, 215), 2, wx.PENSTYLE_SHORT_DASH))
+        dc.SetPen(wx.Pen(Colors.ACCENT, 2, wx.PENSTYLE_SHORT_DASH))
         dc.SetBrush(wx.TRANSPARENT_BRUSH)
         dc.DrawRectangle(screen_rect)
 
@@ -438,8 +437,8 @@ class CanvasWidget(wx.Panel):
 
                     # 도형 그리기 (원본 PyQt6 방식)
                     self._draw_sticker_shape(dc, screen_rect, shape_type, fill_color, outline_color)
-            except Exception as e:
-                print(f"스티커 도형 그리기 오류: {e}")
+            except Exception:
+                pass
 
         # 선택 박스 그리기 (빨간색 테두리)
         dc.SetPen(wx.Pen(wx.Colour(255, 107, 107), 2))
@@ -516,7 +515,22 @@ class CanvasWidget(wx.Panel):
         dc.DrawRectangle(screen_rect)
 
     def _draw_speech_bubble_overlay(self, dc: wx.DC, screen_rect: wx.Rect):
-        """말풍선 오버레이 (둥근 사각형)"""
+        """말풍선 오버레이 — 스티커와 동일 구조 (버블만 그림, 원본 합성 없음)"""
+        toolbar = getattr(self._main_window, '_speech_bubble_toolbar', None)
+        if toolbar and hasattr(toolbar, '_create_bubble'):
+            try:
+                bubble_img = toolbar._create_bubble()
+                if bubble_img:
+                    display_w = max(1, screen_rect.width)
+                    display_h = max(1, screen_rect.height)
+                    resized = bubble_img.resize((display_w, display_h), Image.Resampling.LANCZOS)
+                    wx_bmp = pil_to_wx_bitmap(resized)
+                    if wx_bmp and wx_bmp.IsOk():
+                        dc.DrawBitmap(wx_bmp, screen_rect.x, screen_rect.y, True)
+            except Exception:
+                pass
+
+        # 선택 박스 (초록색 테두리)
         dc.SetPen(wx.Pen(wx.Colour(100, 255, 100), 2))
         dc.SetBrush(wx.TRANSPARENT_BRUSH)
         dc.DrawRoundedRectangle(screen_rect.x, screen_rect.y,
@@ -589,13 +603,9 @@ class CanvasWidget(wx.Panel):
         if self._auto_animation_mode and is_playing:
             progress = self._get_auto_animation_progress()
             paths_to_draw = self._get_partial_paths(progress)
-            print(f"[Draw Pencil] Auto Anim 재생 중: progress: {progress:.2f}, "
-                  f"paths: {len(self._drawing_paths)}, to_draw: {len(paths_to_draw)}")
         else:
             # 그리기 모드이거나 재생 중이 아닐 때는 모든 경로 표시
             paths_to_draw = self._drawing_paths
-            print(f"[Draw Pencil] 정상 모드: is_playing={is_playing}, "
-                  f"paths: {len(self._drawing_paths)}")
 
         # 완성된 경로들 그리기
         for path_points, color, width in paths_to_draw:
@@ -686,10 +696,8 @@ class CanvasWidget(wx.Panel):
 
         # 크롭 모드
         if self._crop_mode:
-            print(f"[Canvas] 크롭 모드 활성 - 클릭 위치: {pos.x}, {pos.y}")
             # 핸들 클릭 체크
             handle = self._get_crop_handle_at(pos)
-            print(f"[Canvas] 핸들 감지: {handle}")
             if handle:
                 self._crop_resizing = True
                 self._crop_handle = handle
@@ -699,7 +707,6 @@ class CanvasWidget(wx.Panel):
                     self._crop_rect.width, self._crop_rect.height
                 )
                 self.SetCursor(get_cursor_for_handle(handle))
-                print(f"[Canvas] 크롭 리사이즈 시작 - 핸들: {handle}")
                 return
 
             # 사각형 내부 클릭
@@ -711,10 +718,8 @@ class CanvasWidget(wx.Panel):
                     self._crop_rect.width, self._crop_rect.height
                 )
                 self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                print(f"[Canvas] 크롭 드래그 시작")
                 return
 
-            print("[Canvas] 크롭 영역 밖 클릭")
 
         # 스티커 모드
         if self._sticker_mode:
@@ -826,7 +831,6 @@ class CanvasWidget(wx.Panel):
 
         # 크롭 드래그/리사이즈 종료
         if self._crop_dragging or self._crop_resizing:
-            print(f"[Canvas] 크롭 종료 - 최종 크기: x={self._crop_rect.x:.0f}, y={self._crop_rect.y:.0f}, w={self._crop_rect.width:.0f}, h={self._crop_rect.height:.0f}")
             self._crop_dragging = False
             self._crop_resizing = False
             self._crop_handle = None
@@ -838,7 +842,6 @@ class CanvasWidget(wx.Panel):
                 int(self._crop_rect.width), int(self._crop_rect.height)
             )
             wx.PostEvent(self, evt)
-            print(f"[Canvas] CropChangedEvent 발생됨")
 
         # 스티커 드래그/리사이즈 종료
         if self._sticker_dragging or self._sticker_resizing:
@@ -953,7 +956,6 @@ class CanvasWidget(wx.Panel):
             self._crop_rect.x = self._crop_original_rect.x + img_delta_x
             self._crop_rect.y = self._crop_original_rect.y + img_delta_y
 
-            print(f"[Canvas] 크롭 드래그 중 - 새 위치: x={self._crop_rect.x:.0f}, y={self._crop_rect.y:.0f}")
             self.Refresh()
             return
 
@@ -963,7 +965,6 @@ class CanvasWidget(wx.Panel):
                 pos, self._crop_drag_start, self._crop_handle,
                 self._crop_original_rect, self._crop_rect
             )
-            print(f"[Canvas] 크롭 리사이즈 중 - 핸들: {self._crop_handle}, 새 크기: w={self._crop_rect.width:.0f}, h={self._crop_rect.height:.0f}")
             self.Refresh()
             return
 
@@ -1319,8 +1320,8 @@ class CanvasWidget(wx.Panel):
                 # wx.Colour를 RGBA 튜플로 변환
                 rgba = (color.Red(), color.Green(), color.Blue(), color.Alpha())
                 result.append((converted_points, rgba, width))
-        except Exception as e:
-            print(f"get_drawing_paths 오류: {e}")
+        except Exception:
+            pass
 
         return result
 
@@ -1379,17 +1380,14 @@ class CanvasWidget(wx.Panel):
 
             current = getattr(frames, 'current_index', 0)
             if current not in self._auto_animation_frames:
-                print(f"[Auto Anim] 현재 프레임 {current}이(가) animation_frames에 없음: {self._auto_animation_frames}")
                 return 0.0
 
             frame_idx = self._auto_animation_frames.index(current)
             num_frames = len(self._auto_animation_frames)
             progress = (frame_idx + 1) / num_frames
 
-            print(f"[Auto Anim] 프레임 {current} (idx: {frame_idx}/{num_frames}), progress: {progress:.2f}")
             return progress
-        except Exception as e:
-            print(f"[Auto Anim] 오류: {e}")
+        except Exception:
             return 1.0
 
     def _get_partial_paths(self, progress: float):

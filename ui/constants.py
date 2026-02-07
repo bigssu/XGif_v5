@@ -6,15 +6,14 @@ Giffy UI 상수 정의
 # ═══════════════════════════════════════════════════════════════
 # 애플리케이션 정보
 # ═══════════════════════════════════════════════════════════════
-APP_NAME = "XGif"
-VERSION = "0.55"
+from core.version import APP_NAME, APP_VERSION as VERSION
 
 # ═══════════════════════════════════════════════════════════════
 # 캡처 오버레이 설정
 # ═══════════════════════════════════════════════════════════════
 OVERLAY_BORDER_WIDTH = 3
-OVERLAY_HANDLE_SIZE = 10
-OVERLAY_HANDLE_MARGIN = 2
+OVERLAY_HANDLE_SIZE = 15
+OVERLAY_HANDLE_MARGIN = 3
 OVERLAY_MIN_CAPTURE_SIZE = 50
 OVERLAY_BOTTOM_EXTRA = 18  # 하단 텍스트 공간
 

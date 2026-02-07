@@ -271,10 +271,11 @@ class WorkerManager:
         self._workers_lock = threading.Lock()
         self._timeout_seconds = timeout_seconds
 
-        # 타임아웃 체크 타이머
-        self._timeout_timer = wx.Timer()
-        self._timeout_timer.Bind(wx.EVT_TIMER, lambda e: self._cleanup_timeout_workers())
-        self._timeout_timer.Start(30000)  # 30초마다 체크
+        # 타임아웃 체크 타이머 (wx.EvtHandler를 owner로 사용)
+        self._timer_handler = wx.EvtHandler()
+        self._timeout_timer = wx.Timer(self._timer_handler)
+        self._timer_handler.Bind(wx.EVT_TIMER, lambda e: self._cleanup_timeout_workers(), self._timeout_timer)
+        self._timeout_timer.Start(30000)
 
     @property
     def thread_count(self) -> int:
@@ -360,13 +361,21 @@ class WorkerManager:
                     if worker in self._active_workers:
                         self._active_workers.remove(worker)
                     self._worker_timeouts.pop(worker, None)
-                except Exception as e:
-                    print(f"워커 타임아웃 정리 중 오류: {e}")
+                except Exception:
                     self._active_workers = [w for w in self._active_workers if w != worker]
                     self._worker_timeouts.pop(worker, None)
 
-        if timed_out_workers:
-            print(f"경고: {len(timed_out_workers)}개의 워커가 타임아웃되어 취소되었습니다.")
+    def shutdown(self) -> None:
+        """워커 매니저 종료 (타이머 정리 + executor 종료)"""
+        try:
+            self._timeout_timer.Stop()
+        except Exception:
+            pass
+        self.cancel_all()
+        try:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
 
 # 전역 워커 매니저 인스턴스
@@ -379,6 +388,14 @@ def get_worker_manager() -> WorkerManager:
     if _global_manager is None:
         _global_manager = WorkerManager()
     return _global_manager
+
+
+def shutdown_worker_manager() -> None:
+    """전역 워커 매니저 종료 (앱 종료 시 호출)"""
+    global _global_manager
+    if _global_manager is not None:
+        _global_manager.shutdown()
+        _global_manager = None
 
 
 def run_in_background(func: Callable, *args,

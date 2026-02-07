@@ -268,12 +268,9 @@ class Frame:
             if self._image is None:
                 raise ValueError("이미지를 로드할 수 없습니다")
             return self._image
-        except Exception as e:
+        except Exception:
             # 이미지 로드 실패 시 빈 이미지 반환 (크래시 방지)
             from PIL import Image as PILImage
-            error_msg = f"이미지 로드 실패: {str(e)}"
-            print(error_msg)
-            # 빈 이미지 반환 (크래시 방지)
             return PILImage.new('RGBA', (self._image_size[0] if self._image_size[0] > 0 else 100, 
                                          self._image_size[1] if self._image_size[1] > 0 else 100), 
                                (255, 255, 255, 0))

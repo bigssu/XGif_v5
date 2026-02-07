@@ -36,6 +36,10 @@ class SettingsDialog(wx.Dialog):
         "memory_limit_mb": "1024",
         "language": "ko",
         "hdr_correction": "false",
+        "skip_ffmpeg_check": "false",
+        "skip_cupy_check": "false",
+        "skip_dxcam_check": "false",
+        "startup_dep_checked": "false",
     }
 
     def __init__(self, parent=None, settings=None):
@@ -250,6 +254,15 @@ class SettingsDialog(wx.Dialog):
         self.reset_btn.Bind(wx.EVT_BUTTON, self._on_reset)
         btn_sizer.Add(self.reset_btn, 0, wx.ALL, 8)
 
+        # 의존성 확인 초기화 버튼
+        self.reset_dep_btn = FlatButton(bottom_panel, label=tr('dep_reset_skip_flags'), size=(150, 30),
+                                         bg_color=THEME_MID.BG_BUTTON,
+                                         fg_color=THEME_MID.FG_TEXT,
+                                         hover_color=THEME_MID.BG_BUTTON_HOVER)
+        self.reset_dep_btn.SetToolTip(tr('dep_reset_skip_flags_tooltip'))
+        self.reset_dep_btn.Bind(wx.EVT_BUTTON, self._on_reset_dep_flags)
+        btn_sizer.Add(self.reset_dep_btn, 0, wx.ALL, 8)
+
         btn_sizer.AddStretchSpacer()
 
         # 확인 버튼 (Accent 색상)
@@ -292,86 +305,58 @@ class SettingsDialog(wx.Dialog):
         choice.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
 
     def _on_backend_changed(self, event):
-        """캡처 백엔드 변경 시 dxcam 설치 확인"""
+        """캡처 백엔드 변경 시 dxcam 설치 확인 (3버튼 모달)"""
         idx = self.backend_combo.GetSelection()
         if idx < 0 or idx >= len(CAPTURE_BACKEND_OPTIONS):
             return
         selected_key = CAPTURE_BACKEND_OPTIONS[idx]
         selected_val = CAPTURE_BACKEND_OPTIONS_MAP.get(selected_key, "auto")
 
-        # dxcam 선택 시 설치 여부 확인
         if selected_val == "dxcam":
             try:
                 import dxcam  # noqa: F401
             except ImportError:
-                self._offer_dxcam_install()
+                self._offer_dxcam_install_3btn()
 
-    def _offer_dxcam_install(self):
-        """dxcam 미설치 시 설치 제안"""
-        dlg = wx.MessageDialog(
-            self,
-            tr('dxcam_install_msg'),
-            tr('dxcam_install_title'),
-            wx.YES_NO | wx.ICON_QUESTION | wx.YES_DEFAULT
+    def _offer_dxcam_install_3btn(self):
+        """dxcam 미설치 시 3버튼 모달로 설치 제안"""
+        from core.dependency_checker import check_dxcam, DependencyState
+        from ui.dependency_dialogs import (
+            DependencyInstallDialog, ID_INSTALL, ID_DISABLE, show_install_flow,
         )
-        reply = dlg.ShowModal()
+
+        status = check_dxcam()
+        if status.state == DependencyState.INSTALLED:
+            return
+
+        dlg = DependencyInstallDialog(
+            self, status,
+            tr('dep_dxcam_desc'),
+            disable_label=tr('dep_use_gdi_instead'),
+            show_dont_ask=True,
+        )
+        ret = dlg.ShowModal()
+        dont_ask = dlg.dont_ask_again
         dlg.Destroy()
 
-        if reply == wx.ID_YES:
-            self._install_dxcam()
+        if dont_ask and self.settings:
+            if not self.settings.has_section('General'):
+                self.settings.add_section('General')
+            self.settings.set('General', 'skip_dxcam_check', 'true')
+
+        if ret == ID_INSTALL.GetId():
+            success = show_install_flow(self, "dxcam", status)
+            if not success:
+                self._revert_to_gdi()
         else:
-            # 설치 거부 시 이전 백엔드(GDI)로 되돌리기
-            gdi_idx = None
-            for i, key in enumerate(CAPTURE_BACKEND_OPTIONS):
-                if CAPTURE_BACKEND_OPTIONS_MAP.get(key) == "gdi":
-                    gdi_idx = i
-                    break
-            if gdi_idx is not None:
-                self.backend_combo.SetSelection(gdi_idx)
+            self._revert_to_gdi()
 
-    def _install_dxcam(self):
-        """pip로 dxcam 설치"""
-        import sys
-        import subprocess
-        import threading
-
-        busy = wx.BusyInfo(tr('dxcam_installing'))
-
-        def do_install():
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "dxcam"],
-                    capture_output=True, text=True, timeout=120
-                )
-                success = result.returncode == 0
-                msg = result.stdout if success else result.stderr
-                wx.CallAfter(self._on_dxcam_install_done, success, msg, busy)
-            except Exception as e:
-                wx.CallAfter(self._on_dxcam_install_done, False, str(e), busy)
-
-        threading.Thread(target=do_install, daemon=True).start()
-
-    def _on_dxcam_install_done(self, success, message, busy):
-        """dxcam 설치 완료 콜백"""
-        del busy  # BusyInfo 해제
-
-        if success:
-            wx.MessageBox(
-                tr('dxcam_install_success'),
-                tr('install_complete'),
-                wx.OK | wx.ICON_INFORMATION
-            )
-        else:
-            wx.MessageBox(
-                tr('dxcam_install_failed').format(message[:300]),
-                tr('install_failed'),
-                wx.OK | wx.ICON_WARNING
-            )
-            # 설치 실패 시 GDI로 되돌리기
-            for i, key in enumerate(CAPTURE_BACKEND_OPTIONS):
-                if CAPTURE_BACKEND_OPTIONS_MAP.get(key) == "gdi":
-                    self.backend_combo.SetSelection(i)
-                    break
+    def _revert_to_gdi(self):
+        """백엔드를 GDI로 되돌리기"""
+        for i, key in enumerate(CAPTURE_BACKEND_OPTIONS):
+            if CAPTURE_BACKEND_OPTIONS_MAP.get(key) == "gdi":
+                self.backend_combo.SetSelection(i)
+                break
 
     def load_settings(self):
         """설정 값 불러오기"""
@@ -543,6 +528,17 @@ class SettingsDialog(wx.Dialog):
             self._show_status(tr('settings_reset'), success=True)
         dlg.Destroy()
 
+    def _on_reset_dep_flags(self, event):
+        """의존성 확인 skip 플래그 초기화"""
+        if self.settings:
+            if not self.settings.has_section('General'):
+                self.settings.add_section('General')
+            self.settings.set('General', 'skip_ffmpeg_check', 'false')
+            self.settings.set('General', 'skip_cupy_check', 'false')
+            self.settings.set('General', 'skip_dxcam_check', 'false')
+            self.settings.set('General', 'startup_dep_checked', 'false')
+        self._show_status(tr('dep_skip_flags_reset'), success=True)
+
     def _show_status(self, message: str, success: bool = True, duration_ms: int = 2000):
         """상태 메시지 표시"""
         if self.status_label:
@@ -634,6 +630,9 @@ class SettingsDialog(wx.Dialog):
             self.codec_label.SetLabel(tr('codec'))
         if hasattr(self, 'reset_btn'):
             self.reset_btn.SetLabel(tr('reset_defaults'))
+        if hasattr(self, 'reset_dep_btn'):
+            self.reset_dep_btn.SetLabel(tr('dep_reset_skip_flags'))
+            self.reset_dep_btn.SetToolTip(tr('dep_reset_skip_flags_tooltip'))
 
         if hasattr(self, 'lang_combo'):
             self.lang_combo.SetToolTip(tr('language_tooltip'))

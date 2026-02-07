@@ -5,6 +5,7 @@ InlineToolbarBase - 인라인 툴바 베이스 클래스 (wxPython 버전)
 """
 import wx
 from typing import TYPE_CHECKING, Optional, Callable
+from ..style_constants_wx import Colors
 from ...utils.wx_events import (
     ToolbarAppliedEvent, EVT_TOOLBAR_APPLIED,
     ToolbarCancelledEvent, EVT_TOOLBAR_CANCELLED,
@@ -31,7 +32,7 @@ class InlineToolbarBase(wx.Panel):
     # 툴바 기본 설정
     TOOLBAR_MIN_HEIGHT = 44
     TOOLBAR_ROW_HEIGHT = 38
-    TOOLBAR_BG_COLOR = wx.Colour(64, 64, 64)
+    TOOLBAR_BG_COLOR = Colors.BG_TOOLBAR
     TOOLBAR_MARGIN = 10
 
     def __init__(self, main_window: 'MainWindow', parent: Optional[wx.Window] = None):
@@ -50,6 +51,7 @@ class InlineToolbarBase(wx.Panel):
         # 미리보기 타이머 초기화 (공통)
         self._preview_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_preview_timer, self._preview_timer)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
         # 기본 레이아웃 설정
         self._setup_base_ui()
@@ -78,8 +80,8 @@ class InlineToolbarBase(wx.Panel):
         # 지우기/초기화 버튼 (선택적)
         clear_text = translations.tr("toolbar_clear") if translations else "초기화"
         self._clear_btn = wx.Button(self._action_buttons_widget, label=clear_text)
-        self._clear_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        self._clear_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        self._clear_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._clear_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._clear_btn.SetMinSize((70, 32))
         self._clear_btn.Bind(wx.EVT_BUTTON, self._on_clear)
         self._clear_btn.Hide()  # 기본적으로 숨김
@@ -88,8 +90,8 @@ class InlineToolbarBase(wx.Panel):
         # 적용 버튼
         apply_text = translations.tr("toolbar_apply") if translations else "적용"
         self._apply_btn = wx.Button(self._action_buttons_widget, label=apply_text)
-        self._apply_btn.SetBackgroundColour(wx.Colour(0, 120, 212))
-        self._apply_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        self._apply_btn.SetBackgroundColour(Colors.ACCENT)
+        self._apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._apply_btn.SetMinSize((70, 32))
         self._apply_btn.Bind(wx.EVT_BUTTON, self._on_apply)
         self._buttons_sizer.Add(self._apply_btn, 0, wx.ALL, 5)
@@ -97,8 +99,8 @@ class InlineToolbarBase(wx.Panel):
         # 취소 버튼
         cancel_text = translations.tr("toolbar_cancel") if translations else "취소"
         self._cancel_btn = wx.Button(self._action_buttons_widget, label=cancel_text)
-        self._cancel_btn.SetBackgroundColour(wx.Colour(64, 64, 64))
-        self._cancel_btn.SetForegroundColour(wx.Colour(255, 255, 255))
+        self._cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._cancel_btn.SetMinSize((70, 32))
         self._cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
         self._buttons_sizer.Add(self._cancel_btn, 0, wx.ALL, 5)
@@ -111,8 +113,14 @@ class InlineToolbarBase(wx.Panel):
     def _apply_base_style(self):
         """기본 스타일 적용"""
         self.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
-        self.SetForegroundColour(wx.Colour(255, 255, 255))
+        self.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.SetMinSize((-1, self.TOOLBAR_MIN_HEIGHT))
+
+    def _on_destroy(self, event):
+        """윈도우 파괴 시 타이머 정리"""
+        if event.GetEventObject() is self:
+            self._preview_timer.Stop()
+        event.Skip()
 
     def _on_preview_timer(self, event):
         """프리뷰 타이머 이벤트"""
@@ -240,18 +248,14 @@ class InlineToolbarBase(wx.Panel):
 
     def _on_clear(self, event):
         """지우기/초기화 버튼 클릭 (서브클래스에서 오버라이드)"""
-        print("초기화 버튼 클릭됨")
-        # 서브클래스에서 오버라이드하여 구현
+        pass
 
     def _on_apply(self, event):
         """적용 버튼 클릭 (서브클래스에서 오버라이드)"""
-        print("적용 버튼 클릭됨")
-        # PyQt6 원본과 동일: 이벤트만 발생, hide_from_canvas()는 서브클래스에서 호출
         wx.PostEvent(self, ToolbarAppliedEvent())
 
     def _on_cancel(self, event):
         """취소 버튼 클릭"""
-        print("취소 버튼 클릭됨")
         wx.PostEvent(self, ToolbarCancelledEvent())
         self.hide_from_canvas()
 
@@ -283,7 +287,7 @@ class InlineToolbarBase(wx.Panel):
         # 간단한 아이콘 생성 (실제로는 IconFactory 사용)
         bitmap = wx.Bitmap(size, size)
         dc = wx.MemoryDC(bitmap)
-        dc.SetBackground(wx.Brush(wx.Colour(100, 100, 100)))
+        dc.SetBackground(wx.Brush(Colors.BORDER))
         dc.Clear()
         dc.SelectObject(wx.NullBitmap)
 
@@ -299,13 +303,13 @@ class InlineToolbarBase(wx.Panel):
         """구분선 추가"""
         separator = wx.StaticLine(self._controls_widget, style=wx.LI_VERTICAL)
         separator.SetMinSize((1, 30))
-        separator.SetBackgroundColour(wx.Colour(85, 85, 85))
+        separator.SetBackgroundColour(Colors.BORDER)
         self._controls_sizer.Add(separator, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
 
     def add_label(self, text: str) -> wx.StaticText:
         """라벨 추가"""
         label = wx.StaticText(self._controls_widget, label=text)
-        label.SetForegroundColour(wx.Colour(255, 255, 255))
+        label.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
         return label
 
@@ -331,16 +335,16 @@ class InlineToolbarBase(wx.Panel):
         try:
             if self._main_window and hasattr(self._main_window, '_canvas') and self._main_window._canvas:
                 self._main_window._canvas.Refresh()
-        except Exception as e:
-            print(f"캔버스 업데이트 오류: {e}")
+        except Exception:
+            pass
 
     def _safe_get_canvas(self):
         """캔버스를 안전하게 가져오기"""
         try:
             if self._main_window and hasattr(self._main_window, '_canvas') and self._main_window._canvas:
                 return self._main_window._canvas
-        except Exception as e:
-            print(f"캔버스 접근 오류: {e}")
+        except Exception:
+            pass
         return None
 
     # === 공통 유틸리티 메서드 ===

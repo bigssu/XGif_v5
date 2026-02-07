@@ -30,7 +30,7 @@ class FlatIconButton(wx.Control):
     상태: normal / hovered / pressed / active / disabled
     """
 
-    def __init__(self, icon_type: str, tooltip: str, parent=None, size=(44, 44)):
+    def __init__(self, icon_type: str, tooltip: str, parent=None, size=(62, 62)):
         super().__init__(parent, wx.ID_ANY, pos=wx.DefaultPosition, size=size,
                          style=wx.BORDER_NONE)
         self._icon_type = icon_type
@@ -41,11 +41,11 @@ class FlatIconButton(wx.Control):
         self._bitmap: Optional[wx.Bitmap] = None
 
         # 색상
-        self._bg_normal = Colors.BG_PRIMARY if Colors else wx.Colour(45, 45, 45)
-        self._bg_hover = Colors.ICON_BTN_HOVER if Colors else wx.Colour(62, 62, 62)
-        self._bg_pressed = Colors.ICON_BTN_PRESSED if Colors else wx.Colour(50, 50, 50)
+        self._bg_normal = Colors.BG_PRIMARY if Colors else wx.Colour(32, 32, 32)
+        self._bg_hover = Colors.ICON_BTN_HOVER if Colors else wx.Colour(55, 55, 55)
+        self._bg_pressed = Colors.ICON_BTN_PRESSED if Colors else wx.Colour(42, 42, 42)
         self._bg_active = wx.Colour(0, 120, 212, 60)
-        self._bg_disabled = wx.Colour(45, 45, 45)
+        self._bg_disabled = wx.Colour(32, 32, 32)
 
         self.SetToolTip(tooltip)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
@@ -66,7 +66,7 @@ class FlatIconButton(wx.Control):
     def _create_icon(self):
         """아이콘 비트맵 생성"""
         if IconFactory:
-            self._bitmap = IconFactory.create_bitmap(self._icon_type, 28)
+            self._bitmap = IconFactory.create_bitmap(self._icon_type, 39)
 
     # --- 공개 API ---
 
@@ -179,8 +179,8 @@ class ToolSeparator(wx.Control):
     """툴바 구분선 (owner-draw, 라운디드 캡)"""
 
     def __init__(self, parent=None):
-        super().__init__(parent, wx.ID_ANY, size=(8, 36), style=wx.BORDER_NONE)
-        self.SetMinSize((8, 36))
+        super().__init__(parent, wx.ID_ANY, size=(8, 50), style=wx.BORDER_NONE)
+        self.SetMinSize((8, 50))
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
@@ -195,13 +195,13 @@ class ToolSeparator(wx.Control):
         memdc = wx.MemoryDC(bmp)
 
         parent = self.GetParent()
-        parent_bg = parent.GetBackgroundColour() if parent else wx.Colour(45, 45, 45)
+        parent_bg = parent.GetBackgroundColour() if parent else wx.Colour(32, 32, 32)
         memdc.SetBackground(wx.Brush(parent_bg))
         memdc.Clear()
 
         gc = wx.GraphicsContext.Create(memdc)
         if gc:
-            sep_color = Colors.BORDER if Colors else wx.Colour(85, 85, 85)
+            sep_color = Colors.BORDER if Colors else wx.Colour(60, 60, 60)
             gc.SetBrush(wx.Brush(sep_color))
             gc.SetPen(wx.TRANSPARENT_PEN)
             # 세로 라운디드 바
@@ -237,10 +237,10 @@ class IconToolbar(wx.Panel):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 배경색
-        bg = Colors.BG_PRIMARY if Colors else wx.Colour(45, 45, 45)
+        bg = Colors.BG_PRIMARY if Colors else wx.Colour(32, 32, 32)
         self.SetBackgroundColour(bg)
         scroll_panel.SetBackgroundColour(bg)
-        self.SetMinSize((-1, 56))
+        self.SetMinSize((-1, 78))
 
         # 번역
         translations = getattr(self._main_window, '_translations', None)

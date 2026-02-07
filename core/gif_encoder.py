@@ -607,6 +607,14 @@ class GifEncoder:
         finally:
             safe_rmtree(temp_dir)
 
+    def _save_frames_parallel(self, frames: List[np.ndarray], frames_dir: str, total_steps: int):
+        """프레임을 BMP로 병렬 저장 (Pillow 폴백용)"""
+        args_list = [(i, frame, frames_dir) for i, frame in enumerate(frames)]
+        max_workers = min(os.cpu_count() or 4, 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for done_idx in executor.map(_save_frame_to_bmp, args_list):
+                self._emit_progress(done_idx + 1, total_steps)
+
     def _encode_with_pipe(self, frames: List[np.ndarray], output_path: str, fps: int) -> bool:
         """FFmpeg Pipe를 사용한 2-pass GIF 인코딩 (디스크 I/O 최소화)"""
         if not frames: 
@@ -1083,6 +1091,13 @@ class GifEncoder:
                 stderr_thread.join(timeout=2)
                 self._emit_error("MP4 인코딩 시간 초과")
                 return False
+            except Exception:
+                try:
+                    process.kill()
+                    stderr_thread.join(timeout=2)
+                except Exception:
+                    pass
+                raise
             
             if process.returncode != 0:
                 # 에러 코드를 signed/unsigned 모두 로깅

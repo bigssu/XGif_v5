@@ -6,47 +6,53 @@ import wx
 
 
 class Colors:
-    """색상 팔레트 (wxPython wx.Colour 객체)"""
+    """색상 팔레트 (wxPython wx.Colour 객체) — THEME_MID 동기화"""
 
     # 배경색
-    BG_PRIMARY = wx.Colour(45, 45, 45)       # 메인 배경
-    BG_SECONDARY = wx.Colour(50, 50, 50)     # 보조 배경 (패널, 바)
-    BG_TERTIARY = wx.Colour(64, 64, 64)      # 입력 필드, 버튼 배경
-    BG_HOVER = wx.Colour(80, 80, 80)         # 호버 상태
-    BG_PRESSED = wx.Colour(53, 53, 53)       # 눌림 상태
+    BG_PRIMARY = wx.Colour(32, 32, 32)       # 메인 배경 (THEME_MID.BG_MAIN)
+    BG_SECONDARY = wx.Colour(28, 28, 28)     # 보조 배경 (THEME_MID.BG_STATUS)
+    BG_TERTIARY = wx.Colour(55, 55, 55)      # 입력 필드, 버튼 배경 (THEME_MID.BG_BUTTON)
+    BG_HOVER = wx.Colour(70, 70, 70)         # 호버 상태 (THEME_MID.BG_BUTTON_HOVER)
+    BG_PRESSED = wx.Colour(45, 45, 45)       # 눌림 상태 (THEME_MID.BG_BUTTON_PRESSED)
     BG_SELECTED = wx.Colour(0, 120, 212)     # 선택 상태
+    BG_TOOLBAR = wx.Colour(45, 45, 45)       # 인라인 툴바 배경 (THEME_MID.BG_TOOLBAR)
+    BG_PANEL = wx.Colour(40, 40, 40)         # 패널 배경 (THEME_MID.BG_PANEL)
+    BG_CANVAS = wx.Colour(50, 50, 50)        # 캔버스 배경
 
     # 테두리
-    BORDER = wx.Colour(85, 85, 85)
-    BORDER_HOVER = wx.Colour(102, 102, 102)
+    BORDER = wx.Colour(60, 60, 60)           # (THEME_MID.BORDER_SUBTLE)
+    BORDER_HOVER = wx.Colour(80, 80, 80)
     BORDER_FOCUS = wx.Colour(0, 120, 212)
 
     # 텍스트
     TEXT_PRIMARY = wx.Colour(255, 255, 255)
-    TEXT_SECONDARY = wx.Colour(204, 204, 204)
+    TEXT_SECONDARY = wx.Colour(180, 180, 180) # (THEME_MID.FG_TEXT_SECONDARY)
     TEXT_MUTED = wx.Colour(136, 136, 136)
 
     # 강조색
     ACCENT = wx.Colour(0, 120, 212)          # 주 강조색 (파란색)
-    ACCENT_HOVER = wx.Colour(16, 132, 216)
+    ACCENT_HOVER = wx.Colour(26, 145, 235)   # (THEME_MID.ACCENT_HOVER)
     SUCCESS = wx.Colour(129, 199, 132)       # 성공/적용 (녹색)
     WARNING = wx.Colour(255, 167, 38)        # 경고 (주황)
     DANGER = wx.Colour(255, 107, 107)        # 삭제/위험 (빨강)
     INFO = wx.Colour(79, 195, 247)           # 정보 (하늘색)
+    VERSION_ACCENT = wx.Colour(0, 170, 255)  # 버전 라벨
+    GPU_ON = wx.Colour(76, 175, 80)          # GPU 활성
+    GPU_OFF = wx.Colour(136, 136, 136)       # GPU 비활성
 
     # 메뉴바
     BG_MENUBAR = wx.Colour(38, 38, 38)      # 메뉴바 배경
     MENU_LABEL_HOVER = wx.Colour(60, 60, 60) # 메뉴 라벨 호버
 
     # 툴바 버튼 (FlatIconButton)
-    ICON_BTN_HOVER = wx.Colour(62, 62, 62)   # 아이콘 버튼 호버
-    ICON_BTN_PRESSED = wx.Colour(50, 50, 50) # 아이콘 버튼 눌림
+    ICON_BTN_HOVER = wx.Colour(55, 55, 55)   # 아이콘 버튼 호버
+    ICON_BTN_PRESSED = wx.Colour(42, 42, 42) # 아이콘 버튼 눌림
     ICON_BTN_ACTIVE = wx.Colour(0, 120, 212, 60)  # 활성 상태 (ACCENT 반투명)
 
     # 헥스 색상 문자열 (DC 그리기용)
-    BG_PRIMARY_HEX = "#2d2d2d"
-    BG_SECONDARY_HEX = "#323232"
-    BG_TERTIARY_HEX = "#404040"
+    BG_PRIMARY_HEX = "#202020"
+    BG_SECONDARY_HEX = "#1c1c1c"
+    BG_TERTIARY_HEX = "#373737"
     ACCENT_HEX = "#0078d4"
     TEXT_PRIMARY_HEX = "#ffffff"
 
@@ -84,7 +90,7 @@ class Sizes:
     INLINE_TOOLBAR_MIN_HEIGHT = 44
 
     # 메뉴바
-    MENUBAR_HEIGHT = 32
+    MENUBAR_HEIGHT = 48
 
     # 라운디드 코너
     CORNER_RADIUS = 8
@@ -114,15 +120,21 @@ class Spacing:
 class Fonts:
     """폰트 관련 상수"""
 
+    FACE = 'Segoe UI Variable'
+    FACE_FALLBACK = 'Segoe UI'
     SIZE_SM = 11
     SIZE_MD = 12
     SIZE_LG = 14
 
     @staticmethod
     def get_font(size=SIZE_MD, bold=False):
-        """wxPython 폰트 생성"""
-        font = wx.Font(size, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
-                       wx.FONTWEIGHT_BOLD if bold else wx.FONTWEIGHT_NORMAL)
+        """wxPython 폰트 생성 — Segoe UI Variable 우선, 폴백 Segoe UI"""
+        weight = wx.FONTWEIGHT_BOLD if bold else wx.FONTWEIGHT_NORMAL
+        font = wx.Font(size, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, weight,
+                       faceName=Fonts.FACE)
+        if not font.IsOk() or font.GetFaceName() != Fonts.FACE:
+            font = wx.Font(size, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, weight,
+                           faceName=Fonts.FACE_FALLBACK)
         return font
 
 

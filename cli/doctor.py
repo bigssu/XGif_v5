@@ -324,6 +324,9 @@ def _install_ffmpeg() -> int:
 
 def _install_dxcam() -> int:
     """dxcam pip 설치"""
+    if getattr(sys, 'frozen', False):
+        print("  패키징된 환경에서는 pip install을 실행할 수 없습니다.", file=sys.stderr)
+        return EXIT_DEPENDENCY
     print("\n  dxcam 설치를 시작합니다...")
     try:
         result = subprocess.run(
@@ -345,6 +348,9 @@ def _install_dxcam() -> int:
 
 def _install_cupy() -> int:
     """CuPy 자동 설치 (CUDA 버전 자동 감지)"""
+    if getattr(sys, 'frozen', False):
+        print("  패키징된 환경에서는 pip install을 실행할 수 없습니다.", file=sys.stderr)
+        return EXIT_DEPENDENCY
     print("\n  CuPy 설치를 시작합니다...")
 
     # CUDA 버전 감지

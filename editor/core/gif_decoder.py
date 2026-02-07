@@ -121,13 +121,6 @@ class GifDecoder:
             
             collection = FrameCollection()
             
-            # imageio로 GIF 읽기
-            try:
-                frames_data = iio.imread(str(path), index=None)
-            except Exception as e:
-                # imageio 실패 시 PIL로 폴백
-                pass
-            
             # PIL로 메타데이터 읽기
             try:
                 with Image.open(path) as img:
@@ -160,9 +153,8 @@ class GifDecoder:
                                 frame_img = img.convert('RGBA')
                                 frame = Frame(frame_img, delay)
                                 collection.add_frame(frame)
-                            except Exception as e:
+                            except Exception:
                                 # 개별 프레임 변환 실패 시 건너뛰기
-                                print(f"프레임 {frame_index} 변환 실패: {e}")
                                 frame_index += 1
                                 continue
                             
@@ -173,8 +165,6 @@ class GifDecoder:
                         # 프레임 읽기 중 오류 발생
                         if collection.is_empty:
                             return LoadResult.error(f"프레임 읽기 실패: {str(e)}")
-                        # 일부 프레임은 읽었으므로 경고만 표시
-                        print(f"경고: 일부 프레임 읽기 실패: {e}")
             except Exception as e:
                 return LoadResult.error(f"GIF 파일 열기 실패: {str(e)}")
             
@@ -215,9 +205,9 @@ class GifDecoder:
                     with Image.open(path) as img:
                         frame = Frame(img.convert('RGBA'), default_delay)
                         collection.add_frame(frame)
-                except Exception as e:
-                    print(f"경고: {path} 로드 실패 - {e}")
-            
+                except Exception:
+                    pass
+
             if collection.is_empty:
                 return LoadResult.error("이미지를 로드할 수 없습니다")
             

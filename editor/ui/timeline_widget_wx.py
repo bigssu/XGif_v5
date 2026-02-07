@@ -7,6 +7,7 @@ wx.BufferedPaintDC를 사용한 고성능 렌더링
 import wx
 from typing import Optional, List, TYPE_CHECKING
 from PIL import Image
+from .style_constants_wx import Colors
 from ..utils.image_utils import pil_to_wx_bitmap
 from ..utils.wx_events import (
     FrameSelectedEvent, FramesReorderedEvent, FrameDelayChangedEvent
@@ -40,7 +41,7 @@ class TimelineWidget(wx.ScrolledCanvas):
 
         # 스크롤 설정
         self.SetScrollRate(10, 0)  # 수평 스크롤만
-        self.SetBackgroundColour(wx.Colour(45, 45, 45))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         # 최소 높이 설정
         min_height = self.TOTAL_HEIGHT + self.THUMB_PADDING * 2 + 10
@@ -86,8 +87,7 @@ class TimelineWidget(wx.ScrolledCanvas):
                     self._thumbnails.append(wx_bitmap)
                 else:
                     self._thumbnails.append(None)
-            except Exception as e:
-                print(f"썸네일 생성 오류: {e}")
+            except Exception:
                 self._thumbnails.append(None)
 
     def _update_size(self):
@@ -110,13 +110,13 @@ class TimelineWidget(wx.ScrolledCanvas):
         self.PrepareDC(dc)  # 스크롤 오프셋 적용
 
         # 배경 지우기
-        dc.SetBackground(wx.Brush(wx.Colour(45, 45, 45)))
+        dc.SetBackground(wx.Brush(Colors.BG_PRIMARY))
         dc.Clear()
 
         frames = self._main_window.frames
         if frames.is_empty:
             # 빈 상태 표시
-            dc.SetTextForeground(wx.Colour(150, 150, 150))
+            dc.SetTextForeground(Colors.TEXT_MUTED)
             dc.DrawText("No frames", 20, self.THUMB_PADDING + 20)
             return
 
@@ -137,7 +137,7 @@ class TimelineWidget(wx.ScrolledCanvas):
             insert_x = (self.FRAME_SPACING +
                        self._drag_target_index * (self.THUMB_WIDTH + self.FRAME_SPACING) -
                        self.FRAME_SPACING // 2)
-            dc.SetPen(wx.Pen(wx.Colour(100, 180, 255), 2))
+            dc.SetPen(wx.Pen(Colors.INFO, 2))
             dc.DrawLine(insert_x, self.THUMB_PADDING,
                        insert_x, self.THUMB_PADDING + self.TOTAL_HEIGHT)
 
@@ -158,20 +158,19 @@ class TimelineWidget(wx.ScrolledCanvas):
             frame = frames[index]
             if not frame:
                 return
-        except (IndexError, AttributeError) as e:
-            print(f"프레임 접근 오류: {e}")
+        except (IndexError, AttributeError):
             return
 
         # 배경색
         if current:
-            bg_color = wx.Colour(70, 106, 120)
-            border_color = wx.Colour(100, 150, 220)
+            bg_color = wx.Colour(40, 76, 100)
+            border_color = Colors.ACCENT
         elif selected:
-            bg_color = wx.Colour(80, 80, 100)
-            border_color = wx.Colour(120, 120, 180)
+            bg_color = wx.Colour(50, 50, 70)
+            border_color = wx.Colour(100, 100, 160)
         else:
-            bg_color = wx.Colour(60, 60, 60)
-            border_color = wx.Colour(80, 80, 80)
+            bg_color = Colors.BG_CANVAS
+            border_color = Colors.BORDER
 
         # 전체 프레임 배경 (썸네일 + 텍스트 영역)
         dc.SetBrush(wx.Brush(bg_color))
@@ -190,11 +189,11 @@ class TimelineWidget(wx.ScrolledCanvas):
                     thumb_y = y + 2 + (self.THUMB_HEIGHT - 4 - thumb_h) // 2
                     thumb_y = max(y + 2, thumb_y)
                     dc.DrawBitmap(thumb, thumb_x, thumb_y, True)
-        except (IndexError, AttributeError) as e:
-            print(f"썸네일 그리기 오류 (인덱스 {index}): {e}")
+        except (IndexError, AttributeError):
+            pass
 
         # 프레임 정보 (하단 텍스트 영역에 표시 - 썸네일과 분리)
-        dc.SetTextForeground(wx.Colour(200, 200, 200))
+        dc.SetTextForeground(Colors.TEXT_SECONDARY)
         font = wx.Font(8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         dc.SetFont(font)
 
@@ -238,8 +237,8 @@ class TimelineWidget(wx.ScrolledCanvas):
             # 스크롤 단위로 변환 (SetScrollRate(10, 0)이므로 10으로 나눔)
             scroll_units = scroll_value // 10
             self.Scroll(scroll_units, 0)
-        except Exception as e:
-            print(f"스크롤 오류: {e}")
+        except Exception:
+            pass
 
     # === 마우스 이벤트 ===
     def _on_mouse_down(self, event):

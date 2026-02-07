@@ -4,12 +4,26 @@
 """
 
 import os
+import sys
 import logging
 from typing import Tuple, Optional
 import numpy as np
 from PIL import Image, ImageFont
 
 logger = logging.getLogger(__name__)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 리소스 경로 유틸리티 (PyInstaller frozen 환경 대응)
+# ═══════════════════════════════════════════════════════════════
+
+def get_resource_path(relative_path: str) -> str:
+    """리소스 파일의 절대 경로 반환 (frozen/개발 환경 모두 대응)"""
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        base = sys._MEIPASS
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative_path)
 
 
 # ═══════════════════════════════════════════════════════════════
