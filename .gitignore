@@ -42,6 +42,9 @@ build_venv/
 # Cursor
 .cursor/
 
+# Claude Code
+.claude/
+
 # PyQt
 *.qmlc
 *.jsc
