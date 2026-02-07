@@ -330,15 +330,10 @@ class CaptureControlBar(wx.Panel):
         # 배경색 (Windows 11 Dark)
         self.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
 
-        # 메인 레이아웃
+        # 메인 레이아웃 (inner_panel 없이 직접 배치 — 패널 중첩 크래시 방지)
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        main_sizer.Add((8, 0))  # 좌측 패딩
         self.SetSizer(main_sizer)
-
-        # 내부 패딩을 위한 컨테이너
-        inner_panel = wx.Panel(self)
-        inner_panel.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
-        inner_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        inner_panel.SetSizer(inner_sizer)
 
         # 기본 폰트
         default_font = get_ui_font(FONT_SIZE_DEFAULT)
@@ -348,34 +343,34 @@ class CaptureControlBar(wx.Panel):
         # ═══════════════════════════════════════════════════════════════
 
         # 포맷 선택 (GIF/MP4)
-        self.format_combo = wx.ComboBox(inner_panel, choices=["GIF", "MP4"],
+        self.format_combo = wx.ComboBox(self, choices=["GIF", "MP4"],
                                         style=wx.CB_READONLY, size=(65, -1))
         self.format_combo.SetSelection(0)
         self.format_combo.SetToolTip(tr('output_format_tooltip'))
         self.format_combo.Bind(wx.EVT_COMBOBOX, self._on_format_combo_changed)
         self._style_combobox(self.format_combo)
         self.format_combo.SetFont(default_font)
-        inner_sizer.Add(self.format_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.format_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # FPS 라벨
-        self.fps_label = wx.StaticText(inner_panel, label=tr('fps'))
+        self.fps_label = wx.StaticText(self, label=tr('fps'))
         self.fps_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
         self.fps_label.SetFont(get_ui_font(FONT_SIZE_DEFAULT, bold=True))
         self.fps_label.SetToolTip(tr('fps_label_tooltip'))
-        inner_sizer.Add(self.fps_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        main_sizer.Add(self.fps_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # FPS 콤보박스
-        self.fps_combo = wx.ComboBox(inner_panel, choices=["1", "3", "5", "8", "10", "15", "20", "25", "30"],
+        self.fps_combo = wx.ComboBox(self, choices=["1", "3", "5", "8", "10", "15", "20", "25", "30"],
                                      style=wx.CB_READONLY, size=(60, -1))
         self.fps_combo.SetSelection(5)  # 15 FPS
         self.fps_combo.SetToolTip(tr('fps_tooltip'))
         self.fps_combo.Bind(wx.EVT_COMBOBOX, self._on_fps_combo_changed)
         self._style_combobox(self.fps_combo)
         self.fps_combo.SetFont(default_font)
-        inner_sizer.Add(self.fps_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.fps_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 해상도 선택 (사용자 입력 가능)
-        self.resolution_combo = wx.ComboBox(inner_panel,
+        self.resolution_combo = wx.ComboBox(self,
                                             choices=["320 × 240", "640 × 480", "800 × 600", "1024 × 768"],
                                             style=wx.CB_DROPDOWN, size=(115, -1))
         self.resolution_combo.SetSelection(0)
@@ -384,111 +379,110 @@ class CaptureControlBar(wx.Panel):
         self.resolution_combo.Bind(wx.EVT_TEXT_ENTER, self._on_resolution_combo_changed)
         self._style_combobox(self.resolution_combo)
         self.resolution_combo.SetFont(default_font)
-        inner_sizer.Add(self.resolution_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.resolution_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 품질 선택
-        self.quality_combo = wx.ComboBox(inner_panel, choices=[tr('high'), tr('medium'), tr('low')],
+        self.quality_combo = wx.ComboBox(self, choices=[tr('high'), tr('medium'), tr('low')],
                                          style=wx.CB_READONLY, size=(55, -1))
         self.quality_combo.SetSelection(0)
         self.quality_combo.SetToolTip(tr('quality_tooltip'))
         self.quality_combo.Bind(wx.EVT_COMBOBOX, self._on_quality_combo_changed)
         self._style_combobox(self.quality_combo)
         self.quality_combo.SetFont(default_font)
-        inner_sizer.Add(self.quality_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.quality_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 구분선 1 (커스텀 패널로 색상 제어)
-        sep1 = wx.Panel(inner_panel, size=(1, 24))
+        sep1 = wx.Panel(self, size=(1, 24))
         sep1.SetBackgroundColour(wx.Colour(*THEME_MID.BORDER_SUBTLE))
-        inner_sizer.Add(sep1, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
+        main_sizer.Add(sep1, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
 
         # ═══════════════════════════════════════════════════════════════
         # 중앙 섹션: 토글 스위치들
         # ═══════════════════════════════════════════════════════════════
 
         # 커서 아이콘
-        self.cursor_icon = wx.StaticText(inner_panel, label="↖")
+        self.cursor_icon = wx.StaticText(self, label="↖")
         self.cursor_icon.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
         self.cursor_icon.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
         self.cursor_icon.SetFont(get_ui_font(12))
         self.cursor_icon.SetToolTip(tr('cursor_tooltip'))
-        inner_sizer.Add(self.cursor_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        main_sizer.Add(self.cursor_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # 커서 토글 스위치
-        self.cursor_toggle = CustomToggleSwitch(inner_panel, checked=True)
+        self.cursor_toggle = CustomToggleSwitch(self, checked=True)
         self.cursor_toggle.SetToolTip(tr('cursor_tooltip'))
         self.cursor_toggle.set_changed_callback(self._on_cursor_toggle_changed)
-        inner_sizer.Add(self.cursor_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.cursor_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 영역 아이콘
-        self.region_icon = wx.StaticText(inner_panel, label="⬚")
+        self.region_icon = wx.StaticText(self, label="⬚")
         self.region_icon.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
         self.region_icon.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
         self.region_icon.SetFont(get_ui_font(14))
         self.region_icon.SetToolTip(tr('click_highlight_icon_tooltip'))
-        inner_sizer.Add(self.region_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        main_sizer.Add(self.region_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # 영역 토글 스위치
-        self.region_toggle = CustomToggleSwitch(inner_panel, checked=False)
+        self.region_toggle = CustomToggleSwitch(self, checked=False)
         self.region_toggle.SetToolTip(tr('click_highlight_icon_tooltip'))
         self.region_toggle.set_changed_callback(self._on_region_toggle_changed)
-        inner_sizer.Add(self.region_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.region_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 구분선 2
-        sep2 = wx.Panel(inner_panel, size=(1, 24))
+        sep2 = wx.Panel(self, size=(1, 24))
         sep2.SetBackgroundColour(wx.Colour(*THEME_MID.BORDER_SUBTLE))
-        inner_sizer.Add(sep2, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
+        main_sizer.Add(sep2, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
 
         # ═══════════════════════════════════════════════════════════════
         # 오른쪽 섹션: 플랫 버튼들
         # ═══════════════════════════════════════════════════════════════
 
         # GPU 상태 버튼
-        self.gpu_status_button = FlatButton(inner_panel, label="GPU Off", size=(75, 28),
+        self.gpu_status_button = FlatButton(self, label="GPU Off", size=(75, 28),
                                             bg_color=(107, 114, 128), fg_color=(255, 255, 255),
                                             hover_color=(120, 127, 141))
         self.gpu_status_button.SetToolTip(tr('gpu_status_tooltip'))
-        inner_sizer.Add(self.gpu_status_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.gpu_status_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # REC 버튼
-        self.rec_button = FlatButton(inner_panel, label="● REC", size=(72, 28),
+        self.rec_button = FlatButton(self, label="● REC", size=(72, 28),
                                      bg_color=(233, 69, 96), fg_color=(255, 255, 255),
                                      hover_color=(245, 90, 115), pressed_color=(200, 55, 80))
         self.rec_button.SetToolTip(tr('rec_tooltip'))
         self.rec_button.Bind(wx.EVT_BUTTON, self._on_rec_button_clicked)
-        inner_sizer.Add(self.rec_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        main_sizer.Add(self.rec_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
 
         # Pause 버튼
-        self.pause_btn = FlatButton(inner_panel, label="❚❚", size=(34, 28),
+        self.pause_btn = FlatButton(self, label="❚❚", size=(34, 28),
                                     bg_color=(254, 202, 87), fg_color=(255, 255, 255),
                                     hover_color=(255, 215, 110), pressed_color=(230, 180, 70))
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
         self.pause_btn.Enable(False)
         self.pause_btn.Bind(wx.EVT_BUTTON, self._on_pause_button_clicked)
-        inner_sizer.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        main_sizer.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # Stop 버튼
-        self.stop_btn = FlatButton(inner_panel, label="■", size=(34, 28),
+        self.stop_btn = FlatButton(self, label="■", size=(34, 28),
                                    bg_color=THEME_MID.ACCENT, fg_color=(255, 255, 255),
                                    hover_color=THEME_MID.ACCENT_HOVER,
                                    pressed_color=THEME_MID.ACCENT_PRESSED)
         self.stop_btn.SetToolTip(tr('stop_tooltip'))
         self.stop_btn.Enable(False)
         self.stop_btn.Bind(wx.EVT_BUTTON, self._on_stop_button_clicked)
-        inner_sizer.Add(self.stop_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.stop_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        # 설정 버튼
-        self.settings_button = FlatButton(inner_panel, label="⚙", size=(30, 28),
+        # 설정 버튼 (아이콘 2배 크기)
+        self.settings_button = FlatButton(self, label="⚙", size=(48, 40),
                                           bg_color=THEME_MID.BG_BUTTON,
                                           fg_color=THEME_MID.FG_TEXT,
                                           hover_color=THEME_MID.BG_BUTTON_HOVER)
+        self.settings_button.SetFont(get_ui_font(FONT_SIZE_DEFAULT * 2))
         self.settings_button.SetToolTip(tr('settings_tooltip'))
         self.settings_button.Bind(wx.EVT_BUTTON, self._on_settings_button_clicked)
-        inner_sizer.Add(self.settings_button, 0, wx.ALIGN_CENTER_VERTICAL)
+        main_sizer.Add(self.settings_button, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        # 메인 레이아웃에 내부 패널 추가 (패딩 8px)
-        main_sizer.Add(inner_panel, 1, wx.EXPAND | wx.ALL, 8)
+        main_sizer.Add((8, 0))  # 우측 패딩
 
-        inner_panel.Layout()
         self.Layout()
 
         self.Bind(wx.EVT_SIZE, self._on_control_bar_size)
