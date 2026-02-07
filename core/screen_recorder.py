@@ -402,7 +402,8 @@ class ScreenRecorder:
                 on_failed=lambda msg: self._emit_error_occurred(msg),
             )
             self._capture_thread.start()
-            
+            self._capture_thread_ref = self._capture_thread  # 드롭프레임 통계 참조용
+
             # 첫 프레임 캡처 대기 (빠른 시작)
             if self._backend_warmed_up:
                 max_wait = 0.3  # pre-warmed: 300ms
@@ -495,6 +496,11 @@ class ScreenRecorder:
         self._thread_stop_event = None
         self._thread_pause_event = None
         
+        # 드롭프레임 통보
+        dropped = getattr(self._capture_thread_ref, 'dropped_frames', 0) if hasattr(self, '_capture_thread_ref') else 0
+        if dropped > 0:
+            logger.warning(f"Recording had {dropped} dropped frames")
+
         logger.info(f"Recording stopped. Total frames: {len(self.frames)}")
         self._emit_recording_stopped()
         return self.frames
@@ -690,8 +696,10 @@ def draw_click_highlight_internal(frame: np.ndarray, region_x: int, region_y: in
         h, w = frame.shape[:2]
         if cx < 0 or cy < 0 or cx >= w or cy >= h:
             return frame
-        
-        frame = frame.copy()
+
+        # read-only 배열이면 쓰기 가능한 복사본 생성
+        if not frame.flags.writeable:
+            frame = frame.copy()
         elapsed = current_time - click_time
         fade_ratio = 1.0 - (elapsed / 0.3)
         alpha = max(0.0, min(1.0, fade_ratio))
@@ -947,6 +955,11 @@ class CaptureThread(threading.Thread):
         except Exception as e:
             logger.exception(f"[CaptureThread] Fatal error: {e}")
             _notify_failed(f"녹화 캡처 오류: {e}")
+            # 수집 스레드가 대기 중일 수 있으므로 이벤트 해제
+            try:
+                self.shm_event.set()
+            except Exception:
+                pass
         finally:
             # 항상 리소스 정리 (예외 발생해도)
             logger.debug("[CaptureThread] Cleaning up resources...")

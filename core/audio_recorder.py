@@ -48,6 +48,9 @@ class AudioRecorder:
         )
         self._buffer_limit_reached = False  # 상한 도달 시 True (녹음 중지 유도)
         
+        # 버퍼 크기 추적 (O(1) 조회)
+        self._audio_buffer_total_bytes: int = 0
+
         # 시스템 오디오
         self.system_audio_data: List[np.ndarray] = []
         self.system_sample_rate = 44100
@@ -135,12 +138,7 @@ class AudioRecorder:
     
     def _current_audio_buffer_bytes(self) -> int:
         """현재 오디오 버퍼 총 바이트 수. 반드시 self._lock 내에서 호출해야 합니다."""
-        total = 0
-        for arr in self.system_audio_data:
-            total += arr.nbytes
-        for arr in self.mic_audio_data:
-            total += arr.nbytes
-        return total
+        return self._audio_buffer_total_bytes
     
     def set_max_buffer_mb(self, max_buffer_mb: Optional[float]) -> None:
         """오디오 버퍼 상한 설정 (MB). None이면 무제한."""
@@ -164,8 +162,10 @@ class AudioRecorder:
                         self._buffer_limit_reached = True
                         logger.warning("오디오 버퍼 상한에 도달하여 추가 녹음을 중단합니다.")
                         return
-                self.system_audio_data.append(indata.copy())
-    
+                chunk = indata.copy()
+                self.system_audio_data.append(chunk)
+                self._audio_buffer_total_bytes += chunk.nbytes
+
     def _mic_audio_callback(self, indata, frames, time, status):
         """마이크 오디오 스트림 콜백"""
         if self.recording and self.record_mic:
@@ -177,7 +177,9 @@ class AudioRecorder:
                         self._buffer_limit_reached = True
                         logger.warning("오디오 버퍼 상한에 도달하여 추가 녹음을 중단합니다.")
                         return
-                self.mic_audio_data.append(indata.copy())
+                chunk = indata.copy()
+                self.mic_audio_data.append(chunk)
+                self._audio_buffer_total_bytes += chunk.nbytes
     
     def start(self) -> bool:
         """오디오 녹음 시작"""

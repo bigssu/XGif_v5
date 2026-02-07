@@ -72,12 +72,13 @@ def check_cupy(min_version="12.0") -> DependencyStatus:
         return DependencyStatus(
             name="CuPy",
             state=DependencyState.MISSING,
+            error_message="CuPy가 설치되어 있지 않습니다. GPU 가속을 사용하려면 CuPy를 설치하세요.",
         )
     except Exception as e:
         return DependencyStatus(
             name="CuPy",
             state=DependencyState.ERROR,
-            error_message=str(e),
+            error_message=f"CuPy 초기화 실패: {str(e)[:200]}. CUDA 드라이버와 호환되는 버전인지 확인하세요.",
         )
 
 

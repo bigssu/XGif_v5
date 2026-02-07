@@ -139,23 +139,21 @@ class BatchEffectWorker(BaseWorker):
 
     def run(self):
         self.signals.emit_started()
-        results = []
         total = len(self.images)
 
         try:
-            for i, image in enumerate(self.images):
+            for i in range(total):
                 if self.is_cancelled:
                     self.signals.emit_cancelled()
                     return
 
-                # 효과 적용
-                result = self.effect_func(image)
-                results.append(result)
+                # 효과 적용 후 원본을 교체하여 메모리 누적 방지
+                self.images[i] = self.effect_func(self.images[i])
 
                 # 진행률 업데이트
                 self.signals.emit_progress(i + 1, total)
 
-            self.signals.emit_finished(results)
+            self.signals.emit_finished(self.images)
 
         except Exception as e:
             self.signals.emit_error(str(e), traceback.format_exc())

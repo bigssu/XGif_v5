@@ -767,8 +767,10 @@ class GifEncoder:
         if self._use_gpu and self._has_nvenc:
             hwaccel_opts = ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
         
+        total_steps = frame_count * 2 + 2
         try:
             # Pass 1: 팔레트 생성
+            self._emit_progress(0, total_steps)
             cmd_palette = [
                 self._ffmpeg_path,
                 '-y',  # 덮어쓰기
@@ -781,7 +783,7 @@ class GifEncoder:
                 '-vf', palettegen_filter,
                 palette_path
             ])
-            
+
             result = subprocess.run(
                 cmd_palette,
                 capture_output=True,
@@ -789,17 +791,19 @@ class GifEncoder:
                 env=self._ffmpeg_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
-            
+
             if result.returncode != 0:
                 # GPU 모드 실패 시 CPU로 재시도
                 if hwaccel_opts:
                     return self._encode_with_ffmpeg_cpu(frames_dir, output_path, fps, frame_count)
                 self._emit_error(f"팔레트 생성 실패: {result.stderr}")
                 return False
-            
+
+            self._emit_progress(frame_count, total_steps)
+
             # Pass 2: GIF 생성
             filter_complex = f"[0:v][1:v]{paletteuse_filter}"
-            
+
             cmd_gif = [
                 self._ffmpeg_path,
                 '-y',
@@ -814,7 +818,7 @@ class GifEncoder:
                 '-loop', '0',  # 무한 반복
                 output_path
             ])
-            
+
             result = subprocess.run(
                 cmd_gif,
                 capture_output=True,
@@ -822,14 +826,15 @@ class GifEncoder:
                 env=self._ffmpeg_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
-            
+
             if result.returncode != 0:
                 # GPU 모드 실패 시 CPU로 재시도
                 if hwaccel_opts:
                     return self._encode_with_ffmpeg_cpu(frames_dir, output_path, fps, frame_count)
                 self._emit_error(f"GIF 생성 실패: {result.stderr}")
                 return False
-            
+
+            self._emit_progress(total_steps, total_steps)
             self._emit_finished(output_path)
             return True
             
@@ -842,18 +847,20 @@ class GifEncoder:
         preset = self.QUALITY_PRESETS[self.quality]
         temp_dir = os.path.dirname(frames_dir)
         palette_path = os.path.join(temp_dir, 'palette.png')
-        
+
         palettegen_filter = f"palettegen=max_colors={preset['max_colors']}:stats_mode={preset['stats_mode']}"
-        
+
         paletteuse_opts = [f"dither={preset['dither']}"]
         if 'bayer_scale' in preset:
             paletteuse_opts.append(f"bayer_scale={preset['bayer_scale']}")
         if preset.get('diff_mode') and preset['diff_mode'] != 'none':
             paletteuse_opts.append(f"diff_mode={preset['diff_mode']}")
         paletteuse_filter = f"paletteuse={':'.join(paletteuse_opts)}"
-        
+
+        total_steps = frame_count * 2 + 2
         try:
             # Pass 1: 팔레트 생성 (CPU)
+            self._emit_progress(0, total_steps)
             cmd_palette = [
                 self._ffmpeg_path,
                 '-y',
@@ -864,11 +871,13 @@ class GifEncoder:
             ]
             
             result = self._run_ffmpeg_async(cmd_palette)
-            
+
             if result.returncode != 0:
                 self._emit_error(f"팔레트 생성 실패: {result.stderr}")
                 return False
-            
+
+            self._emit_progress(frame_count, total_steps)
+
             # Pass 2: GIF 생성 (CPU)
             filter_complex = f"[0:v][1:v]{paletteuse_filter}"
             
@@ -888,27 +897,29 @@ class GifEncoder:
             if result.returncode != 0:
                 self._emit_error(f"GIF 생성 실패: {result.stderr}")
                 return False
-            
+
+            self._emit_progress(total_steps, total_steps)
             self._emit_finished(output_path)
             return True
-            
+
         except Exception as e:
             self._emit_error(f"FFmpeg 실행 에러: {str(e)}")
             return False
-    
+
     def _encode_with_pillow(self, frames_dir: str, output_path: str, fps: int, frame_count: int) -> bool:
         """
         Pillow를 사용한 GIF 인코딩 (FFmpeg 없을 때 fallback)
         """
         try:
             # 프레임 로드
+            total_steps = frame_count + 1
             images = []
             for i in range(frame_count):
                 img_path = os.path.join(frames_dir, f'{i:06d}.bmp')
                 # with 문으로 파일 핸들 자동 해제
                 with Image.open(img_path) as img:
                     rgb_img = img.convert('RGB')
-                    
+
                     # 품질에 따른 양자화 설정
                     if self.quality == 'high':
                         quantized = rgb_img.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
@@ -916,8 +927,12 @@ class GifEncoder:
                         quantized = rgb_img.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
                     else:
                         quantized = rgb_img.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-                    
+
                     images.append(quantized.convert('P'))
+
+                # 진행률 업데이트 (10프레임마다)
+                if (i + 1) % 10 == 0 or i == frame_count - 1:
+                    self._emit_progress(i + 1, total_steps)
             
             # GIF 저장
             duration = int(1000 / fps)

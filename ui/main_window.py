@@ -1548,13 +1548,11 @@ class MainWindow(wx.Frame):
                 fps = 15
         audio_path = self.audio_file_path if output_format == 'mp4' else None
         
-        # 이전 인코딩 스레드 정리 (메모리 누수 방지)
+        # 이전 인코딩 스레드 정리 (논블로킹)
         if self.encoding_thread is not None:
-            # 스레드가 실행 중이면 종료 대기
             if self.encoding_thread.is_alive():
-                self.encoding_thread.join(timeout=ENCODING_THREAD_TIMEOUT_SEC)
-                if self.encoding_thread.is_alive():
-                    logger.warning("Encoding thread did not finish in time")
+                # 데몬 스레드이므로 블로킹 대기 대신 경고만 출력
+                logger.warning("Previous encoding thread still running, it will finish in background")
             self.encoding_thread = None
         
         # 프레임 넘기기 (스냅샷 사용 - 타이밍 이슈 방지)

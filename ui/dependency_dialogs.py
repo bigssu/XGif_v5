@@ -323,7 +323,7 @@ def _install_cupy(parent, dep_status):
 
 
 def _install_dxcam(parent, dep_status):
-    """dxcam 설치 흐름 — 백그라운드 pip install"""
+    """dxcam 설치 흐름 — 논블로킹 pip install (wx.CallAfter 패턴)"""
     import sys
     import subprocess
     import threading
@@ -334,9 +334,18 @@ def _install_dxcam(parent, dep_status):
             "개발 환경에서 dxcam을 설치한 후 다시 빌드해주세요.",
             tr('warning'), wx.OK | wx.ICON_WARNING
         )
-        return
+        return False
 
-    busy = wx.BusyInfo(tr('dxcam_installing'))
+    # 진행 다이얼로그 (취소 가능)
+    progress = wx.ProgressDialog(
+        tr('dxcam_installing'),
+        "dxcam 패키지 설치 중...",
+        maximum=100,
+        parent=parent,
+        style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE
+    )
+    progress.Pulse()
+
     result = {'success': False, 'message': '', 'done': False}
 
     def do_install():
@@ -351,26 +360,25 @@ def _install_dxcam(parent, dep_status):
             result['success'] = False
             result['message'] = str(e)
         result['done'] = True
+        wx.CallAfter(_on_install_done, result, progress)
+
+    def _on_install_done(res, dlg):
+        try:
+            dlg.Destroy()
+        except Exception:
+            pass
+        if res['success']:
+            wx.MessageBox(
+                tr('dxcam_install_success'),
+                tr('install_complete'),
+                wx.OK | wx.ICON_INFORMATION
+            )
+        else:
+            wx.MessageBox(
+                tr('dxcam_install_failed').format(res['message'][:300]),
+                tr('install_failed'),
+                wx.OK | wx.ICON_WARNING
+            )
 
     threading.Thread(target=do_install, daemon=True).start()
-
-    while not result['done']:
-        wx.MilliSleep(100)
-        wx.SafeYield(parent, True)
-
-    del busy
-
-    if result['success']:
-        wx.MessageBox(
-            tr('dxcam_install_success'),
-            tr('install_complete'),
-            wx.OK | wx.ICON_INFORMATION
-        )
-        return True
-    else:
-        wx.MessageBox(
-            tr('dxcam_install_failed').format(result['message'][:300]),
-            tr('install_failed'),
-            wx.OK | wx.ICON_WARNING
-        )
-        return False
+    return result.get('success', False)
