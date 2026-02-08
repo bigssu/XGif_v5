@@ -166,12 +166,12 @@ class MainWindow(wx.Frame):
             icon = wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
             self.SetIcon(icon)
         
+        # GPU 초기화 플래그 (버튼 클릭 시 지연 초기화)
+        self._gpu_initialized = False
+
         self._init_ui()
         self._init_recorder()
         self._setup_shortcuts()
-        
-        # GPU 상태 초기화
-        self._update_gpu_status_label()
         
         # 프로그램 시작 시 자동으로 캡처 영역 표시
         wx.CallLater(100, self._show_capture_overlay)
@@ -298,9 +298,6 @@ class MainWindow(wx.Frame):
             
         self.info_label.SetToolTip(tr('fps_tooltip'))
         self.hdr_label.SetToolTip(tr('hdr_label_tooltip'))
-        
-        # GPU 상태 라벨 텍스트도 업데이트될 수 있도록
-        self._update_gpu_status_label()
     
     def _connect_capture_control_bar(self):
         """CaptureControlBar 이벤트 연결 (wxPython 콜백 방식)"""
@@ -367,15 +364,9 @@ class MainWindow(wx.Frame):
         saved_resolution = self.settings.get("General", "resolution_preset", fallback="320 × 240")
         self.capture_control_bar.set_resolution(saved_resolution)
         
-        # GPU 상태 동기화
-        try:
-            from core.gpu_utils import detect_gpu
-            gpu_info = detect_gpu()
-            gpu_enabled = gpu_info.has_cuda
-            self.capture_control_bar.set_gpu_status(gpu_enabled)
-        except Exception:
-            self.capture_control_bar.set_gpu_status(False)
-        
+        # GPU 버튼 클릭 콜백 등록
+        self.capture_control_bar.set_gpu_click_callback(self._on_gpu_button_click)
+
         # 녹화 상태
         is_recording = self.record_state == self.STATE_RECORDING
         is_paused = self.record_state == self.STATE_PAUSED
@@ -1757,30 +1748,57 @@ class MainWindow(wx.Frame):
                     self.encoder.set_preferred_encoder(encoder_type)
                 
                 logger.info("[MainWindow] 최적 파이프라인 적용: %s", pipeline.name)
-            
-            # GPU 상태 업데이트
-            self._update_gpu_status_label()
-            
+
         except Exception as e:
             logger.warning("[MainWindow] 시스템 능력 감지 실패: %s", e)
     
-    def _update_gpu_status_label(self):
-        """GPU 상태 레이블 업데이트 (wxPython)"""
+    def _on_gpu_button_click(self):
+        """GPU 버튼 클릭 — 비동기 GPU 감지 후 정보 표시"""
+        if self._gpu_initialized:
+            # 이미 초기화됨 → GPU 정보 메시지박스 표시
+            self._show_gpu_info_dialog()
+            return
+
+        # 아직 초기화 안 됨 → 백그라운드에서 감지
+        self.capture_control_bar.gpu_status_button.SetLabel(tr('gpu_initializing'))
+        self.capture_control_bar.gpu_status_button.Enable(False)
+
+        def _detect_in_bg():
+            try:
+                info = detect_gpu()  # CuPy 포함 전체 감지
+            except Exception:
+                from core.gpu_utils import GpuInfo
+                info = GpuInfo()
+            wx.CallAfter(self._on_gpu_detect_done, info)
+
+        threading.Thread(target=_detect_in_bg, daemon=True).start()
+
+    def _on_gpu_detect_done(self, gpu_info):
+        """GPU 감지 완료 (메인 스레드)"""
+        self._gpu_initialized = True
+        self.capture_control_bar.gpu_status_button.Enable(True)
+        self.capture_control_bar.set_gpu_status(gpu_info.has_cuda)
+        self._show_gpu_info_dialog()
+
+    def _show_gpu_info_dialog(self):
+        """GPU 정보 메시지박스 표시"""
         try:
-            gpu_info = detect_gpu()
-        except (RuntimeError, OSError):
-            # GPU 감지 실패 시 CPU 모드로 표시
+            gpu_info = detect_gpu(skip_cupy=True)
+        except Exception:
             from core.gpu_utils import GpuInfo
             gpu_info = GpuInfo()
-        
-        gpu_enabled = gpu_info.has_cuda
-        
-        # CaptureControlBar의 GPU 버튼 업데이트 (TODO: capture_control_bar 구현 후)
-        # 현재는 gpu_label만 사용
-        
-        # gpu_label 업데이트 (필요 시 나중에 추가)
-        # 현재는 상태바에 GPU 정보 표시하지 않음
-        pass
+
+        if not gpu_info.has_cuda:
+            wx.MessageBox(tr('gpu_not_found_msg'), tr('gpu_info_title'), wx.OK | wx.ICON_INFORMATION, self)
+            return
+
+        msg = tr('gpu_info_msg',
+                 name=gpu_info.gpu_name or "Unknown",
+                 memory=gpu_info.gpu_memory_mb,
+                 cupy="O" if gpu_info.has_cupy else "X",
+                 nvenc="O" if gpu_info.ffmpeg_nvenc else "X",
+                 driver=gpu_info.driver_version or "N/A")
+        wx.MessageBox(msg, tr('gpu_info_title'), wx.OK | wx.ICON_INFORMATION, self)
     
     def _update_hdr_label(self):
         """HDR 모드 레이블 업데이트 (상태바 필드 2 및 hdr_label)"""

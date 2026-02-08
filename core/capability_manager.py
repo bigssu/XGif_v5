@@ -133,8 +133,8 @@ class CapabilityManager:
         return caps
     
     def _detect_gpu(self, caps: SystemCapabilities):
-        """GPU 정보 감지"""
-        gpu_info = detect_gpu()
+        """GPU 정보 감지 (CuPy 초기화 스킵 — 하드웨어 정보만)"""
+        gpu_info = detect_gpu(skip_cupy=True)
         
         caps.has_nvidia_gpu = gpu_info.has_cuda
         caps.gpu_name = gpu_info.gpu_name

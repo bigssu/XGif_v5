@@ -129,7 +129,6 @@ class ScreenRecorder:
         
         # Pre-warming 상태 (백엔드 미리 준비)
         self._backend_warmed_up = False
-        self._warmup_backend()
     
     def set_frame_captured_callback(self, callback: Callable[[int], None]):
         """프레임 캡처 콜백 설정"""
@@ -232,11 +231,14 @@ class ScreenRecorder:
     
     def set_capture_backend(self, backend: str = "auto"):
         """캡처 백엔드 설정
-        
+
         Args:
             backend: "auto", "dxcam", "gdi" 중 선택
         """
         self._preferred_backend = backend
+        # 백엔드 변경 시 워밍업 (아직 완료되지 않은 경우)
+        if not self._backend_warmed_up:
+            self._warmup_backend()
 
     def set_hdr_correction(self, force: bool):
         """HDR 보정 수동 강제 (설정에서 켜면 자동 감지 실패 시에도 적용)"""
@@ -884,19 +886,26 @@ class CaptureThread(threading.Thread):
                             frame = apply_hdr_correction_adaptive(frame)
                         t3 = time.perf_counter()
                         timing_samples['hdr'].append(t3 - t2)
-                        
+
                         # 비교용 after PNG (보정 여부 무관하게 저장)
                         if not getattr(self, '_debug_png_saved', True):
                             _save_debug_hdr_png(frame, "recording_frame_after_hdr")
                             self._debug_png_saved = True
-                        
+
+                        # 오버레이 필요 시 단일 writable 복사 (이후 모든 처리 in-place)
+                        needs_overlay = ((self.include_cursor and HAS_WIN32)
+                                        or self.show_click_highlight
+                                        or watermark or keyboard)
+                        if needs_overlay and not frame.flags.writeable:
+                            frame = frame.copy()
+
                         # 커서 그리기
                         t4 = time.perf_counter()
                         if self.include_cursor and HAS_WIN32:
                             frame = draw_cursor_internal(frame, x, y)
                         t5 = time.perf_counter()
                         timing_samples['cursor'].append(t5 - t4)
-                        
+
                         # 클릭 하이라이트
                         if self.show_click_highlight:
                             frame = draw_click_highlight_internal(frame, x, y, last_click_pos, click_lock)

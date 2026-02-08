@@ -437,11 +437,13 @@ class CaptureControlBar(wx.Panel):
         # 오른쪽 섹션: 플랫 버튼들
         # ═══════════════════════════════════════════════════════════════
 
-        # GPU 상태 버튼
-        self.gpu_status_button = FlatButton(self, label="GPU Off", size=(75, 28),
+        # GPU 상태 버튼 (초기 중립 상태 — 클릭 시 GPU 정보 확인)
+        self.gpu_status_button = FlatButton(self, label="GPU", size=(55, 28),
                                             bg_color=(107, 114, 128), fg_color=(255, 255, 255),
                                             hover_color=(120, 127, 141))
         self.gpu_status_button.SetToolTip(tr('gpu_status_tooltip'))
+        self.gpu_status_button.Bind(wx.EVT_BUTTON, self._on_gpu_button_clicked)
+        self._on_gpu_click_callback = None
         main_sizer.Add(self.gpu_status_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # REC 버튼
@@ -569,6 +571,9 @@ class CaptureControlBar(wx.Panel):
     def set_stop_clicked_callback(self, callback):
         self._on_stop_clicked = callback
 
+    def set_gpu_click_callback(self, callback):
+        self._on_gpu_click_callback = callback
+
     # ═══════════════════════════════════════════════════════════════
     # 이벤트 핸들러
     # ═══════════════════════════════════════════════════════════════
@@ -592,6 +597,10 @@ class CaptureControlBar(wx.Panel):
     def _on_stop_button_clicked(self, event):
         if self._on_stop_clicked:
             self._on_stop_clicked()
+
+    def _on_gpu_button_clicked(self, event):
+        if self._on_gpu_click_callback:
+            self._on_gpu_click_callback()
 
     def _on_settings_button_clicked(self, event):
         if self._on_settings_requested:

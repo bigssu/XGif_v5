@@ -157,91 +157,103 @@ def _check_cupy():
         return _cupy_available
 
 
-def detect_gpu() -> GpuInfo:
+def detect_gpu(skip_cupy: bool = False) -> GpuInfo:
     """
     GPU 정보를 감지하고 캐싱합니다.
     pynvml 우선 사용, nvidia-smi 폴백
-    
+
+    Args:
+        skip_cupy: True이면 CuPy 초기화를 건너뛰고 하드웨어 정보만 감지 (빠름, <100ms)
+
     Returns:
         GpuInfo: GPU 정보 데이터 클래스
     """
     global _gpu_info
-    
+
     # 스레드 안전한 접근 - 전체 함수를 락으로 보호
     with _gpu_lock:
+        # 캐시가 있고, CuPy 스킵 요청이거나 이미 CuPy 정보까지 포함된 경우
         if _gpu_info is not None:
-            return _gpu_info
-        
+            if skip_cupy or _gpu_info.has_cupy or not _gpu_info.has_cuda:
+                return _gpu_info
+            # CuPy 정보가 없는데 skip_cupy=False → CuPy 확인 추가 실행
+
         # 환경 변수로 GPU 비활성화 옵션
         if os.environ.get('GIFFY_DISABLE_GPU', '').lower() in ('1', 'true', 'yes'):
             _gpu_info = GpuInfo()
             return _gpu_info
-        
-        # 기본값 (GPU 없음 가정)
-        info = GpuInfo()
-        
-        # 1. pynvml 우선 시도
-        gpu_detected = False
-        if HAS_PYNVML and _init_pynvml():
-            try:
-                device_count = pynvml.nvmlDeviceGetCount()
-                if device_count > 0:
-                    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                    
-                    # GPU 이름
-                    gpu_name = pynvml.nvmlDeviceGetName(handle)
-                    info.gpu_name = gpu_name.decode('utf-8') if isinstance(gpu_name, bytes) else gpu_name
-                    
-                    # GPU 메모리
-                    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                    info.gpu_memory_mb = mem_info.total // (1024 * 1024)
-                    
-                    # 드라이버 버전
-                    driver_ver = pynvml.nvmlSystemGetDriverVersion()
-                    info.driver_version = driver_ver.decode('utf-8') if isinstance(driver_ver, bytes) else driver_ver
-                    
-                    info.has_cuda = True
-                    gpu_detected = True
-            except (pynvml.NVMLError, AttributeError, ValueError) as e:
-                import logging
-                logging.debug(f"[gpu_utils] pynvml GPU 감지 실패: {e}")
-        
-        # 2. pynvml 실패 시 nvidia-smi 폴백
-        if not gpu_detected:
-            try:
-                from .utils import run_subprocess_silent
-                result = run_subprocess_silent(
-                    ['nvidia-smi', '--query-gpu=name,memory.total,driver_version', '--format=csv,noheader,nounits'],
-                    timeout=5
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    parts = result.stdout.strip().split(',')
-                    if len(parts) >= 2:
+
+        # 하드웨어 정보가 아직 없으면 감지
+        if _gpu_info is None:
+            info = GpuInfo()
+
+            # 1. pynvml 우선 시도
+            gpu_detected = False
+            if HAS_PYNVML and _init_pynvml():
+                try:
+                    device_count = pynvml.nvmlDeviceGetCount()
+                    if device_count > 0:
+                        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+
+                        # GPU 이름
+                        gpu_name = pynvml.nvmlDeviceGetName(handle)
+                        info.gpu_name = gpu_name.decode('utf-8') if isinstance(gpu_name, bytes) else gpu_name
+
+                        # GPU 메모리
+                        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                        info.gpu_memory_mb = mem_info.total // (1024 * 1024)
+
+                        # 드라이버 버전
+                        driver_ver = pynvml.nvmlSystemGetDriverVersion()
+                        info.driver_version = driver_ver.decode('utf-8') if isinstance(driver_ver, bytes) else driver_ver
+
                         info.has_cuda = True
-                        info.gpu_name = parts[0].strip()
-                        try:
-                            info.gpu_memory_mb = int(parts[1].strip())
-                        except ValueError:
-                            pass
-                        if len(parts) >= 3:
-                            info.driver_version = parts[2].strip()
-            except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-                # nvidia-smi가 없거나 실행 실패 - GPU 없음으로 처리
-                pass
-        
+                        gpu_detected = True
+                except (pynvml.NVMLError, AttributeError, ValueError) as e:
+                    import logging
+                    logging.debug(f"[gpu_utils] pynvml GPU 감지 실패: {e}")
+
+            # 2. pynvml 실패 시 nvidia-smi 폴백
+            if not gpu_detected:
+                try:
+                    from .utils import run_subprocess_silent
+                    result = run_subprocess_silent(
+                        ['nvidia-smi', '--query-gpu=name,memory.total,driver_version', '--format=csv,noheader,nounits'],
+                        timeout=5
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        parts = result.stdout.strip().split(',')
+                        if len(parts) >= 2:
+                            info.has_cuda = True
+                            info.gpu_name = parts[0].strip()
+                            try:
+                                info.gpu_memory_mb = int(parts[1].strip())
+                            except ValueError:
+                                pass
+                            if len(parts) >= 3:
+                                info.driver_version = parts[2].strip()
+                except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+                    pass
+
+            _gpu_info = info
+        else:
+            info = _gpu_info
+
+        # CuPy 스킵 요청 시 하드웨어 정보만 반환
+        if skip_cupy:
+            return _gpu_info
+
         # 3. CuPy 확인 (GPU가 있을 때만)
-        if info.has_cuda:
+        if info.has_cuda and not info.has_cupy:
             try:
                 cupy_ok = _check_cupy()
                 info.has_cupy = cupy_ok
-                
+
                 # CuPy로 CUDA 버전 얻기
                 if cupy_ok and _cp is not None:
                     try:
                         version = _cp.cuda.runtime.runtimeGetVersion()
-                        # version이 int인 경우와 tuple인 경우 모두 처리
                         if isinstance(version, int):
-                            # 버전이 정수로 반환된 경우 (예: 12000 → "12.0")
                             major = version // 1000
                             minor = (version % 1000) // 10
                             info.cuda_version = f"{major}.{minor}"
@@ -253,13 +265,14 @@ def detect_gpu() -> GpuInfo:
                         pass
             except (ImportError, RuntimeError):
                 info.has_cupy = False
-        
+
         # 4. FFmpeg NVENC 지원 확인
-        try:
-            info.ffmpeg_nvenc = _check_ffmpeg_nvenc()
-        except (subprocess.SubprocessError, FileNotFoundError, OSError):
-            info.ffmpeg_nvenc = False
-        
+        if not info.ffmpeg_nvenc:
+            try:
+                info.ffmpeg_nvenc = _check_ffmpeg_nvenc()
+            except (subprocess.SubprocessError, FileNotFoundError, OSError):
+                info.ffmpeg_nvenc = False
+
         _gpu_info = info
         return info
 

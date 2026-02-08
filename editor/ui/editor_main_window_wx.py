@@ -618,17 +618,16 @@ class MainWindow(wx.Frame):
         self._view_menu.Append(wx.ID_ANY, "실제 크기\tCtrl+0")
         self._view_menu.Append(wx.ID_ANY, "화면에 맞춤\tCtrl+9")
 
-        # 설정 메뉴
+        # 설정 메뉴 (GPU 체크는 지연 초기화 — UI 먼저 표시)
         self._settings_menu = wx.Menu()
-        gpu_available = gpu_utils.is_gpu_available()
-        gpu_enabled = gpu_utils.is_gpu_enabled()
-        gpu_action_text = "GPU 가속 사용" if gpu_available else "GPU 가속 사용 (GPU 없음)"
-        self._action_gpu = self._settings_menu.AppendCheckItem(wx.ID_ANY, gpu_action_text)
-        self._action_gpu.Check(gpu_enabled)
-        self._action_gpu.Enable(gpu_available)
+        self._action_gpu = self._settings_menu.AppendCheckItem(wx.ID_ANY, "GPU 가속 사용")
+        self._action_gpu.Check(False)
+        self._action_gpu.Enable(False)
         self.Bind(wx.EVT_MENU, lambda e: self._toggle_gpu(e.IsChecked()), self._action_gpu)
         action_gpu_info = self._settings_menu.Append(wx.ID_ANY, "GPU 정보...")
         self.Bind(wx.EVT_MENU, lambda e: self._show_gpu_info(), action_gpu_info)
+        # GPU 메뉴 상태를 비동기로 업데이트
+        wx.CallLater(500, self._init_gpu_menu_state)
 
         # 도움말 메뉴
         self._help_menu = wx.Menu()
@@ -2055,6 +2054,33 @@ class MainWindow(wx.Frame):
             info.SetIcon(icon)
 
         wx.adv.AboutBox(info)
+
+    def _init_gpu_menu_state(self):
+        """GPU 메뉴 상태 비동기 초기화 (에디터 UI 표시 후 호출)"""
+        import threading
+
+        def _check_gpu_bg():
+            try:
+                available = gpu_utils.is_gpu_available()
+                enabled = gpu_utils.is_gpu_enabled()
+            except Exception:
+                available = False
+                enabled = False
+            wx.CallAfter(self._apply_gpu_menu_state, available, enabled)
+
+        threading.Thread(target=_check_gpu_bg, daemon=True).start()
+
+    def _apply_gpu_menu_state(self, available, enabled):
+        """GPU 메뉴 상태 적용 (메인 스레드)"""
+        try:
+            if not self._action_gpu:
+                return
+            text = "GPU 가속 사용" if available else "GPU 가속 사용 (GPU 없음)"
+            self._action_gpu.SetItemLabel(text)
+            self._action_gpu.Check(enabled)
+            self._action_gpu.Enable(available)
+        except (RuntimeError, wx.PyDeadObjectError):
+            pass
 
     def _toggle_gpu(self, checked: bool):
         """GPU 토글"""
