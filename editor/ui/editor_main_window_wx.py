@@ -986,6 +986,10 @@ class MainWindow(wx.Frame):
 
             # GPU 상태 업데이트
             self._update_gpu_status()
+
+            # 정보바 레이아웃 갱신
+            self._info_bar.Layout()
+            self._info_bar.Refresh()
         except Exception as e:
             self._logger.error(f"정보 바 업데이트 오류: {e}", exc_info=True)
 

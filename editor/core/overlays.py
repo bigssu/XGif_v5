@@ -65,28 +65,29 @@ class SpeechBubble:
         Returns:
             말풍선 이미지 (RGBA)
         """
-        # 꼬리 공간 확보
+        # 꼬리 공간 확보 — 캔버스 크기는 입력 크기(width × height) 고정
         tail_space = config.tail_length if config.tail_direction != TailDirection.NONE else 0
-        
-        # 캔버스 크기 (꼬리 공간 포함)
+
         canvas_w = width
-        canvas_h = height + tail_space
-        
-        if config.tail_direction in [TailDirection.LEFT_CENTER, TailDirection.RIGHT_CENTER]:
-            canvas_w += tail_space
-            canvas_h = height
-        
+        canvas_h = height
+
         img = Image.new('RGBA', (canvas_w, canvas_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        
-        # 말풍선 본체 위치 계산
+
+        # 말풍선 본체 위치/크기 계산 (꼬리 공간만큼 본체 축소)
         bubble_x, bubble_y = 0, 0
         bubble_w, bubble_h = width, height
-        
-        if config.tail_direction in [TailDirection.TOP_LEFT, TailDirection.TOP_CENTER, TailDirection.TOP_RIGHT]:
+
+        if config.tail_direction in [TailDirection.BOTTOM_LEFT, TailDirection.BOTTOM_CENTER, TailDirection.BOTTOM_RIGHT]:
+            bubble_h = height - tail_space
+        elif config.tail_direction in [TailDirection.TOP_LEFT, TailDirection.TOP_CENTER, TailDirection.TOP_RIGHT]:
             bubble_y = tail_space
-        if config.tail_direction == TailDirection.LEFT_CENTER:
+            bubble_h = height - tail_space
+        elif config.tail_direction == TailDirection.LEFT_CENTER:
             bubble_x = tail_space
+            bubble_w = width - tail_space
+        elif config.tail_direction == TailDirection.RIGHT_CENTER:
+            bubble_w = width - tail_space
         
         # 스타일별 말풍선 그리기
         if config.style == BubbleStyle.ROUNDED:
