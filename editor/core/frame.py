@@ -105,8 +105,8 @@ class Frame:
     _next_id = 0  # 프레임 ID 생성용
     _id_lock = threading.Lock()  # 스레드 안전한 ID 생성
     
-    def __init__(self, image: Image.Image, delay_ms: int = 100, 
-                 lazy_load: bool = False, source_path: Optional[str] = None):
+    def __init__(self, image: Image.Image, delay_ms: int = 100,
+                 lazy_load: bool = True, source_path: Optional[str] = None):
         """
         Args:
             image: PIL Image 객체 (RGBA 모드로 변환됨)

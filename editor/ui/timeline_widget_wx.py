@@ -56,7 +56,8 @@ class TimelineWidget(wx.ScrolledCanvas):
         self.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
 
     def refresh(self):
-        """타임라인 새로고침"""
+        """타임라인 새로고침 (썸네일 캐시 초기화 + 재생성은 지연)"""
+        self._thumbnails.clear()
         self._generate_thumbnails()
         self._update_size()
         self.Refresh()
@@ -66,29 +67,38 @@ class TimelineWidget(wx.ScrolledCanvas):
         self._thumbnails.clear()
 
     def _generate_thumbnails(self):
-        """썸네일 생성"""
+        """썸네일 캐시 크기를 프레임 수에 맞춤 (실제 생성은 _get_thumbnail에서 지연)"""
         frames = self._main_window.frames
-        self._thumbnails.clear()
+        count = frames.frame_count if frames else 0
+        # 기존 캐시와 크기가 다르면 리셋
+        if len(self._thumbnails) != count:
+            self._thumbnails = [None] * count
 
-        # 썸네일 크기를 썸네일 영역에 맞춤 (텍스트 영역 제외)
-        thumb_size = min(self.THUMB_WIDTH - 4, self.THUMB_HEIGHT - 4)
-
-        for frame in frames:
+    def _get_thumbnail(self, index: int) -> Optional[wx.Bitmap]:
+        """인덱스의 썸네일을 지연 생성하여 반환"""
+        if index < 0 or index >= len(self._thumbnails):
+            return None
+        if self._thumbnails[index] is not None:
+            return self._thumbnails[index]
+        # 지연 생성
+        frames = self._main_window.frames
+        if frames.is_empty or index >= frames.frame_count:
+            return None
+        try:
+            frame = frames[index]
             if frame is None:
-                self._thumbnails.append(None)
-                continue
-            try:
-                thumb = frame.get_thumbnail(thumb_size)
-                if thumb is None:
-                    self._thumbnails.append(None)
-                    continue
-                wx_bitmap = pil_to_wx_bitmap(thumb)
-                if wx_bitmap:
-                    self._thumbnails.append(wx_bitmap)
-                else:
-                    self._thumbnails.append(None)
-            except Exception:
-                self._thumbnails.append(None)
+                return None
+            thumb_size = min(self.THUMB_WIDTH - 4, self.THUMB_HEIGHT - 4)
+            thumb = frame.get_thumbnail(thumb_size)
+            if thumb is None:
+                return None
+            wx_bitmap = pil_to_wx_bitmap(thumb)
+            if wx_bitmap:
+                self._thumbnails[index] = wx_bitmap
+                return wx_bitmap
+        except Exception:
+            pass
+        return None
 
     def _update_size(self):
         """위젯 크기 업데이트"""
@@ -122,9 +132,17 @@ class TimelineWidget(wx.ScrolledCanvas):
 
         current_index = frames.current_index
 
-        # 프레임 그리기
-        for i in range(frames.frame_count):
-            x = self.FRAME_SPACING + i * (self.THUMB_WIDTH + self.FRAME_SPACING)
+        # viewport 범위 계산 (보이는 프레임만 렌더링)
+        scroll_x, _ = self.GetViewStart()
+        scroll_x *= 10  # scroll rate 보정
+        client_w = self.GetClientSize().GetWidth()
+        frame_step = self.THUMB_WIDTH + self.FRAME_SPACING
+        start_idx = max(0, (scroll_x - self.FRAME_SPACING) // frame_step)
+        end_idx = min(frames.frame_count, (scroll_x + client_w) // frame_step + 2)
+
+        # 보이는 프레임만 그리기
+        for i in range(start_idx, end_idx):
+            x = self.FRAME_SPACING + i * frame_step
             y = self.THUMB_PADDING
 
             is_selected = frames.is_selected(i)
@@ -177,18 +195,17 @@ class TimelineWidget(wx.ScrolledCanvas):
         dc.SetPen(wx.Pen(border_color, 1))
         dc.DrawRoundedRectangle(x, y, self.THUMB_WIDTH, self.TOTAL_HEIGHT, 4)
 
-        # 썸네일 (상단 영역에 표시)
+        # 썸네일 (상단 영역에 표시, 지연 생성)
         try:
-            if index < len(self._thumbnails) and self._thumbnails[index]:
-                thumb = self._thumbnails[index]
-                if thumb and thumb.IsOk():
-                    thumb_w = thumb.GetWidth()
-                    thumb_h = thumb.GetHeight()
-                    thumb_x = x + (self.THUMB_WIDTH - thumb_w) // 2
-                    # 썸네일 높이를 초과하지 않도록 중앙 배치
-                    thumb_y = y + 2 + (self.THUMB_HEIGHT - 4 - thumb_h) // 2
-                    thumb_y = max(y + 2, thumb_y)
-                    dc.DrawBitmap(thumb, thumb_x, thumb_y, True)
+            thumb = self._get_thumbnail(index)
+            if thumb and thumb.IsOk():
+                thumb_w = thumb.GetWidth()
+                thumb_h = thumb.GetHeight()
+                thumb_x = x + (self.THUMB_WIDTH - thumb_w) // 2
+                # 썸네일 높이를 초과하지 않도록 중앙 배치
+                thumb_y = y + 2 + (self.THUMB_HEIGHT - 4 - thumb_h) // 2
+                thumb_y = max(y + 2, thumb_y)
+                dc.DrawBitmap(thumb, thumb_x, thumb_y, True)
         except (IndexError, AttributeError):
             pass
 
