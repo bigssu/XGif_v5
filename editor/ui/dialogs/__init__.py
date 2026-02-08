@@ -9,6 +9,7 @@ from .sticker_dialog_wx import StickerDialog
 from .speed_dialog_wx import SpeedDialog
 from .pencil_dialog_wx import PencilDialog
 from .target_frame_hint_dialog_wx import TargetFrameHintDialog
+from .help_dialog_wx import HelpDialog
 
 __all__ = [
     'CropDialog',
@@ -19,4 +20,5 @@ __all__ = [
     'SpeedDialog',
     'PencilDialog',
     'TargetFrameHintDialog',
+    'HelpDialog',
 ]

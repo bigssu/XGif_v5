@@ -411,7 +411,7 @@ class GifEncoder:
             return result
         except Exception as e:
             # asyncio 실패 시 동기 방식으로 폴백
-            print(f"[GifEncoder] asyncio 실패, 동기 모드로 폴백: {e}")
+            logger.warning("asyncio 실패, 동기 모드로 폴백: %s", e)
             return subprocess.run(
                 cmd,
                 capture_output=True,
@@ -1165,7 +1165,7 @@ class GifEncoder:
             encoder = self._get_best_encoder(self._codec)
             is_hw_encoder = encoder not in ('libx264', 'libx265')
             
-            print(f"[GifEncoder] 코덱: {self._codec.upper()}, 인코더: {encoder} ({self.get_encoder_display_name(encoder)})")
+            logger.info("코덱: %s, 인코더: %s (%s)", self._codec.upper(), encoder, self.get_encoder_display_name(encoder))
             
             # 명령어 구성
             cmd = [
@@ -1211,7 +1211,7 @@ class GifEncoder:
             if result.returncode != 0:
                 # 하드웨어 인코더 실패 시 CPU로 재시도
                 if is_hw_encoder:
-                    print(f"[GifEncoder] {encoder} 실패, CPU 폴백...")
+                    logger.warning("%s 실패, CPU 폴백...", encoder)
                     return self._encode_mp4_cpu_fallback(frames_dir, output_path, fps, crf, audio_path)
                 self._emit_error(f"MP4 생성 실패: {result.stderr}")
                 return False
@@ -1251,7 +1251,7 @@ class GifEncoder:
             
             cmd.append(output_path)
             
-            print(f"[GifEncoder] CPU 폴백: {cpu_encoder}")
+            logger.info("CPU 폴백: %s", cpu_encoder)
             
             result = subprocess.run(
                 cmd,

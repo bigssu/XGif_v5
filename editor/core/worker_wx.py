@@ -148,7 +148,10 @@ class BatchEffectWorker(BaseWorker):
                     return
 
                 # 효과 적용 후 원본을 교체하여 메모리 누적 방지
-                self.images[i] = self.effect_func(self.images[i])
+                old_img = self.images[i]
+                self.images[i] = self.effect_func(old_img)
+                if old_img is not self.images[i]:
+                    del old_img
 
                 # 진행률 업데이트
                 self.signals.emit_progress(i + 1, total)
@@ -329,7 +332,8 @@ class WorkerManager:
         timeout_sec = timeout_ms / 1000.0 if timeout_ms > 0 else None
         try:
             self._executor.shutdown(wait=True, cancel_futures=False)
-            # executor를 재생성하여 이후에도 작업 제출 가능
+            # 이전 executor 명시적 해제 후 재생성
+            del self._executor
             self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
             return True
         except Exception:

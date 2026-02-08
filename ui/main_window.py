@@ -414,11 +414,9 @@ class MainWindow(wx.Frame):
         parent_layout.Add(progress_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
     
     def _create_preview_area(self, parent_layout):
-        """실시간 미리보기 영역 생성 (임시 비활성화)"""
-        # TODO: wxPython으로 변환 필요
+        """실시간 미리보기 영역 생성 (미구현 — 스텁)"""
         self.preview_label = None
         self.preview_widget = None
-        pass
     
     def _start_preview(self):
         """실시간 미리보기 시작"""
@@ -490,8 +488,7 @@ class MainWindow(wx.Frame):
                 return
             
             if h > 0 and w > 0:
-                    # TODO: wxPython으로 미리보기 구현 필요
-                    # 현재 미리보기는 비활성화됨
+                    # 미리보기 비활성화 상태
                     pass
         except (AttributeError, ValueError, TypeError, RuntimeError, wx.PyDeadObjectError) as e:
             # 예외 발생 시 로그 (미리보기 실패는 치명적이지 않음)
@@ -960,7 +957,7 @@ class MainWindow(wx.Frame):
         self.record_state = self.STATE_RECORDING
         self._update_button_states()
         
-        # UI 비활성화 - TODO: capture_control_bar 구현 후 활성화
+        # 녹화 중 UI 비활성화
         if hasattr(self, 'include_cursor_cb') and self.include_cursor_cb:
             self.include_cursor_cb.Enable(False)
         
@@ -990,10 +987,6 @@ class MainWindow(wx.Frame):
                 # 명시적 설정 적용
                 self.recorder.set_capture_backend(user_backend)
                 logger.info(f"[Manual] 백엔드 설정 적용: {user_backend}")
-        
-        # MP4 모드일 때 오디오 녹음 시작 (현재 GIF만 지원)
-        # TODO: MP4 포맷 선택 UI 구현 후 활성화
-        pass
         
         # 워터마크, 키보드 표시 설정 적용 (녹화 시작 전)
         try:
@@ -1818,15 +1811,8 @@ class MainWindow(wx.Frame):
             logger.debug("HDR label update failed: %s", e)
     
     def _setup_shortcuts(self):
-        """키보드 단축키 설정"""
-        # TODO: wxPython으로 변환 필요
-        # F9: 녹화 시작/일시정지
-        # F10: 녹화 중지
+        """키보드 단축키 설정 (글로벌 핫키는 capture_control_bar에서 처리)"""
         pass
-        
-        # F11: 캡처 영역 표시/숨김 (임시 비활성화)
-        # shortcut_overlay = QShortcut(QKeySequence("F11"), self)
-        # shortcut_overlay.activated.connect(self._on_shortcut_overlay)
     
     def _on_shortcut_rec(self):
         """F9 단축키: 녹화 시작/일시정지"""

@@ -565,53 +565,53 @@ class MainWindow(wx.Frame):
         # 파일 메뉴
         self._file_menu = wx.Menu()
         self._action_new = self._file_menu.Append(wx.ID_NEW, "새로 만들기(&N)\tCtrl+N")
-        self.Bind(wx.EVT_MENU, lambda e: self.new_project(), self._action_new)
+        self._file_menu.Bind(wx.EVT_MENU, lambda e: self.new_project(), self._action_new)
         self._action_open = self._file_menu.Append(wx.ID_OPEN, "열기(&O)...\tCtrl+O")
-        self.Bind(wx.EVT_MENU, lambda e: self.open_file(), self._action_open)
+        self._file_menu.Bind(wx.EVT_MENU, lambda e: self.open_file(), self._action_open)
         self._action_open_sequence = self._file_menu.Append(wx.ID_ANY, "이미지 시퀀스 열기...")
-        self.Bind(wx.EVT_MENU, lambda e: self.open_image_sequence(), self._action_open_sequence)
+        self._file_menu.Bind(wx.EVT_MENU, lambda e: self.open_image_sequence(), self._action_open_sequence)
         self._recent_menu = wx.Menu()
         self._file_menu.AppendSubMenu(self._recent_menu, "최근 파일(&R)")
         self._update_recent_files_menu()
         action_clear_recent = self._file_menu.Append(wx.ID_ANY, "최근 파일 목록 지우기")
-        self.Bind(wx.EVT_MENU, lambda e: self._clear_recent_files(), action_clear_recent)
+        self._file_menu.Bind(wx.EVT_MENU, lambda e: self._clear_recent_files(), action_clear_recent)
         self._file_menu.AppendSeparator()
         self._action_save = self._file_menu.Append(wx.ID_SAVE, translations.tr("action_save") if translations else "저장(&S)\tCtrl+S")
-        self.Bind(wx.EVT_MENU, lambda e: self.save_file(), self._action_save)
+        self._file_menu.Bind(wx.EVT_MENU, lambda e: self.save_file(), self._action_save)
         self._action_save_as = self._file_menu.Append(wx.ID_SAVEAS, translations.tr("action_save_as") if translations else "다른 이름으로 저장(&A)...\tCtrl+Shift+S")
-        self.Bind(wx.EVT_MENU, lambda e: self.save_file_as(), self._action_save_as)
+        self._file_menu.Bind(wx.EVT_MENU, lambda e: self.save_file_as(), self._action_save_as)
         self._file_menu.AppendSeparator()
         action_exit = self._file_menu.Append(wx.ID_EXIT, "종료(&X)\tCtrl+Q")
-        self.Bind(wx.EVT_MENU, lambda e: self.Close(), action_exit)
+        self._file_menu.Bind(wx.EVT_MENU, lambda e: self.Close(), action_exit)
 
         # 편집 메뉴
         self._edit_menu = wx.Menu()
         action_select_all = self._edit_menu.Append(wx.ID_SELECTALL, "모두 선택(&A)\tCtrl+A")
-        self.Bind(wx.EVT_MENU, lambda e: self._select_all(), action_select_all)
+        self._edit_menu.Bind(wx.EVT_MENU, lambda e: self._select_all(), action_select_all)
         self._edit_menu.AppendSeparator()
         action_delete = self._edit_menu.Append(wx.ID_DELETE, "프레임 삭제(&D)\tDel")
-        self.Bind(wx.EVT_MENU, lambda e: self._delete_frame(), action_delete)
+        self._edit_menu.Bind(wx.EVT_MENU, lambda e: self._delete_frame(), action_delete)
         action_duplicate = self._edit_menu.Append(wx.ID_ANY, "프레임 복제\tCtrl+D")
-        self.Bind(wx.EVT_MENU, lambda e: self._duplicate_frame(), action_duplicate)
+        self._edit_menu.Bind(wx.EVT_MENU, lambda e: self._duplicate_frame(), action_duplicate)
 
         # 관리 메뉴
         self._manage_menu = wx.Menu()
         action_remove_dup = self._manage_menu.Append(wx.ID_ANY, "중복 프레임 제거")
-        self.Bind(wx.EVT_MENU, lambda e: self._remove_duplicates(), action_remove_dup)
+        self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._remove_duplicates(), action_remove_dup)
         self._manage_menu.AppendSeparator()
         action_mosaic = self._manage_menu.Append(wx.ID_ANY, "모자이크/검열...")
-        self.Bind(wx.EVT_MENU, lambda e: self._show_mosaic_toolbar(), action_mosaic)
+        self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._show_mosaic_toolbar(), action_mosaic)
         action_speech_bubble = self._manage_menu.Append(wx.ID_ANY, "말풍선...")
-        self.Bind(wx.EVT_MENU, lambda e: self._show_speech_bubble_toolbar(), action_speech_bubble)
+        self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._show_speech_bubble_toolbar(), action_speech_bubble)
         action_watermark = self._manage_menu.Append(wx.ID_ANY, "워터마크...")
-        self.Bind(wx.EVT_MENU, lambda e: self._show_watermark_toolbar(), action_watermark)
+        self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._show_watermark_toolbar(), action_watermark)
         self._manage_menu.AppendSeparator()
         action_split_gif = self._manage_menu.Append(wx.ID_ANY, "선택 프레임 분할 저장...")
-        self.Bind(wx.EVT_MENU, lambda e: self._split_gif(), action_split_gif)
+        self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._split_gif(), action_split_gif)
         action_merge_gif = self._manage_menu.Append(wx.ID_ANY, "GIF 끝에 병합...")
-        self.Bind(wx.EVT_MENU, lambda e: self._merge_gif(), action_merge_gif)
+        self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._merge_gif(), action_merge_gif)
         action_insert_gif = self._manage_menu.Append(wx.ID_ANY, "현재 위치에 GIF 삽입...")
-        self.Bind(wx.EVT_MENU, lambda e: self._insert_gif(), action_insert_gif)
+        self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._insert_gif(), action_insert_gif)
 
         # 보기 메뉴
         self._view_menu = wx.Menu()
@@ -623,16 +623,19 @@ class MainWindow(wx.Frame):
         self._action_gpu = self._settings_menu.AppendCheckItem(wx.ID_ANY, "GPU 가속 사용")
         self._action_gpu.Check(False)
         self._action_gpu.Enable(False)
-        self.Bind(wx.EVT_MENU, lambda e: self._toggle_gpu(e.IsChecked()), self._action_gpu)
+        self._settings_menu.Bind(wx.EVT_MENU, lambda e: self._toggle_gpu(e.IsChecked()), self._action_gpu)
         action_gpu_info = self._settings_menu.Append(wx.ID_ANY, "GPU 정보...")
-        self.Bind(wx.EVT_MENU, lambda e: self._show_gpu_info(), action_gpu_info)
+        self._settings_menu.Bind(wx.EVT_MENU, lambda e: self._show_gpu_info(), action_gpu_info)
         # GPU 메뉴 상태를 비동기로 업데이트
         wx.CallLater(500, self._init_gpu_menu_state)
 
         # 도움말 메뉴
         self._help_menu = wx.Menu()
+        action_help = self._help_menu.Append(wx.ID_HELP, "도움말")
+        self._help_menu.Bind(wx.EVT_MENU, lambda e: self._show_help_dialog(), action_help)
+        self._help_menu.AppendSeparator()
         action_about = self._help_menu.Append(wx.ID_ABOUT, f"XGif 정보  v{__version__}")
-        self.Bind(wx.EVT_MENU, lambda e: self._show_about_dialog(), action_about)
+        self._help_menu.Bind(wx.EVT_MENU, lambda e: self._show_about_dialog(), action_about)
 
         # === FlatMenuBar 삽입 (기존 wx.MenuBar 대체) ===
         central_panel = self._icon_toolbar.GetParent()
@@ -1982,7 +1985,7 @@ class MainWindow(wx.Frame):
             for i, file_path in enumerate(self._recent_files, 1):
                 label = f"{i}. {os.path.basename(file_path)}"
                 item = self._recent_menu.Append(wx.ID_ANY, label, file_path)
-                self.Bind(wx.EVT_MENU, lambda e, path=file_path: self.open_file(path), item)
+                self._recent_menu.Bind(wx.EVT_MENU, lambda e, path=file_path: self.open_file(path), item)
 
     def _clear_recent_files(self):
         """최근 파일 목록 지우기"""
@@ -2037,6 +2040,13 @@ class MainWindow(wx.Frame):
                 self._memory_limit_expanded = True  # 다시 묻지 않음
 
             dlg.Destroy()
+
+    def _show_help_dialog(self):
+        """도움말 다이얼로그 표시"""
+        from .dialogs.help_dialog_wx import HelpDialog
+        dlg = HelpDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def _show_about_dialog(self):
         """정보 다이얼로그 표시"""
