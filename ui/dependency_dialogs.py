@@ -7,7 +7,7 @@ Windows 11 Dark Theme 스타일
 import logging
 import wx
 
-from ui.constants import THEME_MID, get_ui_font, FONT_SIZE_DEFAULT, FONT_SIZE_LABEL
+from ui.theme import Colors, Fonts
 from ui.i18n import tr
 from ui.capture_control_bar import FlatButton
 from core.dependency_checker import DependencyState, DependencyStatus
@@ -40,7 +40,7 @@ class DependencyInstallDialog(wx.Dialog):
         self.result_id = ID_CANCEL_DEP
         self.dont_ask_again = False
 
-        self.SetBackgroundColour(wx.Colour(*THEME_MID.BG_PANEL))
+        self.SetBackgroundColour(Colors.BG_PANEL)
         self._build_ui(feature_description, disable_label, show_dont_ask)
         self.CenterOnParent()
 
@@ -49,36 +49,36 @@ class DependencyInstallDialog(wx.Dialog):
 
         # 제목 (의존성 이름)
         name_label = wx.StaticText(self, label=self.dep_status.name)
-        name_label.SetFont(get_ui_font(14, bold=True))
-        name_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        name_label.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
+        name_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         sizer.Add(name_label, 0, wx.ALL, 16)
 
         # 상태
         state = self.dep_status.state
         if state == DependencyState.MISSING:
             state_text = tr('dep_state_missing')
-            state_color = (239, 68, 68)
+            state_color = Colors.STATUS_ERROR
         elif state == DependencyState.VERSION_LOW:
             state_text = tr('dep_state_version_low').format(self.dep_status.installed_version)
-            state_color = (245, 158, 11)
+            state_color = Colors.STATUS_WARNING
         elif state == DependencyState.ERROR:
             state_text = tr('dep_state_error')
-            state_color = (239, 68, 68)
+            state_color = Colors.STATUS_ERROR
         else:
             state_text = tr('dep_state_installed')
-            state_color = (34, 197, 94)
+            state_color = Colors.STATUS_SUCCESS
 
         state_label = wx.StaticText(self, label=state_text)
-        state_label.SetForegroundColour(wx.Colour(*state_color))
-        state_label.SetFont(get_ui_font(FONT_SIZE_DEFAULT, bold=True))
+        state_label.SetForegroundColour(state_color)
+        state_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT, bold=True))
         sizer.Add(state_label, 0, wx.LEFT | wx.RIGHT, 16)
 
         sizer.Add((0, 8))
 
         # 설명 텍스트
         desc = wx.StaticText(self, label=feature_description)
-        desc.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
-        desc.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        desc.SetForegroundColour(Colors.TEXT_SECONDARY)
+        desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         desc.Wrap(420)
         sizer.Add(desc, 0, wx.LEFT | wx.RIGHT, 16)
 
@@ -87,7 +87,7 @@ class DependencyInstallDialog(wx.Dialog):
         # "다시 묻지 않기" 체크박스
         if show_dont_ask:
             self._dont_ask_cb = wx.CheckBox(self, label=tr('dep_dont_ask_again'))
-            self._dont_ask_cb.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
+            self._dont_ask_cb.SetForegroundColour(Colors.TEXT_SECONDARY)
             sizer.Add(self._dont_ask_cb, 0, wx.LEFT | wx.BOTTOM, 16)
         else:
             self._dont_ask_cb = None
@@ -98,27 +98,27 @@ class DependencyInstallDialog(wx.Dialog):
         # 설치/다운로드 버튼 (Accent)
         install_label = tr('dep_download_btn') if self.dep_status.name == "FFmpeg" else tr('dep_install_btn')
         self.install_btn = FlatButton(self, label=install_label, size=(110, 32),
-                                       bg_color=THEME_MID.ACCENT,
-                                       fg_color=(255, 255, 255),
-                                       hover_color=THEME_MID.ACCENT_HOVER,
-                                       pressed_color=THEME_MID.ACCENT_PRESSED)
+                                       bg_color=Colors.ACCENT.Get()[:3],
+                                       fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                       hover_color=Colors.ACCENT_HOVER.Get()[:3],
+                                       pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
         self.install_btn.Bind(wx.EVT_BUTTON, self._on_install)
         btn_sizer.Add(self.install_btn, 0, wx.RIGHT, 8)
 
         # 대안 버튼
         if disable_label:
             self.disable_btn = FlatButton(self, label=disable_label, size=(140, 32),
-                                           bg_color=THEME_MID.BG_BUTTON,
-                                           fg_color=THEME_MID.FG_TEXT,
-                                           hover_color=THEME_MID.BG_BUTTON_HOVER)
+                                           bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                           fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                           hover_color=Colors.BG_HOVER.Get()[:3])
             self.disable_btn.Bind(wx.EVT_BUTTON, self._on_disable)
             btn_sizer.Add(self.disable_btn, 0, wx.RIGHT, 8)
 
         # 취소 버튼
         self.cancel_btn = FlatButton(self, label=tr('cancel'), size=(80, 32),
-                                      bg_color=THEME_MID.BG_BUTTON,
-                                      fg_color=THEME_MID.FG_TEXT,
-                                      hover_color=THEME_MID.BG_BUTTON_HOVER)
+                                      bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                      hover_color=Colors.BG_HOVER.Get()[:3])
         self.cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
         btn_sizer.Add(self.cancel_btn, 0)
 
@@ -148,7 +148,7 @@ class DependencyRescanDialog(wx.Dialog):
         title = tr('dep_rescan_title')
         wx.Dialog.__init__(self, parent, title=title, size=(440, 280),
                           style=wx.DEFAULT_DIALOG_STYLE)
-        self.SetBackgroundColour(wx.Colour(*THEME_MID.BG_PANEL))
+        self.SetBackgroundColour(Colors.BG_PANEL)
         self._build_ui(dep_name, guide_text)
         self.CenterOnParent()
 
@@ -157,14 +157,14 @@ class DependencyRescanDialog(wx.Dialog):
 
         # 제목
         name_label = wx.StaticText(self, label=dep_name)
-        name_label.SetFont(get_ui_font(14, bold=True))
-        name_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        name_label.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
+        name_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         sizer.Add(name_label, 0, wx.ALL, 16)
 
         # 안내 텍스트
         guide = wx.StaticText(self, label=guide_text)
-        guide.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
-        guide.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        guide.SetForegroundColour(Colors.TEXT_SECONDARY)
+        guide.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         guide.Wrap(400)
         sizer.Add(guide, 1, wx.LEFT | wx.RIGHT | wx.EXPAND, 16)
 
@@ -173,17 +173,17 @@ class DependencyRescanDialog(wx.Dialog):
         btn_sizer.AddStretchSpacer()
 
         rescan_btn = FlatButton(self, label=tr('dep_rescan_btn'), size=(100, 32),
-                                 bg_color=THEME_MID.ACCENT,
-                                 fg_color=(255, 255, 255),
-                                 hover_color=THEME_MID.ACCENT_HOVER,
-                                 pressed_color=THEME_MID.ACCENT_PRESSED)
+                                 bg_color=Colors.ACCENT.Get()[:3],
+                                 fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                 hover_color=Colors.ACCENT_HOVER.Get()[:3],
+                                 pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
         rescan_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_OK))
         btn_sizer.Add(rescan_btn, 0, wx.RIGHT, 8)
 
         close_btn = FlatButton(self, label=tr('dep_close_btn'), size=(80, 32),
-                                bg_color=THEME_MID.BG_BUTTON,
-                                fg_color=THEME_MID.FG_TEXT,
-                                hover_color=THEME_MID.BG_BUTTON_HOVER)
+                                bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                hover_color=Colors.BG_HOVER.Get()[:3])
         close_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
         btn_sizer.Add(close_btn, 0)
 

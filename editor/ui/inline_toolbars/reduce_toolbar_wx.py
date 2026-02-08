@@ -15,10 +15,11 @@ class ReduceToolbar(InlineToolbarBase):
     N개마다 1개만 유지하여 프레임 수를 줄입니다.
     """
 
+    _has_clear_button = False
+
     def __init__(self, main_window: 'MainWindow', parent=None):
         super().__init__(main_window, parent)
         self._setup_controls()
-        self.set_clear_button_visible(False)  # 프레임 줄이기는 Clear 버튼 불필요
 
     def _setup_controls(self):
         """컨트롤 설정"""
@@ -139,8 +140,8 @@ class ReduceToolbar(InlineToolbarBase):
                 wx.OK | wx.ICON_INFORMATION
             )
 
-            # 적용 완료 후 툴바 숨김
-            self.hide_from_canvas()
+            # 적용 완료 후 이벤트 발생
+            super()._on_apply(event)
         except MemoryError:
             wx.MessageBox(
                 translations.tr("msg_memory_error") if translations else "메모리가 부족하여 작업을 수행할 수 없습니다.",

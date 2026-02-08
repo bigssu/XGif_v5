@@ -13,8 +13,8 @@ from ui.constants import (
     CODEC_OPTIONS, CODEC_OPTIONS_MAP,
     CAPTURE_BACKEND_OPTIONS, CAPTURE_BACKEND_OPTIONS_MAP,
     VERSION,
-    THEME_MID, get_ui_font, FONT_SIZE_DEFAULT, FONT_SIZE_LABEL,
 )
+from ui.theme import Colors, Fonts
 from ui.i18n import tr, get_trans_manager
 from ui.capture_control_bar import FlatButton
 
@@ -65,25 +65,25 @@ class SettingsDialog(wx.Dialog):
 
     def _init_ui(self):
         """UI 초기화 (Windows 11 Dark Theme)"""
-        self.SetBackgroundColour(wx.Colour(*THEME_MID.BG_PANEL))
-        self.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        self.SetBackgroundColour(Colors.BG_PANEL)
+        self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # 스크롤 패널
         self.scroll_panel = scrolled.ScrolledPanel(self)
-        self.scroll_panel.SetBackgroundColour(wx.Colour(*THEME_MID.BG_PANEL))
-        self.scroll_panel.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        self.scroll_panel.SetBackgroundColour(Colors.BG_PANEL)
+        self.scroll_panel.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         scroll_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # === 언어 설정 그룹 ===
         self.lang_box = wx.StaticBox(self.scroll_panel, label=tr('language'))
-        self.lang_box.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.lang_box.SetFont(get_ui_font(FONT_SIZE_LABEL, bold=True))
+        self.lang_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.lang_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         lang_sizer = wx.StaticBoxSizer(self.lang_box, wx.HORIZONTAL)
 
         self.lang_label = wx.StaticText(self.scroll_panel, label=tr('language') + ":")
-        self.lang_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
+        self.lang_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         self.lang_label.SetMinSize((130, -1))
         self.lang_combo = wx.Choice(self.scroll_panel, choices=[tr('language_ko'), tr('language_en')])
         self.lang_combo.SetToolTip(tr('language_tooltip'))
@@ -96,17 +96,17 @@ class SettingsDialog(wx.Dialog):
 
         # === 미리보기 및 HDR 그룹 ===
         self.preview_box = wx.StaticBox(self.scroll_panel, label=tr('preview'))
-        self.preview_box.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.preview_box.SetFont(get_ui_font(FONT_SIZE_LABEL, bold=True))
+        self.preview_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.preview_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         preview_sizer = wx.StaticBoxSizer(self.preview_box, wx.VERTICAL)
 
         self.preview_cb = wx.CheckBox(self.scroll_panel, label=tr('realtime_preview'))
-        self.preview_cb.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.preview_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.preview_cb.SetToolTip(tr('realtime_preview_tooltip'))
         preview_sizer.Add(self.preview_cb, 0, wx.ALL, 8)
 
         self.hdr_correction_cb = wx.CheckBox(self.scroll_panel, label="HDR 모니터 보정 (캡처가 너무 밝을 때)")
-        self.hdr_correction_cb.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.hdr_correction_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.hdr_correction_cb.SetToolTip("HDR 모니터에서 캡처가 비정상적으로 밝게 나오면 켜세요. 톤 매핑을 적용합니다.")
         preview_sizer.Add(self.hdr_correction_cb, 0, wx.ALL, 8)
 
@@ -114,13 +114,13 @@ class SettingsDialog(wx.Dialog):
 
         # === 메모리 설정 그룹 ===
         self.memory_box = wx.StaticBox(self.scroll_panel, label=tr('memory_management'))
-        self.memory_box.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.memory_box.SetFont(get_ui_font(FONT_SIZE_LABEL, bold=True))
+        self.memory_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.memory_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         memory_sizer = wx.StaticBoxSizer(self.memory_box, wx.VERTICAL)
 
         memory_row = wx.BoxSizer(wx.HORIZONTAL)
         self.memory_label = wx.StaticText(self.scroll_panel, label=tr('max_memory'))
-        self.memory_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
+        self.memory_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         self.memory_label.SetMinSize((130, -1))
         self.memory_limit_combo = wx.Choice(self.scroll_panel,
             choices=["1 GB (" + tr('auto') + ")", "2 GB", "3 GB", "4 GB"])
@@ -136,14 +136,14 @@ class SettingsDialog(wx.Dialog):
 
         # === GPU 및 인코더 그룹 ===
         self.gpu_box = wx.StaticBox(self.scroll_panel, label=tr('gpu_encoder'))
-        self.gpu_box.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.gpu_box.SetFont(get_ui_font(FONT_SIZE_LABEL, bold=True))
+        self.gpu_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.gpu_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         gpu_sizer = wx.StaticBoxSizer(self.gpu_box, wx.VERTICAL)
 
         # 캡처 백엔드
         backend_row = wx.BoxSizer(wx.HORIZONTAL)
         self.backend_label = wx.StaticText(self.scroll_panel, label=tr('capture_backend'))
-        self.backend_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
+        self.backend_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         self.backend_label.SetMinSize((130, -1))
         self.backend_combo = wx.Choice(self.scroll_panel, choices=CAPTURE_BACKEND_OPTIONS)
         self.backend_combo.SetToolTip(tr('capture_backend_tooltip'))
@@ -157,7 +157,7 @@ class SettingsDialog(wx.Dialog):
         # 인코더
         encoder_row = wx.BoxSizer(wx.HORIZONTAL)
         self.encoder_label = wx.StaticText(self.scroll_panel, label=tr('encoder'))
-        self.encoder_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
+        self.encoder_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         self.encoder_label.SetMinSize((130, -1))
         self.encoder_combo = wx.Choice(self.scroll_panel, choices=ENCODER_OPTIONS)
         self.encoder_combo.SetToolTip(tr('encoder_tooltip'))
@@ -170,7 +170,7 @@ class SettingsDialog(wx.Dialog):
         # 코덱
         codec_row = wx.BoxSizer(wx.HORIZONTAL)
         self.codec_label = wx.StaticText(self.scroll_panel, label=tr('codec'))
-        self.codec_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
+        self.codec_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         self.codec_label.SetMinSize((130, -1))
         self.codec_combo = wx.Choice(self.scroll_panel, choices=CODEC_OPTIONS)
         self.codec_combo.SetToolTip(tr('codec_tooltip'))
@@ -184,12 +184,12 @@ class SettingsDialog(wx.Dialog):
 
         # === 오디오 그룹 ===
         self.audio_box = wx.StaticBox(self.scroll_panel, label=tr('audio'))
-        self.audio_box.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.audio_box.SetFont(get_ui_font(FONT_SIZE_LABEL, bold=True))
+        self.audio_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.audio_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         audio_sizer = wx.StaticBoxSizer(self.audio_box, wx.VERTICAL)
 
         self.mic_audio_cb = wx.CheckBox(self.scroll_panel, label=tr('mic_recording'))
-        self.mic_audio_cb.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.mic_audio_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.mic_audio_cb.SetToolTip(tr('mic_recording_tooltip'))
         audio_sizer.Add(self.mic_audio_cb, 0, wx.ALL, 8)
 
@@ -197,12 +197,12 @@ class SettingsDialog(wx.Dialog):
 
         # === 오버레이 그룹 ===
         self.overlay_box = wx.StaticBox(self.scroll_panel, label=tr('overlay'))
-        self.overlay_box.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.overlay_box.SetFont(get_ui_font(FONT_SIZE_LABEL, bold=True))
+        self.overlay_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.overlay_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         overlay_sizer = wx.StaticBoxSizer(self.overlay_box, wx.VERTICAL)
 
         self.watermark_cb = wx.CheckBox(self.scroll_panel, label=tr('watermark'))
-        self.watermark_cb.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.watermark_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.watermark_cb.SetToolTip(tr('watermark_tooltip'))
         overlay_sizer.Add(self.watermark_cb, 0, wx.ALL, 8)
 
@@ -210,17 +210,17 @@ class SettingsDialog(wx.Dialog):
 
         # === 인터랙션 그룹 ===
         self.interaction_box = wx.StaticBox(self.scroll_panel, label=tr('interaction'))
-        self.interaction_box.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.interaction_box.SetFont(get_ui_font(FONT_SIZE_LABEL, bold=True))
+        self.interaction_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.interaction_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         interaction_sizer = wx.StaticBoxSizer(self.interaction_box, wx.VERTICAL)
 
         self.click_highlight_cb = wx.CheckBox(self.scroll_panel, label=tr('click_highlight'))
-        self.click_highlight_cb.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.click_highlight_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.click_highlight_cb.SetToolTip(tr('click_highlight_tooltip'))
         interaction_sizer.Add(self.click_highlight_cb, 0, wx.ALL, 8)
 
         self.keyboard_display_cb = wx.CheckBox(self.scroll_panel, label=tr('keyboard_display'))
-        self.keyboard_display_cb.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.keyboard_display_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.keyboard_display_cb.SetToolTip(tr('keyboard_display_tooltip'))
         interaction_sizer.Add(self.keyboard_display_cb, 0, wx.ALL, 8)
 
@@ -233,12 +233,12 @@ class SettingsDialog(wx.Dialog):
 
         # === 하단 고정 영역 ===
         bottom_panel = wx.Panel(self)
-        bottom_panel.SetBackgroundColour(wx.Colour(*THEME_MID.BG_PANEL))
+        bottom_panel.SetBackgroundColour(Colors.BG_PANEL)
         bottom_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # 상태 레이블
         self.status_label = wx.StaticText(bottom_panel, label="")
-        self.status_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.status_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.status_label.Hide()
         bottom_sizer.Add(self.status_label, 0, wx.ALL | wx.ALIGN_CENTER, 8)
 
@@ -247,18 +247,18 @@ class SettingsDialog(wx.Dialog):
 
         # 기본값 복원 버튼
         self.reset_btn = FlatButton(bottom_panel, label=tr('reset_defaults'), size=(120, 30),
-                                    bg_color=THEME_MID.BG_BUTTON,
-                                    fg_color=THEME_MID.FG_TEXT,
-                                    hover_color=THEME_MID.BG_BUTTON_HOVER)
+                                    bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                    fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                    hover_color=Colors.BG_HOVER.Get()[:3])
         self.reset_btn.SetToolTip(tr('reset_tooltip'))
         self.reset_btn.Bind(wx.EVT_BUTTON, self._on_reset)
         btn_sizer.Add(self.reset_btn, 0, wx.ALL, 8)
 
         # 의존성 확인 초기화 버튼
         self.reset_dep_btn = FlatButton(bottom_panel, label=tr('dep_reset_skip_flags'), size=(150, 30),
-                                         bg_color=THEME_MID.BG_BUTTON,
-                                         fg_color=THEME_MID.FG_TEXT,
-                                         hover_color=THEME_MID.BG_BUTTON_HOVER)
+                                         bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                         fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                         hover_color=Colors.BG_HOVER.Get()[:3])
         self.reset_dep_btn.SetToolTip(tr('dep_reset_skip_flags_tooltip'))
         self.reset_dep_btn.Bind(wx.EVT_BUTTON, self._on_reset_dep_flags)
         btn_sizer.Add(self.reset_dep_btn, 0, wx.ALL, 8)
@@ -268,19 +268,19 @@ class SettingsDialog(wx.Dialog):
         # 확인 버튼 (Accent 색상)
         ok_label = tr('ok') if callable(tr) else "확인"
         self.ok_btn = FlatButton(bottom_panel, label=ok_label, size=(80, 30),
-                                 bg_color=THEME_MID.ACCENT,
-                                 fg_color=(255, 255, 255),
-                                 hover_color=THEME_MID.ACCENT_HOVER,
-                                 pressed_color=THEME_MID.ACCENT_PRESSED)
+                                 bg_color=Colors.ACCENT.Get()[:3],
+                                 fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                 hover_color=Colors.ACCENT_HOVER.Get()[:3],
+                                 pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
         self.ok_btn.Bind(wx.EVT_BUTTON, self._on_ok)
         btn_sizer.Add(self.ok_btn, 0, wx.ALL, 8)
 
         # 취소 버튼
         cancel_label = tr('cancel') if callable(tr) else "취소"
         self.cancel_btn = FlatButton(bottom_panel, label=cancel_label, size=(80, 30),
-                                     bg_color=THEME_MID.BG_BUTTON,
-                                     fg_color=THEME_MID.FG_TEXT,
-                                     hover_color=THEME_MID.BG_BUTTON_HOVER)
+                                     bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                     fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                     hover_color=Colors.BG_HOVER.Get()[:3])
         self.cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
         btn_sizer.Add(self.cancel_btn, 0, wx.ALL, 8)
 
@@ -288,8 +288,8 @@ class SettingsDialog(wx.Dialog):
 
         # 버전 정보
         version_label = wx.StaticText(bottom_panel, label=f"v{VERSION}")
-        version_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
-        version_label.SetFont(get_ui_font(9))
+        version_label.SetForegroundColour(Colors.TEXT_SECONDARY)
+        version_label.SetFont(Fonts.get_font(Fonts.SIZE_SMALL))
         bottom_sizer.Add(version_label, 0, wx.ALL | wx.ALIGN_RIGHT, 8)
 
         bottom_panel.SetSizer(bottom_sizer)
@@ -300,9 +300,9 @@ class SettingsDialog(wx.Dialog):
 
     def _style_choice(self, choice):
         """Choice 컨트롤 다크 테마 스타일"""
-        choice.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
-        choice.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        choice.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        choice.SetBackgroundColour(Colors.BG_TOOLBAR)
+        choice.SetForegroundColour(Colors.TEXT_PRIMARY)
+        choice.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
 
     def _on_backend_changed(self, event):
         """캡처 백엔드 변경 시 dxcam 설치 확인 (3버튼 모달)"""
@@ -546,11 +546,11 @@ class SettingsDialog(wx.Dialog):
             self.status_label.Show()
 
             if success:
-                self.status_label.SetBackgroundColour(wx.Colour(16, 185, 129))
+                self.status_label.SetBackgroundColour(Colors.STATUS_SUCCESS_ALT)
             else:
-                self.status_label.SetBackgroundColour(wx.Colour(239, 68, 68))
+                self.status_label.SetBackgroundColour(Colors.STATUS_ERROR)
 
-            self.status_label.SetForegroundColour(wx.Colour(255, 255, 255))
+            self.status_label.SetForegroundColour(Colors.TEXT_PRIMARY)
             self.Layout()
 
             def hide_label():

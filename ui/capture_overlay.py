@@ -7,6 +7,8 @@ DPI 스케일링 및 다중 모니터 지원
 from typing import Tuple, Optional, Callable
 import wx
 
+from ui.theme import Colors, Fonts
+
 # 상수 정의
 from ui.constants import (
     OVERLAY_BORDER_WIDTH, OVERLAY_HANDLE_SIZE, OVERLAY_HANDLE_MARGIN,
@@ -314,10 +316,10 @@ class CaptureOverlay(wx.Frame):
         # 그라데이션 테두리 색상
         if self.recording_mode:
             # 녹화 중: 30% 투명도
-            pen = gc.CreatePen(wx.GraphicsPenInfo(wx.Colour(233, 69, 96, 77)).Width(self.border_width))
+            pen = gc.CreatePen(wx.GraphicsPenInfo(Colors.OVERLAY_BORDER_REC).Width(self.border_width))
         else:
             # 일반: 그라데이션 효과를 위한 밝은 빨강
-            pen = gc.CreatePen(wx.GraphicsPenInfo(wx.Colour(255, 107, 107)).Width(self.border_width))
+            pen = gc.CreatePen(wx.GraphicsPenInfo(Colors.OVERLAY_BORDER).Width(self.border_width))
         gc.SetPen(pen)
         gc.SetBrush(wx.TRANSPARENT_BRUSH)
         
@@ -328,7 +330,7 @@ class CaptureOverlay(wx.Frame):
         
         # 안쪽 테두리 (그라데이션 효과)
         if not self.recording_mode:
-            inner_pen = gc.CreatePen(wx.GraphicsPenInfo(wx.Colour(233, 69, 96, 180)).Width(1))
+            inner_pen = gc.CreatePen(wx.GraphicsPenInfo(Colors.OVERLAY_INNER_BORDER).Width(1))
             gc.SetPen(inner_pen)
             inner_rect = wx.Rect(border_rect.x + 2, border_rect.y + 2,
                                  border_rect.width - 4, border_rect.height - 4)
@@ -346,8 +348,8 @@ class CaptureOverlay(wx.Frame):
             size_text = f"{capture_w} × {capture_h}"
             
             # 폰트 설정
-            font = wx.Font(9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, faceName="Segoe UI")
-            gc.SetFont(font, wx.Colour(255, 255, 255))
+            font = Fonts.get_font(Fonts.SIZE_SMALL, bold=True)
+            gc.SetFont(font, Colors.TEXT_PRIMARY)
             
             # 텍스트 크기 측정
             text_width, text_height = dc.GetTextExtent(size_text)
@@ -362,7 +364,7 @@ class CaptureOverlay(wx.Frame):
             
             # 배지 배경
             gc.SetPen(wx.TRANSPARENT_PEN)
-            gc.SetBrush(gc.CreateBrush(wx.Brush(wx.Colour(233, 69, 96, 230))))
+            gc.SetBrush(gc.CreateBrush(wx.Brush(Colors.OVERLAY_BADGE_BG)))
             path = gc.CreatePath()
             path.AddRoundedRectangle(text_rect.x, text_rect.y, text_rect.width, text_rect.height, 6)
             gc.FillPath(path)
@@ -392,12 +394,12 @@ class CaptureOverlay(wx.Frame):
             shadow_rect = wx.Rect(handle_rect.x + 1, handle_rect.y + 1, 
                                   handle_rect.width, handle_rect.height)
             gc.SetPen(wx.TRANSPARENT_PEN)
-            gc.SetBrush(gc.CreateBrush(wx.Brush(wx.Colour(0, 0, 0, 40))))
+            gc.SetBrush(gc.CreateBrush(wx.Brush(Colors.OVERLAY_HANDLE_SHADOW)))
             gc.DrawEllipse(shadow_rect.x, shadow_rect.y, shadow_rect.width, shadow_rect.height)
-            
+
             # 핸들 배경
-            gc.SetBrush(gc.CreateBrush(wx.Brush(wx.Colour(245, 245, 245))))
-            gc.SetPen(gc.CreatePen(wx.GraphicsPenInfo(wx.Colour(200, 200, 200)).Width(1)))
+            gc.SetBrush(gc.CreateBrush(wx.Brush(Colors.OVERLAY_HANDLE_BG)))
+            gc.SetPen(gc.CreatePen(wx.GraphicsPenInfo(Colors.OVERLAY_HANDLE_BORDER).Width(1)))
             gc.DrawEllipse(handle_rect.x, handle_rect.y, handle_rect.width, handle_rect.height)
             
             # 핸들 내부 악센트 (코너 핸들만)
@@ -405,7 +407,7 @@ class CaptureOverlay(wx.Frame):
                             self.HANDLE_BOTTOM_LEFT, self.HANDLE_BOTTOM_RIGHT]:
                 inner_rect = wx.Rect(handle_rect.x + 3, handle_rect.y + 3,
                                      handle_rect.width - 6, handle_rect.height - 6)
-                gc.SetBrush(gc.CreateBrush(wx.Brush(wx.Colour(233, 69, 96))))
+                gc.SetBrush(gc.CreateBrush(wx.Brush(Colors.OVERLAY_HANDLE_ACCENT)))
                 gc.SetPen(wx.TRANSPARENT_PEN)
                 gc.DrawEllipse(inner_rect.x, inner_rect.y, inner_rect.width, inner_rect.height)
     

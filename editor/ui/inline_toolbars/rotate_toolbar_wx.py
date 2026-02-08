@@ -15,10 +15,11 @@ class RotateToolbar(InlineToolbarBase):
     프레임 회전 옵션을 제공합니다.
     """
 
+    _has_clear_button = False
+
     def __init__(self, main_window: 'MainWindow', parent=None):
         super().__init__(main_window, parent)
         self._setup_controls()
-        self.set_clear_button_visible(False)  # 회전은 즉시 적용되므로 Clear 버튼 불필요
 
     def _setup_controls(self):
         """컨트롤 설정"""
@@ -61,9 +62,8 @@ class RotateToolbar(InlineToolbarBase):
 
     def _on_apply(self, event):
         """적용 버튼 클릭 - 툴바 닫기"""
-        # 회전은 드롭다운 변경 시 이미 적용되었으므로, 여기서는 툴바만 닫음
+        # 회전은 드롭다운 변경 시 이미 적용되었으므로, 여기서는 이벤트만 발생
         super()._on_apply(event)
-        self.hide_from_canvas()
 
     def _on_cancel(self, event):
         """취소"""

@@ -89,8 +89,6 @@ class ResizeToolbar(InlineToolbarBase):
         self._method_combo.SetToolTip(filter_tooltip)
         self.add_control(self._method_combo)
 
-        # Clear 버튼 표시
-        self.set_clear_button_visible(True)
 
     def _on_activated(self):
         """툴바 활성화"""
@@ -244,7 +242,7 @@ class ResizeToolbar(InlineToolbarBase):
                             frame._image_size = self._original_images[i].size
                     except Exception:
                         pass
-            self.hide_from_canvas()
+            super()._on_apply(event)
             return
 
         # 모든 프레임에 실제 리사이즈 적용
@@ -263,7 +261,6 @@ class ResizeToolbar(InlineToolbarBase):
             self._main_window._update_info_bar()
 
         super()._on_apply(event)
-        self.hide_from_canvas()
 
     def _on_cancel(self, event):
         """취소 - 원본으로 복원"""

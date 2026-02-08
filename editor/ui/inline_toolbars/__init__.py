@@ -13,6 +13,7 @@ from .sticker_toolbar_wx import StickerToolbar
 from .speech_bubble_toolbar_wx import SpeechBubbleToolbar
 from .text_toolbar_wx import TextToolbar
 from .effects_toolbar_wx import EffectsToolbar
+from .pencil_toolbar_wx import PencilToolbar
 
 __all__ = [
     'InlineToolbarBase',
@@ -27,4 +28,5 @@ __all__ = [
     'SpeechBubbleToolbar',
     'TextToolbar',
     'EffectsToolbar',
+    'PencilToolbar',
 ]

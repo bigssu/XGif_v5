@@ -7,7 +7,7 @@ Windows 11 Dark Theme 스타일
 import logging
 import wx
 
-from ui.constants import THEME_MID, get_ui_font, FONT_SIZE_DEFAULT, FONT_SIZE_LABEL
+from ui.theme import Colors, Fonts
 from ui.i18n import tr
 from ui.capture_control_bar import FlatButton
 from core.dependency_checker import DependencyState, DependencyStatus
@@ -44,7 +44,7 @@ class StartupCheckDialog(wx.Dialog):
         title = tr('dep_startup_title')
         wx.Dialog.__init__(self, parent, title=title, size=(500, 380),
                           style=wx.DEFAULT_DIALOG_STYLE)
-        self.SetBackgroundColour(wx.Colour(*THEME_MID.BG_PANEL))
+        self.SetBackgroundColour(Colors.BG_PANEL)
         self.dep_results = dep_results
         self._installed = {}  # name -> bool (설치 흐름 후 갱신)
         self._build_ui()
@@ -55,14 +55,14 @@ class StartupCheckDialog(wx.Dialog):
 
         # 설명
         desc = wx.StaticText(self, label=tr('dep_startup_desc'))
-        desc.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
-        desc.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        desc.SetForegroundColour(Colors.TEXT_SECONDARY)
+        desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         desc.Wrap(460)
         sizer.Add(desc, 0, wx.ALL, 16)
 
         # 구분선
         line = wx.Panel(self, size=(-1, 1))
-        line.SetBackgroundColour(wx.Colour(*THEME_MID.BORDER_SUBTLE))
+        line.SetBackgroundColour(Colors.BORDER)
         sizer.Add(line, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 16)
 
         # 의존성 항목들
@@ -78,9 +78,9 @@ class StartupCheckDialog(wx.Dialog):
         btn_sizer.AddStretchSpacer()
 
         skip_btn = FlatButton(self, label=tr('dep_skip_btn'), size=(100, 32),
-                               bg_color=THEME_MID.BG_BUTTON,
-                               fg_color=THEME_MID.FG_TEXT,
-                               hover_color=THEME_MID.BG_BUTTON_HOVER)
+                               bg_color=Colors.BG_TERTIARY.Get()[:3],
+                               fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                               hover_color=Colors.BG_HOVER.Get()[:3])
         skip_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
         btn_sizer.Add(skip_btn, 0)
 
@@ -90,27 +90,27 @@ class StartupCheckDialog(wx.Dialog):
     def _create_dep_row(self, dep):
         """개별 의존성 행 생성"""
         panel = wx.Panel(self)
-        panel.SetBackgroundColour(wx.Colour(*THEME_MID.BG_PANEL))
+        panel.SetBackgroundColour(Colors.BG_PANEL)
         row_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 상태 아이콘
         state = dep.state
         if state == DependencyState.INSTALLED:
             icon_text = "  OK  "
-            icon_color = (34, 197, 94)
+            icon_color = Colors.STATUS_SUCCESS
         elif state == DependencyState.MISSING:
             icon_text = "  --  "
-            icon_color = (239, 68, 68)
+            icon_color = Colors.STATUS_ERROR
         elif state == DependencyState.VERSION_LOW:
             icon_text = "  !!  "
-            icon_color = (245, 158, 11)
+            icon_color = Colors.STATUS_WARNING
         else:
             icon_text = "  ??  "
-            icon_color = (239, 68, 68)
+            icon_color = Colors.STATUS_ERROR
 
         icon_label = wx.StaticText(panel, label=icon_text)
-        icon_label.SetForegroundColour(wx.Colour(*icon_color))
-        icon_label.SetFont(get_ui_font(FONT_SIZE_DEFAULT, bold=True))
+        icon_label.SetForegroundColour(icon_color)
+        icon_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT, bold=True))
         row_sizer.Add(icon_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
         # 이름 + 설명
@@ -118,17 +118,17 @@ class StartupCheckDialog(wx.Dialog):
         desc_text = tr(info.get("desc_key", "")) if info.get("desc_key") else dep.name
         name_text = f"{dep.name} — {desc_text}"
         name_label = wx.StaticText(panel, label=name_text)
-        name_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        name_label.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        name_label.SetForegroundColour(Colors.TEXT_PRIMARY)
+        name_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         row_sizer.Add(name_label, 1, wx.ALIGN_CENTER_VERTICAL)
 
         # 설치 버튼 (미설치/버전낮음/에러 시에만)
         if state != DependencyState.INSTALLED:
             install_btn = FlatButton(panel, label=tr('dep_install_btn'), size=(70, 26),
-                                      bg_color=THEME_MID.ACCENT,
-                                      fg_color=(255, 255, 255),
-                                      hover_color=THEME_MID.ACCENT_HOVER,
-                                      pressed_color=THEME_MID.ACCENT_PRESSED)
+                                      bg_color=Colors.ACCENT.Get()[:3],
+                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                      hover_color=Colors.ACCENT_HOVER.Get()[:3],
+                                      pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
             install_btn.Bind(wx.EVT_BUTTON, lambda e, d=dep, p=panel, il=icon_label, ib=install_btn:
                             self._on_install_clicked(d, p, il, ib))
             row_sizer.Add(install_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
@@ -143,7 +143,7 @@ class StartupCheckDialog(wx.Dialog):
         success = show_install_flow(self, dep.name, dep)
         if success:
             icon_label.SetLabel("  OK  ")
-            icon_label.SetForegroundColour(wx.Colour(34, 197, 94))
+            icon_label.SetForegroundColour(Colors.STATUS_SUCCESS)
             install_btn.Enable(False)
             self._installed[dep.name] = True
             panel.Layout()

@@ -6,7 +6,7 @@ wxPython 버전
 import logging
 import wx
 from ui.i18n import tr, get_trans_manager
-from ui.constants import THEME_MID, get_ui_font, FONT_SIZE_DEFAULT
+from ui.theme import Colors, Fonts
 from core.utils import parse_resolution, validate_resolution
 
 logger = logging.getLogger(__name__)
@@ -29,13 +29,13 @@ class FlatButton(wx.Control):
         self._corner_radius = corner_radius
         self._enabled = True
 
-        # 색상 (기본값: THEME_MID 기반)
-        self._bg_color = wx.Colour(*(bg_color or THEME_MID.BG_BUTTON))
-        self._fg_color = wx.Colour(*(fg_color or THEME_MID.FG_TEXT))
-        self._hover_color = wx.Colour(*(hover_color or THEME_MID.BG_BUTTON_HOVER))
-        self._pressed_color = wx.Colour(*(pressed_color or THEME_MID.BG_BUTTON_PRESSED))
-        self._disabled_fg = wx.Colour(100, 100, 100)
-        self._disabled_bg = wx.Colour(50, 50, 50)
+        # 색상 (기본값: Colors 기반)
+        self._bg_color = wx.Colour(*(bg_color or Colors.BG_TERTIARY.Get()[:3]))
+        self._fg_color = wx.Colour(*(fg_color or Colors.TEXT_PRIMARY.Get()[:3]))
+        self._hover_color = wx.Colour(*(hover_color or Colors.BG_HOVER.Get()[:3]))
+        self._pressed_color = wx.Colour(*(pressed_color or Colors.BG_PRESSED.Get()[:3]))
+        self._disabled_fg = Colors.BTN_DISABLED_FG
+        self._disabled_bg = Colors.BTN_DISABLED_BG
 
         # 상태
         self._hovered = False
@@ -50,7 +50,7 @@ class FlatButton(wx.Control):
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
 
         # 폰트
-        self.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
 
         # 이벤트
         self.Bind(wx.EVT_PAINT, self._on_paint)
@@ -153,7 +153,7 @@ class FlatButton(wx.Control):
 
         # 부모 배경으로 클리어
         parent = self.GetParent()
-        parent_bg = parent.GetBackgroundColour() if parent else wx.Colour(*THEME_MID.BG_TOOLBAR)
+        parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_TOOLBAR
         memdc.SetBackground(wx.Brush(parent_bg))
         memdc.Clear()
 
@@ -199,10 +199,10 @@ class CustomToggleSwitch(wx.Panel):
         self._animating = False
 
         # 색상 설정 (Windows 11 Dark Theme)
-        self._off_track_color = wx.Colour(80, 80, 80)
-        self._on_track_color = wx.Colour(*THEME_MID.ACCENT)   # #0078D4 Windows Blue
-        self._off_handle_color = wx.Colour(160, 160, 160)
-        self._on_handle_color = wx.Colour(255, 255, 255)
+        self._off_track_color = Colors.TOGGLE_OFF_TRACK
+        self._on_track_color = Colors.ACCENT
+        self._off_handle_color = Colors.TOGGLE_OFF_HANDLE
+        self._on_handle_color = Colors.TOGGLE_ON_HANDLE
 
         self.SetMinSize((45, 22))
         self.SetMaxSize((45, 22))
@@ -271,7 +271,7 @@ class CustomToggleSwitch(wx.Panel):
         memdc = wx.MemoryDC(bitmap)
 
         parent = self.GetParent()
-        bg_color = parent.GetBackgroundColour() if parent else wx.Colour(*THEME_MID.BG_TOOLBAR)
+        bg_color = parent.GetBackgroundColour() if parent else Colors.BG_TOOLBAR
         memdc.SetBackground(wx.Brush(bg_color))
         memdc.Clear()
 
@@ -328,7 +328,7 @@ class CaptureControlBar(wx.Panel):
         self._on_stop_clicked = None
 
         # 배경색 (Windows 11 Dark)
-        self.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
+        self.SetBackgroundColour(Colors.BG_TOOLBAR)
 
         # 메인 레이아웃 (inner_panel 없이 직접 배치 — 패널 중첩 크래시 방지)
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -336,7 +336,7 @@ class CaptureControlBar(wx.Panel):
         self.SetSizer(main_sizer)
 
         # 기본 폰트
-        default_font = get_ui_font(FONT_SIZE_DEFAULT)
+        default_font = Fonts.get_font(Fonts.SIZE_DEFAULT)
 
         # ═══════════════════════════════════════════════════════════════
         # 왼쪽 섹션: 드롭다운 설정들
@@ -354,8 +354,8 @@ class CaptureControlBar(wx.Panel):
 
         # FPS 라벨
         self.fps_label = wx.StaticText(self, label=tr('fps'))
-        self.fps_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT_SECONDARY))
-        self.fps_label.SetFont(get_ui_font(FONT_SIZE_DEFAULT, bold=True))
+        self.fps_label.SetForegroundColour(Colors.TEXT_SECONDARY)
+        self.fps_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT, bold=True))
         self.fps_label.SetToolTip(tr('fps_label_tooltip'))
         main_sizer.Add(self.fps_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
@@ -393,7 +393,7 @@ class CaptureControlBar(wx.Panel):
 
         # 구분선 1 (커스텀 패널로 색상 제어)
         sep1 = wx.Panel(self, size=(1, 24))
-        sep1.SetBackgroundColour(wx.Colour(*THEME_MID.BORDER_SUBTLE))
+        sep1.SetBackgroundColour(Colors.BORDER)
         main_sizer.Add(sep1, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
 
         # ═══════════════════════════════════════════════════════════════
@@ -402,9 +402,9 @@ class CaptureControlBar(wx.Panel):
 
         # 커서 아이콘
         self.cursor_icon = wx.StaticText(self, label="↖")
-        self.cursor_icon.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.cursor_icon.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
-        self.cursor_icon.SetFont(get_ui_font(12))
+        self.cursor_icon.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.cursor_icon.SetBackgroundColour(Colors.BG_TOOLBAR)
+        self.cursor_icon.SetFont(Fonts.get_font(12))
         self.cursor_icon.SetToolTip(tr('cursor_tooltip'))
         main_sizer.Add(self.cursor_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
@@ -416,9 +416,9 @@ class CaptureControlBar(wx.Panel):
 
         # 영역 아이콘
         self.region_icon = wx.StaticText(self, label="⬚")
-        self.region_icon.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.region_icon.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
-        self.region_icon.SetFont(get_ui_font(14))
+        self.region_icon.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.region_icon.SetBackgroundColour(Colors.BG_TOOLBAR)
+        self.region_icon.SetFont(Fonts.get_font(14))
         self.region_icon.SetToolTip(tr('click_highlight_icon_tooltip'))
         main_sizer.Add(self.region_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
@@ -430,7 +430,7 @@ class CaptureControlBar(wx.Panel):
 
         # 구분선 2
         sep2 = wx.Panel(self, size=(1, 24))
-        sep2.SetBackgroundColour(wx.Colour(*THEME_MID.BORDER_SUBTLE))
+        sep2.SetBackgroundColour(Colors.BORDER)
         main_sizer.Add(sep2, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
 
         # ═══════════════════════════════════════════════════════════════
@@ -439,8 +439,9 @@ class CaptureControlBar(wx.Panel):
 
         # GPU 상태 버튼 (초기 중립 상태 — 클릭 시 GPU 정보 확인)
         self.gpu_status_button = FlatButton(self, label="GPU", size=(55, 28),
-                                            bg_color=(107, 114, 128), fg_color=(255, 255, 255),
-                                            hover_color=(120, 127, 141))
+                                            bg_color=Colors.GPU_BTN_OFF.Get()[:3],
+                                            fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                            hover_color=Colors.GPU_BTN_OFF_HOVER.Get()[:3])
         self.gpu_status_button.SetToolTip(tr('gpu_status_tooltip'))
         self.gpu_status_button.Bind(wx.EVT_BUTTON, self._on_gpu_button_clicked)
         self._on_gpu_click_callback = None
@@ -448,16 +449,20 @@ class CaptureControlBar(wx.Panel):
 
         # REC 버튼
         self.rec_button = FlatButton(self, label="● REC", size=(72, 28),
-                                     bg_color=(233, 69, 96), fg_color=(255, 255, 255),
-                                     hover_color=(245, 90, 115), pressed_color=(200, 55, 80))
+                                     bg_color=Colors.REC_READY.Get()[:3],
+                                     fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                     hover_color=Colors.REC_READY_HOVER.Get()[:3],
+                                     pressed_color=Colors.REC_READY_PRESSED.Get()[:3])
         self.rec_button.SetToolTip(tr('rec_tooltip'))
         self.rec_button.Bind(wx.EVT_BUTTON, self._on_rec_button_clicked)
         main_sizer.Add(self.rec_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
 
         # Pause 버튼
         self.pause_btn = FlatButton(self, label="❚❚", size=(34, 28),
-                                    bg_color=(254, 202, 87), fg_color=(255, 255, 255),
-                                    hover_color=(255, 215, 110), pressed_color=(230, 180, 70))
+                                    bg_color=Colors.PAUSE_BG.Get()[:3],
+                                    fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                    hover_color=Colors.PAUSE_HOVER.Get()[:3],
+                                    pressed_color=Colors.PAUSE_PRESSED.Get()[:3])
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
         self.pause_btn.Enable(False)
         self.pause_btn.Bind(wx.EVT_BUTTON, self._on_pause_button_clicked)
@@ -465,9 +470,10 @@ class CaptureControlBar(wx.Panel):
 
         # Stop 버튼
         self.stop_btn = FlatButton(self, label="■", size=(34, 28),
-                                   bg_color=THEME_MID.ACCENT, fg_color=(255, 255, 255),
-                                   hover_color=THEME_MID.ACCENT_HOVER,
-                                   pressed_color=THEME_MID.ACCENT_PRESSED)
+                                   bg_color=Colors.ACCENT.Get()[:3],
+                                   fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                   hover_color=Colors.ACCENT_HOVER.Get()[:3],
+                                   pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
         self.stop_btn.SetToolTip(tr('stop_tooltip'))
         self.stop_btn.Enable(False)
         self.stop_btn.Bind(wx.EVT_BUTTON, self._on_stop_button_clicked)
@@ -475,10 +481,10 @@ class CaptureControlBar(wx.Panel):
 
         # 설정 버튼 (아이콘 2배 크기)
         self.settings_button = FlatButton(self, label="⚙", size=(48, 40),
-                                          bg_color=THEME_MID.BG_BUTTON,
-                                          fg_color=THEME_MID.FG_TEXT,
-                                          hover_color=THEME_MID.BG_BUTTON_HOVER)
-        self.settings_button.SetFont(get_ui_font(FONT_SIZE_DEFAULT * 2))
+                                          bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                          fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                          hover_color=Colors.BG_HOVER.Get()[:3])
+        self.settings_button.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT * 2))
         self.settings_button.SetToolTip(tr('settings_tooltip'))
         self.settings_button.Bind(wx.EVT_BUTTON, self._on_settings_button_clicked)
         main_sizer.Add(self.settings_button, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -501,38 +507,38 @@ class CaptureControlBar(wx.Panel):
 
     def _style_combobox(self, combo):
         """콤보박스 스타일 (Windows 11 Dark)"""
-        combo.SetBackgroundColour(wx.Colour(*THEME_MID.BG_TOOLBAR))
-        combo.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        combo.SetBackgroundColour(Colors.BG_TOOLBAR)
+        combo.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     def _style_gpu_button(self, btn, enabled):
         """GPU 버튼 색상 업데이트"""
         if enabled:
-            btn.SetBackgroundColour(wx.Colour(34, 197, 94))
-            btn.SetHoverColour(wx.Colour(50, 210, 110))
+            btn.SetBackgroundColour(Colors.GPU_BTN_ON)
+            btn.SetHoverColour(Colors.GPU_BTN_ON_HOVER)
         else:
-            btn.SetBackgroundColour(wx.Colour(107, 114, 128))
-            btn.SetHoverColour(wx.Colour(120, 127, 141))
-        btn.SetForegroundColour(wx.Colour(255, 255, 255))
+            btn.SetBackgroundColour(Colors.GPU_BTN_OFF)
+            btn.SetHoverColour(Colors.GPU_BTN_OFF_HOVER)
+        btn.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     def _apply_ready_style(self):
         """준비 상태 REC 버튼 스타일"""
-        self.rec_button.SetBackgroundColour(wx.Colour(233, 69, 96))
-        self.rec_button.SetHoverColour(wx.Colour(245, 90, 115))
-        self.rec_button.SetPressedColour(wx.Colour(200, 55, 80))
-        self.rec_button.SetForegroundColour(wx.Colour(255, 255, 255))
+        self.rec_button.SetBackgroundColour(Colors.REC_READY)
+        self.rec_button.SetHoverColour(Colors.REC_READY_HOVER)
+        self.rec_button.SetPressedColour(Colors.REC_READY_PRESSED)
+        self.rec_button.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     def _apply_recording_style(self):
         """녹화 중 REC 버튼 스타일"""
-        self.rec_button.SetBackgroundColour(wx.Colour(107, 114, 128))
-        self.rec_button.SetHoverColour(wx.Colour(107, 114, 128))
-        self.rec_button.SetForegroundColour(wx.Colour(209, 213, 219))
+        self.rec_button.SetBackgroundColour(Colors.REC_RECORDING)
+        self.rec_button.SetHoverColour(Colors.REC_RECORDING)
+        self.rec_button.SetForegroundColour(Colors.REC_RECORDING_FG)
 
     def _apply_paused_style(self):
         """일시정지 중 REC 버튼 스타일"""
-        self.rec_button.SetBackgroundColour(wx.Colour(34, 197, 94))
-        self.rec_button.SetHoverColour(wx.Colour(50, 210, 110))
-        self.rec_button.SetPressedColour(wx.Colour(25, 170, 80))
-        self.rec_button.SetForegroundColour(wx.Colour(255, 255, 255))
+        self.rec_button.SetBackgroundColour(Colors.REC_PAUSED)
+        self.rec_button.SetHoverColour(Colors.REC_PAUSED_HOVER)
+        self.rec_button.SetPressedColour(Colors.REC_PAUSED_PRESSED)
+        self.rec_button.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     # ═══════════════════════════════════════════════════════════════
     # 콜백 설정 메서드

@@ -71,8 +71,6 @@ class SpeedToolbar(InlineToolbarBase):
         self._result_label.SetFont(font)
         self.add_control(self._result_label)
 
-        # Clear 버튼 표시
-        self.set_clear_button_visible(True)
 
     def _on_activated(self):
         """툴바 활성화"""
@@ -157,7 +155,6 @@ class SpeedToolbar(InlineToolbarBase):
             self._main_window._update_info_bar()
 
         super()._on_apply(event)
-        self.hide_from_canvas()
 
     def reset_to_default(self):
         """기본값으로 초기화"""

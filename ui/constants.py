@@ -112,76 +112,37 @@ PREVIEW_WIDTH = 160
 PREVIEW_HEIGHT = 90
 
 # ═══════════════════════════════════════════════════════════════
-# 색상 (Windows 11 Dark Theme)
+# 색상 (Windows 11 Dark Theme) — ui.theme.Colors 기반 래퍼
 # ═══════════════════════════════════════════════════════════════
+from ui.theme import Colors as _C, Fonts as _F
 
-# Windows 11 다크 테마 (RGB 튜플, wx.Colour(*THEME_MID.BG_MAIN) 등으로 사용)
+
 class THEME_MID:
-    """Windows 11 다크 테마. 배경 #202020, 강조 #0078D4, 텍스트 #FFFFFF."""
-    BG_MAIN = (32, 32, 32)          # #202020 메인 배경
-    BG_STATUS = (28, 28, 28)        # #1C1C1C 상태바
-    BG_TOOLBAR = (45, 45, 45)       # #2D2D2D 툴바/콤보
-    BG_PANEL = (40, 40, 40)         # #282828 설정 다이얼로그 등
-    FG_TEXT = (255, 255, 255)       # #FFFFFF 기본 텍스트
-    FG_TEXT_SECONDARY = (180, 180, 180)  # #B4B4B4 보조 텍스트
+    """Colors 기반 RGB 튜플 래퍼 (하위 호환)"""
+    BG_MAIN = _C.BG_PRIMARY.Get()[:3]
+    BG_STATUS = _C.BG_SECONDARY.Get()[:3]
+    BG_TOOLBAR = _C.BG_TOOLBAR.Get()[:3]
+    BG_PANEL = _C.BG_PANEL.Get()[:3]
+    FG_TEXT = _C.TEXT_PRIMARY.Get()[:3]
+    FG_TEXT_SECONDARY = _C.TEXT_SECONDARY.Get()[:3]
 
-    # Windows Blue 강조색
-    ACCENT = (0, 120, 212)          # #0078D4
-    ACCENT_HOVER = (26, 145, 235)   # #1A91EB 호버
-    ACCENT_PRESSED = (0, 95, 170)   # #005FAA 눌림
+    ACCENT = _C.ACCENT.Get()[:3]
+    ACCENT_HOVER = _C.ACCENT_HOVER.Get()[:3]
+    ACCENT_PRESSED = _C.ACCENT_PRESSED.Get()[:3]
 
-    # 버튼 배경
-    BG_BUTTON = (55, 55, 55)        # #373737 일반 버튼
-    BG_BUTTON_HOVER = (70, 70, 70)  # #464646 호버
-    BG_BUTTON_PRESSED = (45, 45, 45)  # #2D2D2D 눌림
+    BG_BUTTON = _C.BG_TERTIARY.Get()[:3]
+    BG_BUTTON_HOVER = _C.BG_HOVER.Get()[:3]
+    BG_BUTTON_PRESSED = _C.BG_PRESSED.Get()[:3]
 
-    # 보더
-    BORDER_SUBTLE = (60, 60, 60)    # #3C3C3C 미세 보더
+    BORDER_SUBTLE = _C.BORDER.Get()[:3]
 
-# 폰트 설정
-FONT_FACE = 'Segoe UI Variable'
-FONT_FACE_FALLBACK = 'Segoe UI'
-FONT_SIZE_DEFAULT = 10
-FONT_SIZE_SMALL = 9
-FONT_SIZE_LABEL = 11
 
-class Colors:
-    """UI 색상 정의 (Windows 11 Dark Theme)"""
-    # 배경색
-    BACKGROUND_PRIMARY = "#202020"
-    BACKGROUND_SECONDARY = "#1C1C1C"
-    BACKGROUND_TOOLBAR = "#2D2D2D"
-
-    # 테두리
-    BORDER_DEFAULT = "#3C3C3C"
-    BORDER_ACCENT = "#0078D4"
-
-    # 텍스트
-    TEXT_PRIMARY = "#FFFFFF"
-    TEXT_SECONDARY = "#B4B4B4"
-    TEXT_MUTED = "#808080"
-    TEXT_SUCCESS = "#22c55e"
-    TEXT_ERROR = "#e74c3c"
-    TEXT_INFO = "#0078D4"
-
-    # 버튼 색상
-    BUTTON_REC_START = "#e94560"
-    BUTTON_REC_END = "#e94560"
-    BUTTON_PAUSE_START = "#feca57"
-    BUTTON_PAUSE_END = "#ff9f43"
-    BUTTON_STOP_START = "#0078D4"
-    BUTTON_STOP_END = "#005FAA"
-    BUTTON_DISABLED = "#4a5568"
-
-    # GPU 상태
-    GPU_ON = "#22c55e"
-    GPU_OFF = "#6b7280"
-
-    # 오버레이
-    OVERLAY_BORDER = "#ff6b6b"
-    OVERLAY_BORDER_RECORDING = "rgba(233, 69, 96, 77)"
-    OVERLAY_HANDLE_BG = "#f5f5f5"
-    OVERLAY_HANDLE_ACCENT = "#e94560"
+# 폰트 설정 (Fonts 클래스 참조)
+FONT_FACE = _F.FACE
+FONT_FACE_FALLBACK = _F.FACE_FALLBACK
+FONT_SIZE_DEFAULT = _F.SIZE_DEFAULT
+FONT_SIZE_SMALL = _F.SIZE_SMALL
+FONT_SIZE_LABEL = _F.SIZE_LABEL
 
 # ═══════════════════════════════════════════════════════════════
 # 단축키
@@ -194,29 +155,9 @@ SHORTCUT_OVERLAY_TOGGLE = "F11"
 OVERLAY_MOVE_SMALL = 1  # 화살표 키
 OVERLAY_MOVE_LARGE = 10  # Shift + 화살표 키
 
-# ═══════════════════════════════════════════════════════════════
-# 툴팁 스타일 (통일)
-# ═══════════════════════════════════════════════════════════════
-TOOLTIP_STYLE = """
-    QToolTip {
-        background-color: #2d2d2d;
-        color: #ffffff;
-        border: 1px solid #3c3c3c;
-        border-radius: 6px;
-        padding: 6px 10px;
-        font-size: 12px;
-        font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-    }
-"""
-
 
 def get_ui_font(size=None, bold=False):
-    """UI 폰트 생성 헬퍼. Segoe UI Variable 우선, 폴백 Segoe UI."""
-    import wx
+    """UI 폰트 생성 — Fonts.get_font()으로 위임"""
     if size is None:
         size = FONT_SIZE_DEFAULT
-    weight = wx.FONTWEIGHT_BOLD if bold else wx.FONTWEIGHT_NORMAL
-    font = wx.Font(size, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, weight, faceName=FONT_FACE)
-    if not font.IsOk() or font.GetFaceName() != FONT_FACE:
-        font = wx.Font(size, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, weight, faceName=FONT_FACE_FALLBACK)
-    return font
+    return _F.get_font(size, bold)

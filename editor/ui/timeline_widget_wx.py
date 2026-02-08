@@ -7,7 +7,7 @@ wx.BufferedPaintDC를 사용한 고성능 렌더링
 import wx
 from typing import Optional, List, TYPE_CHECKING
 from PIL import Image
-from .style_constants_wx import Colors
+from .style_constants_wx import Colors, Fonts
 from ..utils.image_utils import pil_to_wx_bitmap
 from ..utils.wx_events import (
     FrameSelectedEvent, FramesReorderedEvent, FrameDelayChangedEvent
@@ -211,7 +211,7 @@ class TimelineWidget(wx.ScrolledCanvas):
 
         # 프레임 정보 (하단 텍스트 영역에 표시 - 썸네일과 분리)
         dc.SetTextForeground(Colors.TEXT_SECONDARY)
-        font = wx.Font(8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
+        font = Fonts.get_font(8)
         dc.SetFont(font)
 
         info = f"#{index + 1} {frame.delay_ms}ms"

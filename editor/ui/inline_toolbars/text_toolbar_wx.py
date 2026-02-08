@@ -42,7 +42,6 @@ class TextToolbar(InlineToolbarBase):
         self._preview_delay = getattr(main_window, '_preview_delay', 100)
         self._updating_from_canvas = False
         self._setup_controls()
-        self.set_clear_button_visible(True)
 
     def _setup_controls(self):
         """컨트롤 설정"""
@@ -677,7 +676,6 @@ class TextToolbar(InlineToolbarBase):
             self._main_window._update_info_bar()
         self._safe_canvas_update()
         super()._on_apply(event)
-        self.hide_from_canvas()
 
     def _on_cancel(self, event):
         """취소"""

@@ -25,7 +25,6 @@ class CropToolbar(InlineToolbarBase):
         self._y_value = 0
         self._updating_from_canvas = False
         self._setup_controls()
-        self.set_clear_button_visible(True)
 
     def _setup_controls(self):
         """컨트롤 설정"""
@@ -253,7 +252,7 @@ class CropToolbar(InlineToolbarBase):
 
         # 3. 변화가 없으면 무시
         if x == 0 and y == 0 and w == self._original_width and h == self._original_height:
-            self.hide_from_canvas()
+            super()._on_apply(event)
             return
 
         # 4. 모든 프레임에 적용
@@ -272,11 +271,8 @@ class CropToolbar(InlineToolbarBase):
         if hasattr(self._main_window, '_update_info_bar'):
             self._main_window._update_info_bar()
 
-        # 8. 부모 클래스 _on_apply 호출 (PyQt6 원본: super()._on_apply(), 시그널만 발생)
+        # 8. 부모 클래스 _on_apply 호출 (이벤트 발생)
         super()._on_apply(event)
-
-        # 9. 툴바 숨기기 (PyQt6 원본과 동일)
-        self.hide_from_canvas()
 
     def _on_cancel(self, event):
         """취소"""

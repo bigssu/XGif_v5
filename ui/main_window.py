@@ -36,12 +36,12 @@ from core.audio_recorder import AudioRecorder, is_audio_available
 
 # 상수 정의
 from ui.constants import (
-    MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT, TOOLTIP_STYLE,
+    MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT,
     APP_NAME, VERSION, MEMORY_WARNING_RATIO, SYSTEM_MEMORY_CRITICAL_MB,
     CAPTURE_PROCESS_TIMEOUT_SEC, CAPTURE_THREAD_TIMEOUT_SEC,
     ENCODING_THREAD_TIMEOUT_SEC, ENCODING_STATUS_CLEAR_DELAY_MS,
-    THEME_MID, get_ui_font, FONT_SIZE_DEFAULT, FONT_SIZE_LABEL,
 )
+from ui.theme import Colors, Fonts
 from ui.i18n import tr, get_trans_manager
 
 
@@ -198,11 +198,11 @@ class MainWindow(wx.Frame):
         self.SetMinSize((MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT))
 
         # 전역 Segoe UI 폰트 설정
-        self.SetFont(get_ui_font(FONT_SIZE_DEFAULT))
+        self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
 
         # 메인 패널 (툴바·프로그레스 영역·미리보기 영역 포함) - Windows 11 Dark Theme
         main_panel = wx.Panel(self)
-        main_panel.SetBackgroundColour(wx.Colour(*THEME_MID.BG_MAIN))
+        main_panel.SetBackgroundColour(Colors.BG_PRIMARY)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_panel.SetSizer(main_sizer)
         main_sizer.Add((0, 4))  # 상단 4px
@@ -225,12 +225,12 @@ class MainWindow(wx.Frame):
         
         # 커스텀 상태바 (Windows 11 Dark Theme)
         status_panel = wx.Panel(self)
-        status_panel.SetBackgroundColour(wx.Colour(*THEME_MID.BG_STATUS))
+        status_panel.SetBackgroundColour(Colors.BG_SECONDARY)
         status_panel.SetMinSize((-1, 26))
         status_sizer = wx.BoxSizer(wx.HORIZONTAL)
         status_panel.SetSizer(status_sizer)
-        font_sb = get_ui_font(FONT_SIZE_DEFAULT)
-        fg_sb = wx.Colour(*THEME_MID.FG_TEXT)
+        font_sb = Fonts.get_font(Fonts.SIZE_DEFAULT)
+        fg_sb = Colors.TEXT_PRIMARY
         # 필드 0: 메인 메시지 (준비 / 녹화 중 / 저장됨 등) - 긴 텍스트 말줄임
         ellipsize_style = getattr(wx, 'ST_ELLIPSIZE_END', 0)
         self.status_msg_label = wx.StaticText(status_panel, label=tr('ready'), style=ellipsize_style)
@@ -239,8 +239,8 @@ class MainWindow(wx.Frame):
         status_sizer.Add(self.status_msg_label, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 12)
         # 필드 1: 녹화 정보 (00:00 | 0f | 0.0MB) — 최소 너비 확보로 잘림 방지
         self.info_label = wx.StaticText(status_panel, label="")
-        self.info_label.SetForegroundColour(wx.Colour(34, 197, 94))  # 녹색 강조
-        info_font = get_ui_font(FONT_SIZE_DEFAULT, bold=True)
+        self.info_label.SetForegroundColour(Colors.STATUS_SUCCESS)
+        info_font = Fonts.get_font(Fonts.SIZE_DEFAULT, bold=True)
         self.info_label.SetFont(info_font)
         self.info_label.SetToolTip(tr('fps_tooltip'))
         info_min_w = self.info_label.GetTextExtent("00:00 | 0f | 0.0MB")[0] + 10
@@ -248,8 +248,8 @@ class MainWindow(wx.Frame):
         status_sizer.Add(self.info_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
         # 필드 2: HDR
         self.hdr_label = wx.StaticText(status_panel, label="")
-        self.hdr_label.SetForegroundColour(wx.Colour(245, 158, 11))
-        self.hdr_label.SetFont(get_ui_font(FONT_SIZE_DEFAULT, bold=True))
+        self.hdr_label.SetForegroundColour(Colors.STATUS_WARNING)
+        self.hdr_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT, bold=True))
         self.hdr_label.SetToolTip(tr('hdr_label_tooltip'))
         hdr_min_w = self.hdr_label.GetTextExtent("HDR")[0] + 10
         self.hdr_label.SetMinSize((hdr_min_w, -1))
@@ -374,15 +374,15 @@ class MainWindow(wx.Frame):
     
     def _apply_global_style(self):
         """전역 스타일 적용 (wxPython, 밝기 0.5 테마)"""
-        self.SetBackgroundColour(wx.Colour(*THEME_MID.BG_MAIN))
-        self.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
+        self.SetForegroundColour(Colors.TEXT_PRIMARY)
     
     def _create_progress_area(self, parent_layout, parent_window):
         """프로그레스 바 영역 생성 (툴바 하단 중앙). v1과 동일: 높이 20, 내부 마진 (10,2,10,0), 간격 10."""
         progress_panel = wx.Panel(parent_window)
         progress_panel.SetMinSize((-1, 20))
         progress_panel.SetSize((-1, 20))
-        progress_panel.SetBackgroundColour(wx.Colour(*THEME_MID.BG_MAIN))
+        progress_panel.SetBackgroundColour(Colors.BG_PRIMARY)
         self._progress_panel = progress_panel
         # v1: setContentsMargins(10,2,10,0), setSpacing(10) → 상단 2px + 가로 10
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -405,8 +405,8 @@ class MainWindow(wx.Frame):
         # 상태 레이블 (인코딩 중/완료/실패 메시지) - Windows 11 Dark Theme
         self.encoding_status_label = wx.StaticText(progress_panel, label="")
         self.encoding_status_label.SetMinSize((280, -1))
-        self.encoding_status_label.SetForegroundColour(wx.Colour(*THEME_MID.FG_TEXT))
-        self.encoding_status_label.SetFont(get_ui_font(FONT_SIZE_DEFAULT, bold=True))
+        self.encoding_status_label.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self.encoding_status_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT, bold=True))
         progress_sizer.Add(self.encoding_status_label, 0, wx.ALIGN_CENTER_VERTICAL, 0)
         progress_sizer.Add((10, 0))  # 우측 10px
         progress_sizer.AddStretchSpacer()
@@ -1513,7 +1513,7 @@ class MainWindow(wx.Frame):
             self.encoding_progress_bar.Show()
         if self.encoding_status_label:
             self.encoding_status_label.SetLabel(tr('encoding').format(format_name))
-            self.encoding_status_label.SetForegroundColour(wx.Colour(52, 152, 219))  # #3498db 진행 중
+            self.encoding_status_label.SetForegroundColour(Colors.ENCODING_PROGRESS)
         self.status_msg_label.SetLabel(tr('encoding').format(format_name))
         if getattr(self, '_progress_panel', None):
             self._progress_panel.Layout()
@@ -1613,7 +1613,7 @@ class MainWindow(wx.Frame):
                 wx.CallLater(300, _hide_bar)
             if self.encoding_status_label:
                 self.encoding_status_label.SetLabel("✓ " + tr('save_complete') + file_size_str)
-                self.encoding_status_label.SetForegroundColour(wx.Colour(39, 174, 96))  # #27ae60 완료
+                self.encoding_status_label.SetForegroundColour(Colors.ENCODING_COMPLETE)
             if getattr(self, '_progress_panel', None):
                 self._progress_panel.Layout()
                 self._progress_panel.Refresh()
@@ -1675,7 +1675,7 @@ class MainWindow(wx.Frame):
             self.encoding_progress_bar.Hide()
         if self.encoding_status_label:
             self.encoding_status_label.SetLabel("✗ " + tr('encoding_failed'))
-            self.encoding_status_label.SetForegroundColour(wx.Colour(231, 76, 60))  # #e74c3c 에러
+            self.encoding_status_label.SetForegroundColour(Colors.ENCODING_ERROR)
         if getattr(self, '_progress_panel', None):
             self._progress_panel.Layout()
             self._progress_panel.Refresh()

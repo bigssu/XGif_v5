@@ -24,116 +24,7 @@ from .canvas_widget_wx import CanvasWidget
 from .frame_list_widget_wx import FrameListWidget
 from .icon_toolbar_wx import IconToolbar
 from .icon_utils_wx import IconFactory, IconColors
-from .style_constants_wx import Colors, Sizes, Fonts
-
-# ── FlatMenuBar / FlatMenuLabel ──────────────────────────────
-
-_MENU_CORNER = 6  # 메뉴 라벨 라운디드 코너
-
-
-class _FlatMenuLabel(wx.Control):
-    """플랫 메뉴 라벨 (owner-draw, 호버 효과, 라운디드 코너)"""
-
-    def __init__(self, parent, label: str, menu: wx.Menu):
-        super().__init__(parent, wx.ID_ANY, style=wx.BORDER_NONE)
-        self._label = label
-        self._menu = menu
-        self._hovered = False
-
-        self._bg = Colors.BG_MENUBAR if Colors else wx.Colour(38, 38, 38)
-        self._bg_hover = Colors.MENU_LABEL_HOVER if Colors else wx.Colour(60, 60, 60)
-        self._fg = Colors.TEXT_SECONDARY if Colors else wx.Colour(204, 204, 204)
-        self._fg_hover = Colors.TEXT_PRIMARY if Colors else wx.Colour(255, 255, 255)
-
-        font = Fonts.get_font(16) if Fonts else wx.Font(16, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
-        self.SetFont(font)
-
-        # 크기 계산
-        dc = wx.ScreenDC()
-        dc.SetFont(font)
-        tw, th = dc.GetTextExtent(label)
-        self.SetMinSize((tw + 30, Sizes.MENUBAR_HEIGHT if Sizes else 48))
-        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
-        self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
-
-        self.Bind(wx.EVT_PAINT, self._on_paint)
-        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
-        self.Bind(wx.EVT_ENTER_WINDOW, self._on_enter)
-        self.Bind(wx.EVT_LEAVE_WINDOW, self._on_leave)
-        self.Bind(wx.EVT_LEFT_DOWN, self._on_click)
-
-    def _on_enter(self, event):
-        self._hovered = True
-        self.Refresh()
-
-    def _on_leave(self, event):
-        self._hovered = False
-        self.Refresh()
-
-    def _on_click(self, event):
-        """클릭 → 팝업 메뉴 표시"""
-        pos = self.GetPosition()
-        h = self.GetSize()[1]
-        parent = self.GetParent()
-        # 팝업 위치: 라벨 바로 아래
-        parent.PopupMenu(self._menu, pos.x, pos.y + h)
-
-    def _on_paint(self, event):
-        dc = wx.PaintDC(self)
-        w, h = self.GetSize()
-        if w <= 0 or h <= 0:
-            return
-        bmp = wx.Bitmap(w, h)
-        memdc = wx.MemoryDC(bmp)
-        memdc.SetBackground(wx.Brush(self._bg))
-        memdc.Clear()
-        gc = wx.GraphicsContext.Create(memdc)
-        if gc:
-            if self._hovered:
-                gc.SetBrush(wx.Brush(self._bg_hover))
-                gc.SetPen(wx.TRANSPARENT_PEN)
-                gc.DrawRoundedRectangle(2, 2, w - 4, h - 4, _MENU_CORNER)
-            fg = self._fg_hover if self._hovered else self._fg
-            gc.SetFont(self.GetFont(), fg)
-            tw, th = gc.GetTextExtent(self._label)[:2]
-            gc.DrawText(self._label, (w - tw) / 2, (h - th) / 2)
-        memdc.SelectObject(wx.NullBitmap)
-        dc.DrawBitmap(bmp, 0, 0, False)
-
-
-class _FlatMenuBar(wx.Panel):
-    """커스텀 플랫 메뉴바 (wx.MenuBar 대체)
-
-    FlatMenuLabel들을 수평으로 배치하고, 오른쪽에 추가 위젯 공간을 제공합니다.
-    """
-
-    def __init__(self, parent, menu_items: list):
-        """
-        Args:
-            parent: 부모 윈도우
-            menu_items: [("라벨", wx.Menu), ...] 리스트
-        """
-        super().__init__(parent, style=wx.BORDER_NONE)
-        bg = Colors.BG_MENUBAR if Colors else wx.Colour(38, 38, 38)
-        self.SetBackgroundColour(bg)
-        h = Sizes.MENUBAR_HEIGHT if Sizes else 32
-        self.SetMinSize((-1, h))
-
-        self._sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._labels = []
-
-        for label, menu in menu_items:
-            lbl = _FlatMenuLabel(self, label, menu)
-            self._labels.append(lbl)
-            self._sizer.Add(lbl, 0, wx.ALIGN_CENTER_VERTICAL)
-
-        self._sizer.AddStretchSpacer()
-        self.SetSizer(self._sizer)
-
-    def add_right_widget(self, widget):
-        """오른쪽에 위젯 추가 (언어 토글 등)"""
-        self._sizer.Add(widget, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-
+from .style_constants_wx import Colors, Fonts
 
 # ── 다이얼로그 (wxPython 버전) ──────────────────────────────
 from .dialogs.crop_dialog_wx import CropDialog
@@ -164,6 +55,8 @@ from .inline_toolbars.speech_bubble_toolbar_wx import SpeechBubbleToolbar
 from .inline_toolbars.watermark_toolbar_wx import WatermarkToolbar
 from .inline_toolbars.rotate_toolbar_wx import RotateToolbar
 from .inline_toolbars.reduce_toolbar_wx import ReduceToolbar
+from .inline_toolbars.pencil_toolbar_wx import PencilToolbar
+from .property_bar_wx import PropertyBar
 
 # 대용량 파일 열기 제한 (메모리 안전성)
 MAX_EDITOR_FRAMES = 5000
@@ -255,9 +148,6 @@ class MainWindow(wx.Frame):
         self._update_title()
         self._update_info_bar()
 
-        # 언어 버튼 위치 조정
-        wx.CallLater(100, self._position_lang_button)
-
         # GPU 상태 주기적 업데이트
         self._gpu_update_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._update_gpu_status, self._gpu_update_timer)
@@ -276,18 +166,44 @@ class MainWindow(wx.Frame):
         self.SetDropTarget(FileDropTarget(self))
 
     def _init_inline_toolbars(self):
-        """인라인 툴바 초기화"""
-        self._speed_toolbar = SpeedToolbar(self)
-        self._resize_toolbar = ResizeToolbar(self)
-        self._effects_toolbar = EffectsToolbar(self)
-        self._text_toolbar = TextToolbar(self)
-        self._rotate_toolbar = RotateToolbar(self)
-        self._sticker_toolbar = StickerToolbar(self)
-        self._crop_toolbar = CropToolbar(self)
-        self._mosaic_toolbar = MosaicToolbar(self)
-        self._speech_bubble_toolbar = SpeechBubbleToolbar(self)
-        self._watermark_toolbar = WatermarkToolbar(self)
-        self._reduce_toolbar = ReduceToolbar(self)
+        """인라인 툴바 초기화 — PropertyBar에 등록"""
+        pb = self._property_bar
+
+        self._speed_toolbar = SpeedToolbar(self, parent=pb)
+        pb.register_toolbar('speed', self._speed_toolbar)
+
+        self._resize_toolbar = ResizeToolbar(self, parent=pb)
+        pb.register_toolbar('resize', self._resize_toolbar)
+
+        self._effects_toolbar = EffectsToolbar(self, parent=pb)
+        pb.register_toolbar('effects', self._effects_toolbar)
+
+        self._text_toolbar = TextToolbar(self, parent=pb)
+        pb.register_toolbar('text', self._text_toolbar)
+
+        self._rotate_toolbar = RotateToolbar(self, parent=pb)
+        pb.register_toolbar('rotate', self._rotate_toolbar)
+
+        self._sticker_toolbar = StickerToolbar(self, parent=pb)
+        pb.register_toolbar('sticker', self._sticker_toolbar)
+
+        self._crop_toolbar = CropToolbar(self, parent=pb)
+        pb.register_toolbar('crop', self._crop_toolbar)
+
+        self._mosaic_toolbar = MosaicToolbar(self, parent=pb)
+        pb.register_toolbar('mosaic', self._mosaic_toolbar)
+
+        self._speech_bubble_toolbar = SpeechBubbleToolbar(self, parent=pb)
+        pb.register_toolbar('speech_bubble', self._speech_bubble_toolbar)
+
+        self._watermark_toolbar = WatermarkToolbar(self, parent=pb)
+        pb.register_toolbar('watermark', self._watermark_toolbar)
+
+        self._reduce_toolbar = ReduceToolbar(self, parent=pb)
+        pb.register_toolbar('reduce', self._reduce_toolbar)
+
+        self._pencil_toolbar = PencilToolbar(self, parent=pb)
+        pb.register_toolbar('pencil', self._pencil_toolbar)
 
         self._active_inline_toolbar = None
 
@@ -298,7 +214,6 @@ class MainWindow(wx.Frame):
         """인라인 툴바 이벤트 연결"""
         from ..utils.wx_events import EVT_TOOLBAR_APPLIED, EVT_TOOLBAR_CANCELLED
 
-        # 모든 인라인 툴바의 적용/취소 이벤트 연결
         toolbars = [
             self._speed_toolbar,
             self._resize_toolbar,
@@ -311,6 +226,7 @@ class MainWindow(wx.Frame):
             self._speech_bubble_toolbar,
             self._watermark_toolbar,
             self._reduce_toolbar,
+            self._pencil_toolbar,
         ]
 
         for toolbar in toolbars:
@@ -319,7 +235,7 @@ class MainWindow(wx.Frame):
 
     def _on_toolbar_applied(self, event):
         """인라인 툴바 적용 이벤트"""
-        # 변경사항이 적용되었으므로 수정됨 플래그 설정
+        self._hide_active_inline_toolbar()
         self._is_modified = True
         self._update_title()
         self._update_info_bar()
@@ -327,24 +243,22 @@ class MainWindow(wx.Frame):
 
     def _on_toolbar_cancelled(self, event):
         """인라인 툴바 취소 이벤트"""
-        # 취소되었으므로 변경사항 없음
+        self._hide_active_inline_toolbar()
         self._refresh_all()
 
     def _setup_ui(self):
-        """Honeycam 스타일 UI 초기화"""
+        """UI 초기화"""
         self.SetTitle("GIF Editor")
         self.SetMinSize((1260, 840))
         self.SetSize((1260, 980))
 
-        # 중앙 패널 (Frame sizer로 관리하여 리사이즈 시 정확히 채움)
+        # 중앙 패널
         central_panel = wx.Panel(self)
-        if Colors:
-            central_panel.SetBackgroundColour(Colors.BG_PRIMARY)
+        central_panel.SetBackgroundColour(Colors.BG_PRIMARY)
         frame_sizer = wx.BoxSizer(wx.VERTICAL)
         frame_sizer.Add(central_panel, 1, wx.EXPAND)
         self.SetSizer(frame_sizer)
 
-        # 메인 레이아웃
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # === 아이콘 툴바 ===
@@ -354,37 +268,31 @@ class MainWindow(wx.Frame):
 
         # === 상단 정보 바 ===
         self._info_bar = wx.Panel(central_panel)
-        if Colors:
-            self._info_bar.SetBackgroundColour(Colors.BG_SECONDARY)
+        self._info_bar.SetBackgroundColour(Colors.BG_SECONDARY)
         info_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        # 앱 이름 및 버전 정보
         app_name_label = wx.StaticText(self._info_bar, label="XGif")
-        font_bold = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
-        app_name_label.SetFont(font_bold)
+        app_name_label.SetFont(Fonts.get_font(Fonts.SIZE_MD, bold=True))
         app_name_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         info_sizer.Add(app_name_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         version_label = wx.StaticText(self._info_bar, label=f"v{__version__}")
-        font_version = wx.Font(11, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
-        version_label.SetFont(font_version)
+        version_label.SetFont(Fonts.get_font(Fonts.SIZE_SM, bold=True))
         version_label.SetForegroundColour(Colors.VERSION_ACCENT)
         info_sizer.Add(version_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         date_label = wx.StaticText(self._info_bar, label=f"({__last_modified__})")
-        font_date = wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
-        date_label.SetFont(font_date)
+        date_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         date_label.SetForegroundColour(Colors.TEXT_MUTED)
         info_sizer.Add(date_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        # 구분선
         sep_app = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
         sep_app.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep_app, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 줌 레벨
         self._zoom_label = wx.StaticText(self._info_bar, label="1x")
-        self._zoom_label.SetFont(font_version)
+        self._zoom_label.SetFont(Fonts.get_font(Fonts.SIZE_SM, bold=True))
         self._zoom_label.SetForegroundColour(Colors.VERSION_ACCENT)
         self._zoom_label.SetMinSize((30, -1))
         info_sizer.Add(self._zoom_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
@@ -392,40 +300,34 @@ class MainWindow(wx.Frame):
         info_sizer.AddStretchSpacer()
 
         # 영상 크기
-        size_text = self._translations.tr("info_size_empty")
-        self._size_info = wx.StaticText(self._info_bar, label=size_text)
+        self._size_info = wx.StaticText(self._info_bar, label=self._translations.tr("info_size_empty"))
         self._size_info.SetMinSize((100, -1))
         self._size_info.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self._size_info.SetToolTip(self._translations.tr("info_size_tooltip") if hasattr(self._translations, 'tr') else "이미지 크기 (가로x세로)")
+        self._size_info.SetToolTip(self._translations.tr("info_size_tooltip"))
         info_sizer.Add(self._size_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        # 구분선
         sep1 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
         sep1.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep1, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 프레임 수
-        frame_count_text = self._translations.tr("info_frame_count_empty")
-        self._frame_count_info = wx.StaticText(self._info_bar, label=frame_count_text)
+        self._frame_count_info = wx.StaticText(self._info_bar, label=self._translations.tr("info_frame_count_empty"))
         self._frame_count_info.SetMinSize((80, -1))
         self._frame_count_info.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self._frame_count_info.SetToolTip(self._translations.tr("info_frame_count_tooltip") if hasattr(self._translations, 'tr') else "총 프레임 수")
+        self._frame_count_info.SetToolTip(self._translations.tr("info_frame_count_tooltip"))
         info_sizer.Add(self._frame_count_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        # 구분선
         sep2 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
         sep2.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep2, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 재생 시간
-        duration_text = self._translations.tr("info_duration_empty")
-        self._duration_info = wx.StaticText(self._info_bar, label=duration_text)
+        self._duration_info = wx.StaticText(self._info_bar, label=self._translations.tr("info_duration_empty"))
         self._duration_info.SetMinSize((100, -1))
         self._duration_info.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self._duration_info.SetToolTip(self._translations.tr("info_duration_tooltip") if hasattr(self._translations, 'tr') else "총 재생 시간")
+        self._duration_info.SetToolTip(self._translations.tr("info_duration_tooltip"))
         info_sizer.Add(self._duration_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        # 구분선
         sep3 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
         sep3.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep3, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
@@ -441,10 +343,9 @@ class MainWindow(wx.Frame):
         self._memory_value.SetBackgroundColour(Colors.BG_HOVER)
         self._memory_value.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._memory_value.SetMinSize((60, -1))
-        self._memory_value.SetToolTip(self._translations.tr("info_memory_tooltip") if hasattr(self._translations, 'tr') else "메모리 사용량")
+        self._memory_value.SetToolTip(self._translations.tr("info_memory_tooltip"))
         info_sizer.Add(self._memory_value, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        # 구분선
         sep4 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
         sep4.SetBackgroundColour(Colors.BORDER)
         info_sizer.Add(sep4, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
@@ -457,85 +358,125 @@ class MainWindow(wx.Frame):
         self._update_gpu_status()
         info_sizer.Add(self._gpu_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
+        # 구분선
+        sep_lang = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
+        sep_lang.SetBackgroundColour(Colors.BORDER)
+        info_sizer.Add(sep_lang, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
+        # 언어 토글 버튼 (info_bar 우측)
+        initial_lang_text = "En" if self._is_korean else "한"
+        self._lang_toggle_btn = wx.Button(self._info_bar, label=initial_lang_text, size=(30, 20))
+        self._lang_toggle_btn.SetToolTip(self._translations.tr("lang_toggle_tooltip"))
+        self._lang_toggle_btn.SetForegroundColour(wx.Colour(0, 255, 0))
+        self._lang_toggle_btn.SetBackgroundColour(Colors.BG_SECONDARY)
+        font = self._lang_toggle_btn.GetFont()
+        font.SetPointSize(8)
+        font.SetWeight(wx.FONTWEIGHT_BOLD)
+        self._lang_toggle_btn.SetFont(font)
+        self._lang_toggle_btn.Bind(wx.EVT_BUTTON, lambda e: self._toggle_language())
+        info_sizer.Add(self._lang_toggle_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+
         self._info_bar.SetSizer(info_sizer)
         main_sizer.Add(self._info_bar, 0, wx.EXPAND | wx.ALL, 5)
 
         # === 메인 콘텐츠 영역 ===
         content_splitter = wx.SplitterWindow(central_panel, style=wx.SP_3D | wx.SP_LIVE_UPDATE)
-        if Colors:
-            content_splitter.SetBackgroundColour(Colors.BG_PRIMARY)
+        content_splitter.SetBackgroundColour(Colors.BG_PRIMARY)
 
         # 좌측: 프레임 목록
         self._frame_list = FrameListWidget(self, content_splitter)
         self._frame_list.SetMinSize((72, -1))
         self._frame_list.SetMaxSize((120, -1))
 
-        # 프레임 리스트 이벤트 바인딩
         from ..utils.wx_events import EVT_FRAME_SELECTED, EVT_FRAME_DELAY_CHANGED, EVT_FRAME_DELETED
         self._frame_list.Bind(EVT_FRAME_SELECTED, self._on_frame_selected)
         self._frame_list.Bind(EVT_FRAME_DELAY_CHANGED, self._on_delay_changed)
         self._frame_list.Bind(EVT_FRAME_DELETED, self._on_frames_deleted)
 
-        # 우측: 미리보기 영역
-        preview_container = wx.Panel(content_splitter)
-        if Colors:
-            preview_container.SetBackgroundColour(Colors.BG_PRIMARY)
-        preview_sizer = wx.BoxSizer(wx.VERTICAL)
+        # 우측: 작업 공간
+        self._workspace = wx.Panel(content_splitter)
+        self._workspace.SetBackgroundColour(Colors.BG_PRIMARY)
+        workspace_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # PropertyBar (도구 속성 바 — 도구 미선택 시 숨김)
+        self._property_bar = PropertyBar(self._workspace)
+        workspace_sizer.Add(self._property_bar, 0, wx.EXPAND)
 
         # 캔버스
-        self._canvas = CanvasWidget(self, preview_container)
-        preview_sizer.Add(self._canvas, 1, wx.EXPAND)
+        self._canvas = CanvasWidget(self, self._workspace)
+        workspace_sizer.Add(self._canvas, 1, wx.EXPAND)
 
-        # 캔버스 크기 변경 시 펜슬 툴바 위치 업데이트
-        self._canvas.Bind(wx.EVT_SIZE, self._on_canvas_size_changed)
+        # 하단 컨트롤 (슬라이더 + 공유 액션 버튼)
+        self._bottom_controls = wx.Panel(self._workspace)
+        self._bottom_controls.SetBackgroundColour(Colors.BG_SECONDARY)
+        controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        # 재생 슬라이더
-        slider_container = wx.Panel(preview_container)
-        if Colors:
-            slider_container.SetBackgroundColour(Colors.BG_SECONDARY)
-        slider_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        self._play_btn = wx.Button(slider_container, size=(36, 36))
+        self._play_btn = wx.Button(self._bottom_controls, size=(36, 36))
         self._play_btn.SetToolTip("재생/일시정지 (Space)")
         self._play_btn.SetCursor(wx.Cursor(wx.CURSOR_HAND))
-        if Colors:
-            self._play_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._play_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         self._update_play_button_icon(False)
         self._play_btn.Bind(wx.EVT_BUTTON, lambda e: self.toggle_play())
-        slider_sizer.Add(self._play_btn, 0, wx.ALL, 5)
+        controls_sizer.Add(self._play_btn, 0, wx.ALL, 5)
 
-        self._frame_slider = wx.Slider(slider_container, style=wx.SL_HORIZONTAL)
+        self._frame_slider = wx.Slider(self._bottom_controls, style=wx.SL_HORIZONTAL)
         self._frame_slider.SetMin(0)
         self._frame_slider.SetValue(0)
         self._frame_slider.Bind(wx.EVT_SLIDER, lambda e: self._on_slider_changed(e.GetInt()))
-        slider_sizer.Add(self._frame_slider, 1, wx.ALL | wx.EXPAND, 5)
+        controls_sizer.Add(self._frame_slider, 1, wx.ALL | wx.EXPAND, 5)
 
-        self._frame_indicator = wx.StaticText(slider_container, label="0/0")
+        self._frame_indicator = wx.StaticText(self._bottom_controls, label="0/0")
         self._frame_indicator.SetMinSize((60, -1))
         self._frame_indicator.SetForegroundColour(Colors.TEXT_SECONDARY)
-        slider_sizer.Add(self._frame_indicator, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        controls_sizer.Add(self._frame_indicator, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        slider_container.SetSizer(slider_sizer)
-        preview_sizer.Add(slider_container, 0, wx.EXPAND)
+        controls_sizer.AddStretchSpacer()
 
-        preview_container.SetSizer(preview_sizer)
+        # 공유 액션 버튼 (도구 활성 시만 표시)
+        translations = self._translations
+
+        self._action_clear_btn = wx.Button(self._bottom_controls, label=translations.tr("toolbar_clear") if translations else "초기화")
+        self._action_clear_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._action_clear_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._action_clear_btn.SetMinSize((70, 32))
+        self._action_clear_btn.Bind(wx.EVT_BUTTON, self._on_action_clear)
+        self._action_clear_btn.Hide()
+        controls_sizer.Add(self._action_clear_btn, 0, wx.ALL, 5)
+
+        self._action_apply_btn = wx.Button(self._bottom_controls, label=translations.tr("toolbar_apply") if translations else "적용")
+        self._action_apply_btn.SetBackgroundColour(Colors.ACCENT)
+        self._action_apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._action_apply_btn.SetMinSize((70, 32))
+        self._action_apply_btn.Bind(wx.EVT_BUTTON, self._on_action_apply)
+        self._action_apply_btn.Hide()
+        controls_sizer.Add(self._action_apply_btn, 0, wx.ALL, 5)
+
+        self._action_cancel_btn = wx.Button(self._bottom_controls, label=translations.tr("toolbar_cancel") if translations else "취소")
+        self._action_cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._action_cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._action_cancel_btn.SetMinSize((70, 32))
+        self._action_cancel_btn.Bind(wx.EVT_BUTTON, self._on_action_cancel)
+        self._action_cancel_btn.Hide()
+        controls_sizer.Add(self._action_cancel_btn, 0, wx.ALL, 5)
+
+        self._bottom_controls.SetSizer(controls_sizer)
+        workspace_sizer.Add(self._bottom_controls, 0, wx.EXPAND)
+
+        self._workspace.SetSizer(workspace_sizer)
 
         # 스플리터 설정
-        content_splitter.SplitVertically(self._frame_list, preview_container, 200)
+        content_splitter.SplitVertically(self._frame_list, self._workspace, 200)
         main_sizer.Add(content_splitter, 1, wx.EXPAND)
 
         # === 하단 버튼 영역 ===
         bottom_bar = wx.Panel(central_panel)
-        if Colors:
-            bottom_bar.SetBackgroundColour(Colors.BG_SECONDARY)
+        bottom_bar.SetBackgroundColour(Colors.BG_SECONDARY)
         bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        translations = self._translations
         close_text = translations.tr("btn_close_edit") if translations else "편집 종료"
         self._close_btn = wx.Button(bottom_bar, label=close_text)
-        if Colors:
-            self._close_btn.SetBackgroundColour(Colors.BG_TERTIARY)
-            self._close_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._close_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._close_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._close_btn.SetToolTip(translations.tr("btn_close_edit_tooltip") if translations else "에디터를 닫습니다")
         self._close_btn.Bind(wx.EVT_BUTTON, lambda e: self.Close())
         bottom_sizer.Add(self._close_btn, 0, wx.ALL, 10)
@@ -544,9 +485,8 @@ class MainWindow(wx.Frame):
 
         save_text = translations.tr("btn_save") if translations else "저장"
         self._save_btn = wx.Button(bottom_bar, label=save_text)
-        if Colors:
-            self._save_btn.SetBackgroundColour(Colors.ACCENT)
-            self._save_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._save_btn.SetBackgroundColour(Colors.ACCENT)
+        self._save_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._save_btn.SetToolTip(translations.tr("btn_save_tooltip") if translations else "파일을 저장합니다 (Ctrl+Shift+S)")
         self._save_btn.Bind(wx.EVT_BUTTON, lambda e: self.save_file_as())
         bottom_sizer.Add(self._save_btn, 0, wx.ALL, 10)
@@ -637,37 +577,15 @@ class MainWindow(wx.Frame):
         action_about = self._help_menu.Append(wx.ID_ABOUT, f"XGif 정보  v{__version__}")
         self._help_menu.Bind(wx.EVT_MENU, lambda e: self._show_about_dialog(), action_about)
 
-        # === FlatMenuBar 삽입 (기존 wx.MenuBar 대체) ===
-        central_panel = self._icon_toolbar.GetParent()
-        menu_items = [
-            ("파일", self._file_menu),
-            ("편집", self._edit_menu),
-            ("관리", self._manage_menu),
-            ("보기", self._view_menu),
-            ("설정", self._settings_menu),
-            ("도움말", self._help_menu),
-        ]
-        self._flat_menubar = _FlatMenuBar(central_panel, menu_items)
-
-        # 언어 토글 버튼 (FlatMenuBar 안에 배치)
-        initial_lang_text = "En" if self._is_korean else "한"
-        self._lang_toggle_btn = wx.Button(self._flat_menubar, label=initial_lang_text, size=(30, 20))
-        self._lang_toggle_btn.SetToolTip(self._translations.tr("lang_toggle_tooltip"))
-        self._lang_toggle_btn.SetForegroundColour(wx.Colour(0, 255, 0))
-        bg = Colors.BG_MENUBAR if Colors else wx.Colour(38, 38, 38)
-        self._lang_toggle_btn.SetBackgroundColour(bg)
-        font = self._lang_toggle_btn.GetFont()
-        font.SetPointSize(8)
-        font.SetWeight(wx.FONTWEIGHT_BOLD)
-        self._lang_toggle_btn.SetFont(font)
-        self._lang_toggle_btn.Bind(wx.EVT_BUTTON, lambda e: self._toggle_language())
-        self._flat_menubar.add_right_widget(self._lang_toggle_btn)
-
-        # 메인 sizer에 메뉴바 삽입 (icon_toolbar 위에)
-        main_sizer = central_panel.GetSizer()
-        main_sizer.Insert(0, self._flat_menubar, 0, wx.EXPAND)
-        self._flat_menubar.Raise()  # Z-order 최상위로 (나중에 생성되어 다른 위젯에 가려지는 것 방지)
-        central_panel.Layout()
+        # === OS 표준 wx.MenuBar ===
+        self._menubar = wx.MenuBar()
+        self._menubar.Append(self._file_menu, "파일(&F)")
+        self._menubar.Append(self._edit_menu, "편집(&E)")
+        self._menubar.Append(self._manage_menu, "관리(&M)")
+        self._menubar.Append(self._view_menu, "보기(&V)")
+        self._menubar.Append(self._settings_menu, "설정(&S)")
+        self._menubar.Append(self._help_menu, "도움말(&H)")
+        self.SetMenuBar(self._menubar)
 
     def _setup_shortcuts(self):
         """키보드 단축키 설정"""
@@ -2220,21 +2138,14 @@ class MainWindow(wx.Frame):
                 wx.OK | wx.ICON_WARNING
             )
 
-    def _position_lang_button(self):
-        """언어 버튼 위치 조정 - FlatMenuBar 안에 이미 배치됨 (sizer 관리)"""
-        # FlatMenuBar 내부의 sizer로 관리되므로 별도 위치 조정 불필요
-        pass
-
     # ==================== 이벤트 핸들러 ====================
 
     def OnSize(self, event):
         """크기 변경"""
-        self._position_lang_button()
         event.Skip()
 
     def OnShow(self, event):
         """표시"""
-        self._position_lang_button()
         event.Skip()
 
     def closeEvent(self, event):
@@ -2350,18 +2261,20 @@ class MainWindow(wx.Frame):
     def _hide_active_inline_toolbar(self):
         """현재 활성 인라인 툴바 숨기기"""
         if self._active_inline_toolbar:
-            if hasattr(self._active_inline_toolbar, 'is_active') and self._active_inline_toolbar.is_active():
-                if hasattr(self._active_inline_toolbar, 'hide_from_canvas'):
-                    self._active_inline_toolbar.hide_from_canvas()
-            else:
-                self._active_inline_toolbar.Hide()
+            self._active_inline_toolbar.deactivate()
             self._active_inline_toolbar = None
 
-            # 툴바 버튼 다시 활성화
-            if hasattr(self, '_icon_toolbar'):
-                self._icon_toolbar.set_edit_mode(False)
+        # PropertyBar 숨기기
+        self._property_bar.hide_all()
 
-        # 저장 버튼 다시 활성화 (편집 모드 종료)
+        # 공유 액션 버튼 숨기기
+        self._hide_action_buttons()
+
+        # 툴바 버튼 다시 활성화
+        if hasattr(self, '_icon_toolbar'):
+            self._icon_toolbar.set_edit_mode(False)
+
+        # 저장 버튼 다시 활성화
         self._set_save_buttons_enabled(True)
 
         # 모든 캔버스 모드 종료
@@ -2421,6 +2334,7 @@ class MainWindow(wx.Frame):
             self._speech_bubble_toolbar: 'speech_bubble',
             self._watermark_toolbar: 'watermark',
             self._reduce_toolbar: 'reduce',
+            self._pencil_toolbar: 'pencil',
         }
         return toolbar_map.get(toolbar, "")
 
@@ -2433,30 +2347,60 @@ class MainWindow(wx.Frame):
         if hasattr(self, '_action_save_as'):
             self._action_save_as.Enable(enabled)
 
+    def _show_action_buttons(self, toolbar):
+        """공유 액션 버튼 표시"""
+        if hasattr(toolbar, 'has_clear_button') and toolbar.has_clear_button:
+            self._action_clear_btn.Show()
+        else:
+            self._action_clear_btn.Hide()
+        self._action_apply_btn.Show()
+        self._action_cancel_btn.Show()
+        self._bottom_controls.Layout()
+
+    def _hide_action_buttons(self):
+        """공유 액션 버튼 숨기기"""
+        self._action_clear_btn.Hide()
+        self._action_apply_btn.Hide()
+        self._action_cancel_btn.Hide()
+        self._bottom_controls.Layout()
+
+    def _on_action_apply(self, event):
+        """공유 적용 버튼 클릭 → 활성 툴바에 위임"""
+        if self._active_inline_toolbar:
+            self._active_inline_toolbar._on_apply(event)
+
+    def _on_action_cancel(self, event):
+        """공유 취소 버튼 클릭 → 활성 툴바에 위임"""
+        if self._active_inline_toolbar:
+            self._active_inline_toolbar._on_cancel(event)
+
+    def _on_action_clear(self, event):
+        """공유 초기화 버튼 클릭 → 활성 툴바에 위임"""
+        if self._active_inline_toolbar:
+            self._active_inline_toolbar._on_clear(event)
+
     def _show_inline_toolbar(self, toolbar, show_target_frame_hint: bool = False):
         """인라인 툴바 표시"""
-        # 대상 프레임 안내 팝업 (옵션)
         if show_target_frame_hint:
             self._maybe_show_target_frame_hint()
 
-        # 기존 툴바 숨기기
         self._hide_active_inline_toolbar()
 
-        # 어떤 버튼인지 확인하여 비활성화 모드 설정
         mode_name = self._get_toolbar_mode_name(toolbar)
         if hasattr(self, '_icon_toolbar') and mode_name:
             active_btn = self._icon_toolbar.get_button_by_mode(mode_name)
             self._icon_toolbar.set_edit_mode(True, active_btn)
 
-        # 저장 버튼 비활성화 (편집 모드 진입)
         self._set_save_buttons_enabled(False)
-
-        # 새 툴바 표시
         self._active_inline_toolbar = toolbar
-        if hasattr(toolbar, 'show_on_canvas'):
-            toolbar.show_on_canvas(self._canvas)
-        else:
-            toolbar.Show()
+
+        # PropertyBar에 표시
+        if mode_name:
+            self._property_bar.show_toolbar(mode_name)
+        toolbar.activate()
+
+        # 공유 액션 버튼 표시
+        self._show_action_buttons(toolbar)
 
     def _show_text_dialog(self):
         """텍스트 인라인 툴바 표시"""
@@ -2551,544 +2495,11 @@ class MainWindow(wx.Frame):
             )
 
     def _show_pencil_dialog(self):
-        """펜슬 인라인 툴바 표시 (완전한 기능)"""
+        """펜슬 인라인 툴바 표시"""
         if self._frames.is_empty:
             wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
             return
-
-        self._maybe_show_target_frame_hint()
-        # 기존 인라인 툴바 숨기기
-        self._hide_active_inline_toolbar()
-
-        # 기본값 설정
-        self._pencil_color = wx.Colour(255, 0, 0)  # 빨간색
-        self._pencil_width = 10
-        self._pencil_duration = 1.0
-        self._pencil_start_index = self._frames.current_index
-        self._pencil_auto_animation = True  # Auto Animation 기본값
-        self._pencil_target_mode = 1  # 기본값: "선택" (0: 모두, 1: 선택, 2: 현재)
-
-        # 툴바 버튼 비활성화 (펜슬 버튼만 활성화)
-        if hasattr(self, '_icon_toolbar'):
-            pencil_btn = self._icon_toolbar.get_button_by_mode('pencil')
-            self._icon_toolbar.set_edit_mode(True, pencil_btn)
-
-        # 인라인 툴바 표시
-        self._show_pencil_toolbar()
-
-        # 그리기 모드 시작
-        if hasattr(self._canvas, 'start_drawing_mode'):
-            self._canvas.start_drawing_mode(self._pencil_color, self._pencil_width)
-
-        # 프리뷰 범위 설정
-        self._update_pencil_preview_range()
-
-    def _show_pencil_toolbar(self):
-        """펜슬 인라인 툴바 표시 (캔버스 상단)"""
-        # 기존 툴바가 있으면 업데이트 후 표시
-        if hasattr(self, '_pencil_toolbar') and self._pencil_toolbar:
-            self._update_pencil_color_icon()
-            if hasattr(self, '_pencil_target_combo') and self._pencil_target_combo:
-                self._pencil_target_combo.SetSelection(self._pencil_target_mode)
-
-            # Z-order를 최상위로 올리고 표시
-            self._pencil_toolbar.Raise()
-            self._pencil_toolbar.Show()
-
-            if hasattr(self, '_pencil_action_buttons_widget') and self._pencil_action_buttons_widget:
-                self._update_pencil_action_buttons_position()
-                self._pencil_action_buttons_widget.Raise()
-                self._pencil_action_buttons_widget.Show()
-
-            # 캔버스 리프레시
-            self._canvas.Refresh()
-            return
-
-        # wxPython 펜슬 툴바 생성
-        self._pencil_toolbar = wx.Panel(self._canvas)
-        self._pencil_toolbar.SetBackgroundColour(Colors.BG_TOOLBAR)
-
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        # 컨트롤 영역
-        controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        # 적용 대상
-        target_label = wx.StaticText(self._pencil_toolbar, label="대상:")
-        target_label.SetForegroundColour(Colors.TEXT_PRIMARY)
-        controls_sizer.Add(target_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-
-        self._pencil_target_combo = wx.ComboBox(
-            self._pencil_toolbar,
-            style=wx.CB_READONLY,
-            choices=["모두", "선택", "현재"]
-        )
-        self._pencil_target_combo.SetSelection(self._pencil_target_mode)
-        self._pencil_target_combo.Bind(wx.EVT_COMBOBOX, self._on_pencil_target_changed)
-        controls_sizer.Add(self._pencil_target_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-
-        # 구분선
-        sep1 = wx.StaticLine(self._pencil_toolbar, style=wx.LI_VERTICAL, size=(1, 30))
-        controls_sizer.Add(sep1, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
-
-        # 색상 버튼
-        self._pencil_color_btn = wx.Button(self._pencil_toolbar, size=(44, 44))
-        self._pencil_color_btn.Bind(wx.EVT_BUTTON, lambda e: self._select_pencil_color())
-        self._update_pencil_color_icon()
-        controls_sizer.Add(self._pencil_color_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-
-        # 두께 슬라이더
-        self._pencil_width_slider = wx.Slider(
-            self._pencil_toolbar,
-            value=self._pencil_width,
-            minValue=1,
-            maxValue=20,
-            style=wx.SL_HORIZONTAL,
-            size=(100, -1)
-        )
-        self._pencil_width_slider.Bind(wx.EVT_SLIDER, self._on_pencil_width_changed)
-        controls_sizer.Add(self._pencil_width_slider, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-
-        self._pencil_width_label = wx.StaticText(self._pencil_toolbar, label=f"{self._pencil_width}px")
-        self._pencil_width_label.SetForegroundColour(Colors.TEXT_PRIMARY)
-        controls_sizer.Add(self._pencil_width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-
-        # 지속 시간
-        duration_label = wx.StaticText(self._pencil_toolbar, label="시간:")
-        duration_label.SetForegroundColour(Colors.TEXT_PRIMARY)
-        controls_sizer.Add(duration_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-
-        self._pencil_duration_spin = wx.SpinCtrlDouble(
-            self._pencil_toolbar,
-            min=0.1,
-            max=30.0,
-            inc=0.1,
-            size=(70, -1)
-        )
-        self._pencil_duration_spin.SetValue(self._pencil_duration)
-        self._pencil_duration_spin.SetDigits(1)
-        self._pencil_duration_spin.Bind(wx.EVT_SPINCTRLDOUBLE, self._on_pencil_duration_changed)
-        controls_sizer.Add(self._pencil_duration_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-
-        # 구분선
-        sep2 = wx.StaticLine(self._pencil_toolbar, style=wx.LI_VERTICAL, size=(1, 30))
-        controls_sizer.Add(sep2, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
-
-        # Auto Animation 토글
-        self._pencil_auto_anim_btn = wx.ToggleButton(self._pencil_toolbar, label="Auto", size=(60, 32))
-        self._pencil_auto_anim_btn.SetValue(self._pencil_auto_animation)
-        self._pencil_auto_anim_btn.Bind(wx.EVT_TOGGLEBUTTON, self._on_pencil_auto_anim_toggled)
-        controls_sizer.Add(self._pencil_auto_anim_btn, 0, wx.ALIGN_CENTER_VERTICAL)
-
-        main_sizer.Add(controls_sizer, 1, wx.ALL, 10)
-
-        self._pencil_toolbar.SetSizer(main_sizer)
-        self._pencil_toolbar.Fit()  # 컨텐츠에 맞게 크기 조정
-
-        # 위치와 크기 설정
-        canvas_width = self._canvas.GetSize()[0]
-        toolbar_height = 60
-        self._pencil_toolbar.SetPosition((10, 10))
-        self._pencil_toolbar.SetSize((min(800, canvas_width - 20), toolbar_height))
-
-        # Z-order를 최상위로 (중요!)
-        self._pencil_toolbar.Raise()
-        self._pencil_toolbar.Show()
-
-        # 캔버스 리프레시하여 툴바가 보이도록
-        self._canvas.Refresh()
-
-        # 액션 버튼 위젯 (캔버스 오른쪽 하단)
-        self._pencil_action_buttons_widget = wx.Panel(self._canvas)
-        self._pencil_action_buttons_widget.SetBackgroundColour(Colors.BG_TOOLBAR)
-
-        buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        # 지우기 버튼
-        self._pencil_clear_btn = wx.Button(self._pencil_action_buttons_widget, label="지우기", size=(70, 30))
-        self._pencil_clear_btn.Bind(wx.EVT_BUTTON, lambda e: self._clear_pencil_drawings())
-        buttons_sizer.Add(self._pencil_clear_btn, 0, wx.ALL, 3)
-
-        # 적용 버튼
-        self._pencil_apply_btn = wx.Button(self._pencil_action_buttons_widget, label="적용", size=(70, 30))
-        self._pencil_apply_btn.Bind(wx.EVT_BUTTON, lambda e: self._apply_pencil_drawing())
-        buttons_sizer.Add(self._pencil_apply_btn, 0, wx.ALL, 3)
-
-        # 취소 버튼
-        self._pencil_cancel_btn = wx.Button(self._pencil_action_buttons_widget, label="취소", size=(70, 30))
-        self._pencil_cancel_btn.Bind(wx.EVT_BUTTON, lambda e: self._cancel_pencil_mode())
-        buttons_sizer.Add(self._pencil_cancel_btn, 0, wx.ALL, 3)
-
-        self._pencil_action_buttons_widget.SetSizer(buttons_sizer)
-        self._pencil_action_buttons_widget.Fit()  # 컨텐츠에 맞게 크기 조정
-        self._update_pencil_action_buttons_position()
-
-        # Z-order를 최상위로 (중요!)
-        self._pencil_action_buttons_widget.Raise()
-        self._pencil_action_buttons_widget.Show()
-
-        # 저장 버튼 비활성화
-        self._set_save_buttons_enabled(False)
-
-    def _on_canvas_size_changed(self, event):
-        """캔버스 크기 변경 시 펜슬 툴바 위치 업데이트"""
-        # 펜슬 툴바가 활성화되어 있으면 위치 업데이트
-        if hasattr(self, '_pencil_toolbar') and self._pencil_toolbar and self._pencil_toolbar.IsShown():
-            canvas_width = self._canvas.GetSize()[0]
-            toolbar_height = self._pencil_toolbar.GetSize()[1]
-            self._pencil_toolbar.SetSize((min(800, canvas_width - 20), toolbar_height))
-
-        if hasattr(self, '_pencil_action_buttons_widget') and self._pencil_action_buttons_widget and self._pencil_action_buttons_widget.IsShown():
-            self._update_pencil_action_buttons_position()
-
-        event.Skip()
-
-    def _update_pencil_action_buttons_position(self):
-        """펜슬 액션 버튼을 캔버스 오른쪽 하단에 배치"""
-        if hasattr(self, '_pencil_action_buttons_widget') and self._pencil_action_buttons_widget and self._canvas:
-            btn_width, btn_height = self._pencil_action_buttons_widget.GetSize()
-            margin = 10
-            x = self._canvas.GetSize()[0] - btn_width - margin
-            y = self._canvas.GetSize()[1] - btn_height - margin
-            self._pencil_action_buttons_widget.SetPosition((x, y))
-
-    def _update_pencil_color_icon(self):
-        """펜 색상 버튼 아이콘 업데이트"""
-        if not hasattr(self, '_pencil_color_btn') or not self._pencil_color_btn:
-            return
-
-        try:
-            if not hasattr(self, '_pencil_color') or not self._pencil_color:
-                self._pencil_color = wx.Colour(255, 0, 0)
-            pen_width = getattr(self, '_pencil_width', 10)
-
-            # 버튼 배경색을 펜 색상으로 설정
-            self._pencil_color_btn.SetBackgroundColour(self._pencil_color)
-            self._pencil_color_btn.SetLabel(f"{pen_width}px")
-            self._pencil_color_btn.Refresh()
-
-        except Exception as e:
-            self._logger.error(f"펜 색상 아이콘 업데이트 오류: {e}", exc_info=True)
-
-    def _select_pencil_color(self):
-        """펜 색상 선택"""
-        try:
-            data = wx.ColourData()
-            data.SetColour(self._pencil_color)
-
-            dlg = wx.ColourDialog(self, data)
-            if dlg.ShowModal() == wx.ID_OK:
-                self._pencil_color = dlg.GetColourData().GetColour()
-                self._update_pencil_color_icon()
-
-                # 캔버스에도 색상 업데이트
-                if hasattr(self._canvas, 'update_pencil_settings'):
-                    self._canvas.update_pencil_settings(self._pencil_color, self._pencil_width)
-
-            dlg.Destroy()
-
-        except Exception as e:
-            self._logger.error(f"펜 색상 선택 오류: {e}", exc_info=True)
-
-    def _on_pencil_width_changed(self, event):
-        """펜 두께 변경"""
-        try:
-            value = self._pencil_width_slider.GetValue()
-            self._pencil_width = value
-            if hasattr(self, '_pencil_width_label') and self._pencil_width_label:
-                self._pencil_width_label.SetLabel(f"{value}px")
-            self._update_pencil_color_icon()
-
-            # 캔버스에도 두께 업데이트
-            if hasattr(self._canvas, 'update_pencil_settings'):
-                self._canvas.update_pencil_settings(self._pencil_color, self._pencil_width)
-
-        except Exception as e:
-            self._logger.error(f"펜 두께 변경 오류: {e}", exc_info=True)
-
-    def _on_pencil_duration_changed(self, event):
-        """지속 시간 변경"""
-        self._pencil_duration = self._pencil_duration_spin.GetValue()
-        self._update_pencil_preview_range()
-
-    def _on_pencil_auto_anim_toggled(self, event):
-        """Auto Animation 토글 변경"""
-        self._pencil_auto_animation = self._pencil_auto_anim_btn.GetValue()
-        self._update_pencil_preview_range()
-
-    def _on_pencil_target_changed(self, event):
-        """펜슬 적용 대상 변경"""
-        self._pencil_target_mode = self._pencil_target_combo.GetSelection()
-        self._update_pencil_preview_range()
-
-    def _update_pencil_preview_range(self):
-        """펜슬 프리뷰 범위 업데이트"""
-        try:
-            if not hasattr(self, '_frames') or self._frames.is_empty:
-                return
-
-            if not hasattr(self, '_canvas') or not self._canvas:
-                return
-
-            if not hasattr(self._canvas, 'set_pencil_preview_range'):
-                return
-
-            if not hasattr(self, '_pencil_target_mode'):
-                self._pencil_target_mode = 1
-            if not hasattr(self, '_pencil_auto_animation'):
-                self._pencil_auto_animation = True
-
-            target_mode = self._pencil_target_mode  # 0: 모두, 1: 선택, 2: 현재
-
-            # Auto Animation 모드
-            if self._pencil_auto_animation:
-                if target_mode == 0:  # 모두
-                    frame_count = self._frames.frame_count
-                    if frame_count > 0:
-                        target_frames = list(range(frame_count))
-                        self._canvas.set_pencil_preview_range(
-                            0, len(target_frames),
-                            auto_animation=True, target_frames=target_frames
-                        )
-                elif target_mode == 1:  # 선택
-                    selected_indices = self._frames.selected_indices
-                    if selected_indices and len(selected_indices) >= 2:
-                        target_frames = sorted(selected_indices)
-                        self._canvas.set_pencil_preview_range(
-                            target_frames[0], len(target_frames),
-                            auto_animation=True, target_frames=target_frames
-                        )
-                    else:
-                        # 기본 범위
-                        frame_count = 2
-                        target_frames = list(range(self._pencil_start_index, min(self._pencil_start_index + frame_count, self._frames.frame_count)))
-                        if target_frames:
-                            self._canvas.set_pencil_preview_range(
-                                self._pencil_start_index, len(target_frames),
-                                auto_animation=True, target_frames=target_frames
-                            )
-                else:  # 현재
-                    current_idx = self._frames.current_index
-                    if 0 <= current_idx < self._frames.frame_count:
-                        self._canvas.set_pencil_preview_range(
-                            current_idx, 1,
-                            auto_animation=False, target_frames=[current_idx]
-                        )
-            else:
-                # 일반 모드
-                if target_mode == 0:  # 모두
-                    if self._frames.frame_count > 0:
-                        self._canvas.set_pencil_preview_range(0, self._frames.frame_count)
-                elif target_mode == 1:  # 선택
-                    selected_indices = self._frames.selected_indices
-                    if selected_indices:
-                        start_idx = min(selected_indices)
-                        end_idx = max(selected_indices) + 1
-                        self._canvas.set_pencil_preview_range(start_idx, end_idx - start_idx)
-                    else:
-                        frame_count = 1
-                        if frame_count > 0:
-                            self._canvas.set_pencil_preview_range(self._pencil_start_index, frame_count)
-                else:  # 현재
-                    current_idx = self._frames.current_index
-                    if 0 <= current_idx < self._frames.frame_count:
-                        self._canvas.set_pencil_preview_range(current_idx, 1)
-
-        except Exception as e:
-            self._logger.error(f"펜슬 프리뷰 범위 업데이트 오류: {e}", exc_info=True)
-
-    def _clear_pencil_drawings(self):
-        """그린 선 지우기"""
-        try:
-            if hasattr(self._canvas, 'clear_drawings'):
-                self._canvas.clear_drawings()
-        except Exception as e:
-            self._logger.error(f"그린 선 지우기 오류: {e}", exc_info=True)
-
-    def _cancel_pencil_mode(self):
-        """펜슬 모드 취소"""
-        try:
-            if hasattr(self._canvas, 'stop_drawing_mode'):
-                self._canvas.stop_drawing_mode()
-            if hasattr(self._canvas, 'set_pencil_preview_range'):
-                self._canvas.set_pencil_preview_range(0, 0)
-
-            if hasattr(self, '_pencil_toolbar') and self._pencil_toolbar:
-                self._pencil_toolbar.Hide()
-            if hasattr(self, '_pencil_action_buttons_widget') and self._pencil_action_buttons_widget:
-                self._pencil_action_buttons_widget.Hide()
-
-            # 툴바 버튼 다시 활성화
-            if hasattr(self, '_icon_toolbar'):
-                self._icon_toolbar.set_edit_mode(False)
-
-            # 저장 버튼 다시 활성화
-            self._set_save_buttons_enabled(True)
-
-        except Exception as e:
-            self._logger.error(f"펜슬 모드 취소 오류: {e}", exc_info=True)
-
-    def _apply_pencil_drawing(self):
-        """그린 선을 프레임들에 적용"""
-        try:
-            if not hasattr(self._canvas, 'get_drawing_paths'):
-                wx.MessageBox("캔버스가 초기화되지 않았습니다.", "경고", wx.OK | wx.ICON_WARNING)
-                return
-
-            paths = self._canvas.get_drawing_paths()
-
-            if not paths:
-                wx.MessageBox("그려진 선이 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
-                return
-
-            target_mode = self._pencil_target_mode  # 0: 모두, 1: 선택, 2: 현재
-
-            # 적용할 프레임 인덱스 목록 결정
-            if target_mode == 0:  # 모두
-                target_indices = list(range(self._frames.frame_count))
-            elif target_mode == 1:  # 선택
-                target_indices = sorted(self._frames.selected_indices)
-                if not target_indices:
-                    frame_count = 1
-                    start_idx = self._pencil_start_index
-                    target_indices = list(range(start_idx, min(start_idx + frame_count, self._frames.frame_count)))
-            else:  # 현재
-                target_indices = [self._frames.current_index]
-
-            if not target_indices:
-                wx.MessageBox("적용할 프레임이 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
-                return
-
-            # Auto Animation 모드
-            if self._pencil_auto_animation and len(target_indices) >= 2:
-                self._apply_pencil_auto_animation(paths, target_indices)
-                return
-
-            # 일반 모드: 모든 대상 프레임에 동일한 선 적용
-            applied_count = 0
-            for i in target_indices:
-                if 0 <= i < self._frames.frame_count:
-                    frame = self._frames[i]
-                    if frame and hasattr(frame, 'draw_lines'):
-                        try:
-                            frame.draw_lines(paths)
-                            applied_count += 1
-                        except Exception as e:
-                            self._logger.error(f"프레임 {i}에 선 적용 오류: {e}", exc_info=True)
-
-            self._is_modified = True
-
-            # 펜슬 모드 종료
-            if hasattr(self._canvas, 'stop_drawing_mode'):
-                self._canvas.stop_drawing_mode()
-            if hasattr(self._canvas, 'set_pencil_preview_range'):
-                self._canvas.set_pencil_preview_range(0, 0)
-
-            if hasattr(self, '_pencil_toolbar') and self._pencil_toolbar:
-                self._pencil_toolbar.Hide()
-            if hasattr(self, '_pencil_action_buttons_widget') and self._pencil_action_buttons_widget:
-                self._pencil_action_buttons_widget.Hide()
-
-            # 툴바 버튼 다시 활성화
-            if hasattr(self, '_icon_toolbar'):
-                self._icon_toolbar.set_edit_mode(False)
-
-            # 저장 버튼 다시 활성화
-            self._set_save_buttons_enabled(True)
-
-            self._refresh_all()
-
-            wx.MessageBox(
-                f"총 {applied_count}개 프레임에 펜슬 선이 적용되었습니다.",
-                "완료",
-                wx.OK | wx.ICON_INFORMATION
-            )
-
-        except Exception as e:
-            self._logger.error(f"펜슬 선 적용 오류: {e}", exc_info=True)
-            wx.MessageBox(f"펜슬 선을 적용하는 중 오류가 발생했습니다:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
-
-    def _apply_pencil_auto_animation(self, paths, target_indices: list = None):
-        """Auto Animation: 선택된 프레임에 걸쳐 선이 점진적으로 그려지는 효과"""
-        if target_indices is None:
-            target_indices = sorted(self._frames.selected_indices)
-
-        if not target_indices or len(target_indices) < 2:
-            wx.MessageBox(
-                "Auto Animation은 최소 2개 이상의 프레임이 필요합니다.",
-                "경고",
-                wx.OK | wx.ICON_WARNING
-            )
-            return
-
-        selected_indices = sorted(target_indices)
-        num_frames = len(selected_indices)
-
-        # 모든 경로의 총 포인트 수 계산
-        total_points = sum(len(path_points) for path_points, _, _ in paths)
-
-        if total_points == 0:
-            return
-
-        # 각 프레임에 점진적으로 더 많은 포인트를 적용
-        for frame_idx, target_frame_idx in enumerate(selected_indices):
-            if 0 <= target_frame_idx < self._frames.frame_count:
-                frame = self._frames[target_frame_idx]
-                if frame and hasattr(frame, 'draw_lines'):
-                    # 현재 프레임까지 표시할 포인트 비율
-                    progress = (frame_idx + 1) / num_frames
-
-                    # 부분 경로 생성
-                    partial_paths = []
-                    points_to_show = int(total_points * progress)
-                    points_shown = 0
-
-                    for path_points, color, width in paths:
-                        path_len = len(path_points)
-                        if points_shown + path_len <= points_to_show:
-                            # 전체 경로 포함
-                            partial_paths.append((path_points, color, width))
-                            points_shown += path_len
-                        elif points_shown < points_to_show:
-                            # 부분 경로 포함
-                            remaining = points_to_show - points_shown
-                            partial_paths.append((path_points[:remaining], color, width))
-                            points_shown += remaining
-                        else:
-                            break
-
-                    try:
-                        frame.draw_lines(partial_paths)
-                    except Exception as e:
-                        self._logger.error(f"프레임 {target_frame_idx}에 Auto Animation 적용 오류: {e}", exc_info=True)
-
-        self._is_modified = True
-
-        # 펜슬 모드 종료
-        if hasattr(self._canvas, 'stop_drawing_mode'):
-            self._canvas.stop_drawing_mode()
-        if hasattr(self._canvas, 'set_pencil_preview_range'):
-            self._canvas.set_pencil_preview_range(0, 0)
-
-        if hasattr(self, '_pencil_toolbar') and self._pencil_toolbar:
-            self._pencil_toolbar.Hide()
-        if hasattr(self, '_pencil_action_buttons_widget') and self._pencil_action_buttons_widget:
-            self._pencil_action_buttons_widget.Hide()
-
-        # 툴바 버튼 다시 활성화
-        if hasattr(self, '_icon_toolbar'):
-            self._icon_toolbar.set_edit_mode(False)
-
-        # 저장 버튼 다시 활성화
-        self._set_save_buttons_enabled(True)
-
-        self._refresh_all()
-
-        wx.MessageBox(
-            f"{num_frames}개 프레임에 Auto Animation이 적용되었습니다.",
-            "완료",
-            wx.OK | wx.ICON_INFORMATION
-        )
+        self._show_inline_toolbar(self._pencil_toolbar, show_target_frame_hint=True)
 
     # ==================== 프레임 이벤트 핸들러 ====================
 
@@ -3131,30 +2542,14 @@ class MainWindow(wx.Frame):
     def _toggle_language(self):
         """언어 토글 (En <-> 한)"""
         # 활성화된 인라인 툴바 숨기기
-        if hasattr(self, '_active_inline_toolbar') and self._active_inline_toolbar:
-            if hasattr(self._active_inline_toolbar, 'is_active') and self._active_inline_toolbar.is_active():
-                if hasattr(self._active_inline_toolbar, 'hide_from_canvas'):
-                    self._active_inline_toolbar.hide_from_canvas()
+        self._hide_active_inline_toolbar()
 
         # 언어 전환
         self._is_korean = not self._is_korean
         self._translations.set_language(self._is_korean)
 
-        # 캔버스 모드 종료
         if hasattr(self, '_canvas') and self._canvas:
-            canvas = self._canvas
-            # 모든 편집 모드 종료
-            if hasattr(canvas, 'stop_text_edit_mode'):
-                canvas.stop_text_edit_mode()
-            if hasattr(canvas, 'stop_sticker_mode'):
-                canvas.stop_sticker_mode()
-            if hasattr(canvas, 'stop_speech_bubble_mode'):
-                canvas.stop_speech_bubble_mode()
-            if hasattr(canvas, 'stop_mosaic_mode'):
-                canvas.stop_mosaic_mode()
-            if hasattr(canvas, 'stop_crop_mode'):
-                canvas.stop_crop_mode()
-            canvas.Refresh()
+            self._canvas.Refresh()
 
         # 언어 토글 버튼 텍스트 및 툴팁 업데이트
         if hasattr(self, '_lang_toggle_btn') and self._lang_toggle_btn:
@@ -3190,6 +2585,14 @@ class MainWindow(wx.Frame):
         if hasattr(self, '_save_btn') and self._save_btn:
             self._save_btn.SetLabel(self._translations.tr("btn_save"))
             self._save_btn.SetToolTip(self._translations.tr("btn_save_tooltip"))
+
+        # 공유 액션 버튼 텍스트 업데이트
+        if hasattr(self, '_action_clear_btn'):
+            self._action_clear_btn.SetLabel(self._translations.tr("toolbar_clear"))
+        if hasattr(self, '_action_apply_btn'):
+            self._action_apply_btn.SetLabel(self._translations.tr("toolbar_apply"))
+        if hasattr(self, '_action_cancel_btn'):
+            self._action_cancel_btn.SetLabel(self._translations.tr("toolbar_cancel"))
 
         # 재생 버튼 툴팁 업데이트
         if hasattr(self, '_play_btn') and self._play_btn:
@@ -3338,7 +2741,6 @@ class MainWindow(wx.Frame):
 
     def _update_inline_toolbar_texts(self):
         """인라인 툴바 텍스트 업데이트"""
-        # 모든 인라인 툴바의 update_texts() 메서드 호출
         toolbars = [
             self._speed_toolbar,
             self._resize_toolbar,
@@ -3351,6 +2753,7 @@ class MainWindow(wx.Frame):
             self._speech_bubble_toolbar,
             self._watermark_toolbar,
             self._reduce_toolbar,
+            self._pencil_toolbar,
         ]
 
         for toolbar in toolbars:
