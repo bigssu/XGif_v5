@@ -318,74 +318,111 @@ def create_ico_from_png():
         return None
 
 
+def _generate_spec_file(icon_ico, version_file):
+    """PyInstaller spec 파일 생성 (바이너리 필터링 포함)"""
+    resources_data = os.path.join(PROJECT_ROOT, "resources")
+
+    icon_line = f"icon=r'{icon_ico}'," if icon_ico and os.path.exists(icon_ico) else ""
+    version_line = f"version=r'{version_file}'," if version_file and os.path.exists(version_file) else ""
+
+    spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
+import os
+from PyInstaller.utils.hooks import copy_metadata
+
+# 제외할 바이너리 패턴 (wx html DLL ~0.7MB)
+EXCLUDE_BINARIES = [
+    'wxmsw32u_html',
+]
+
+a = Analysis(
+    [r'{MAIN_SCRIPT}'],
+    pathex=[r'{PROJECT_ROOT}'],
+    binaries=[],
+    datas=[(r'{resources_data}', 'resources')] + copy_metadata('imageio'),
+    hiddenimports=[
+        'comtypes',
+        'pynput.keyboard',
+        'pynput.mouse',
+        'pynput.keyboard._win32',
+        'pynput.mouse._win32',
+        'sounddevice',
+        'soundfile',
+    ],
+    hookspath=[],
+    hooksconfig={{}},
+    runtime_hooks=[],
+    excludes=[
+        # GPU 및 선택적 의존성
+        'cupy', 'scipy', 'cv2', 'numba', 'llvmlite',
+        # 미사용 wx 모듈 (wx.grid, wx.adv는 에디터에서 사용)
+        'wx.html', 'wx.html2', 'wx.xml', 'wx.richtext',
+        'wx.stc', 'wx.media', 'wx.glcanvas',
+        'wx.dataview', 'wx.ribbon', 'wx.propgrid', 'wx.aui',
+        # 미사용 numpy 서브패키지
+        'numpy.f2py', 'numpy.testing', 'numpy.tests',
+        'numpy.distutils', 'numpy.polynomial', 'numpy.ma.tests',
+        # 미사용 PIL 플러그인
+        'PIL.ImageTk', 'PIL.ImageQt',
+        # 개발 도구
+        'tkinter', 'matplotlib', 'IPython', 'jupyter',
+        'pytest', 'setuptools', 'distutils',
+        'xmlrpc', 'unittest', 'doctest', 'pdb',
+        # 기타 미사용
+        'pdb', 'lib2to3', 'ensurepip',
+        # NOTE: email, http are needed by urllib (used by ffmpeg_installer)
+    ],
+    noarchive=False,
+    optimize=0,
+)
+
+# 바이너리 필터링 — OpenBLAS, wx html DLL 제거
+a.binaries = [
+    (name, path, typ) for name, path, typ in a.binaries
+    if not any(pat in os.path.basename(path).lower() for pat in EXCLUDE_BINARIES)
+]
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='XGif',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=True,
+    upx=False,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    {icon_line}
+    {version_line}
+)
+"""
+    spec_path = os.path.join(PROJECT_DIR, "XGif.spec")
+    with open(spec_path, "w", encoding="utf-8") as f:
+        f.write(spec_content)
+    return spec_path
+
+
 def run_pyinstaller_build():
-    """PyInstaller를 사용한 빌드 (Nuitka가 너무 느릴 경우 대안)"""
+    """PyInstaller를 사용한 빌드 (spec 파일 기반, 바이너리 필터링 포함)"""
     print("\n=== Build Tool Check ===")
     _ensure_build_tool("PyInstaller", ["pyinstaller"])
 
-    # 앱 아이콘 .ico 생성 + 버전 메타데이터 파일 생성
     icon_ico = create_ico_from_png()
     version_file = create_version_file()
 
-    # ffmpeg는 빌드에 포함하지 않음 (약 380MB, 런타임에 자동 다운로드)
-    # resources 폴더는 포함 (아이콘, 이미지)
-    resources_data = os.path.join(PROJECT_ROOT, "resources") + os.pathsep + "resources"
+    spec_path = _generate_spec_file(icon_ico, version_file)
+    print(f"  Spec file: {spec_path}")
 
     pyinstaller_exe = os.path.join(BUILD_VENV, "Scripts", "pyinstaller.exe")
-    cmd = [
-        pyinstaller_exe,
-        "--noconfirm",
-        "--windowed",
-        "--onefile",
-        "--name", "XGif",
-        "--copy-metadata", "imageio",
-
-        # GPU 및 선택적 의존성 제외
-        "--exclude-module", "cupy",
-        "--exclude-module", "scipy",
-        "--exclude-module", "cv2",
-        "--exclude-module", "numba",
-        "--exclude-module", "llvmlite",
-
-        # 개발 도구 제외
-        "--exclude-module", "tkinter",
-        "--exclude-module", "matplotlib",
-        "--exclude-module", "IPython",
-        "--exclude-module", "jupyter",
-        "--exclude-module", "pytest",
-        "--exclude-module", "setuptools",
-        "--exclude-module", "distutils",
-        "--exclude-module", "xmlrpc",
-        "--exclude-module", "unittest",
-        "--exclude-module", "doctest",
-        "--exclude-module", "pdb",
-        # NOTE: email, http are needed by urllib (used by ffmpeg_installer)
-
-        # 동적 import 패키지 (PyInstaller 자동 감지 불가)
-        "--hidden-import", "comtypes",
-        "--hidden-import", "pynput.keyboard",
-        "--hidden-import", "pynput.mouse",
-        "--hidden-import", "pynput.keyboard._win32",
-        "--hidden-import", "pynput.mouse._win32",
-        "--hidden-import", "sounddevice",
-        "--hidden-import", "soundfile",
-
-        # 최적화 옵션
-        "--strip",  # 디버그 정보 제거 (크기 감소)
-    ]
-
-    # 리소스 폴더 추가
-    cmd.extend(["--add-data", resources_data])
-
-    # exe 아이콘 지정
-    if icon_ico and os.path.exists(icon_ico):
-        cmd.extend(["--icon", icon_ico])
-
-    # Windows exe 버전 메타데이터
-    if version_file and os.path.exists(version_file):
-        cmd.extend(["--version-file", version_file])
-
-    cmd.append(MAIN_SCRIPT)
+    cmd = [pyinstaller_exe, "--noconfirm", spec_path]
 
     print("Starting PyInstaller build process...")
     subprocess.run(cmd, check=True)
