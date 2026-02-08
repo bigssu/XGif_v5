@@ -94,6 +94,7 @@ ffmpeg/
 
 # Build artifacts
 *.spec
+file_version_info.txt
 
 # Windows NUL device artifact
 nul
