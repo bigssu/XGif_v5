@@ -1214,8 +1214,8 @@ class MainWindow(wx.Frame):
     def _open_editor_with_frames(self):
         """녹화된 프레임으로 GifEditor 열기
         
-        NOTE: editor 모듈은 PyQt6 기반이므로 wxPython과 충돌할 수 있습니다.
-        임시로 GIF를 저장하고 별도 프로세스로 editor를 실행합니다.
+        NOTE: editor 모듈은 wxPython 기반입니다.
+        임시 GIF를 저장하고 별도 프로세스로 editor를 실행합니다.
         """
         from PIL import Image
         import tempfile

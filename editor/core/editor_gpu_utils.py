@@ -3,7 +3,7 @@ GPU Utilities - CUDA GPU 가속 유틸리티
 CuPy를 사용하여 GPU 가속 지원
 
 사용법:
-    from src.core import gpu_utils
+    from editor.core import gpu_utils
 
     # GPU 사용 가능 여부 확인
     if gpu_utils.is_gpu_available():

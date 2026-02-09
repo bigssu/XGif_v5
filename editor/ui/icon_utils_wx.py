@@ -4,6 +4,7 @@ IconUtils - 통일된 아이콘 스타일 시스템 (wxPython 버전)
 """
 import wx
 import math
+import os
 from typing import Optional
 
 try:
@@ -55,6 +56,21 @@ class IconFactory:
     DEFAULT_PEN_WIDTH = 2
 
     @classmethod
+    def _create_transparent_bitmap(cls, width: int, height: int) -> wx.Bitmap:
+        """알파 채널이 완전 투명으로 초기화된 비트맵 생성
+
+        Windows에서 wx.MemoryDC.Clear()는 알파를 0으로 설정하지 않으므로
+        wx.Image를 통해 명시적으로 알파를 초기화합니다.
+        """
+        img = wx.Image(width, height)
+        img.InitAlpha()
+        # 알파 전체를 0(투명)으로 초기화
+        img.SetAlpha(bytes([0] * (width * height)))
+        # RGB도 0으로 (pre-multiplied alpha 환경에서 안전)
+        img.SetData(bytes([0] * (width * height * 3)))
+        return wx.Bitmap(img, 32)
+
+    @classmethod
     def create_bitmap(cls, icon_type: str, size: Optional[int] = None, color: Optional[str] = None) -> wx.Bitmap:
         """아이콘 비트맵 생성
 
@@ -69,13 +85,9 @@ class IconFactory:
         if size is None:
             size = cls.DEFAULT_SIZE
 
-        # 비트맵 생성
-        bitmap = wx.Bitmap(size, size, 32)  # 32-bit for alpha
+        # 알파가 투명으로 초기화된 비트맵 생성
+        bitmap = cls._create_transparent_bitmap(size, size)
         dc = wx.MemoryDC(bitmap)
-
-        # 투명 배경
-        dc.SetBackground(wx.Brush(wx.Colour(0, 0, 0, 0)))
-        dc.Clear()
 
         # 안티앨리어싱 사용
         gc = wx.GraphicsContext.Create(dc)
@@ -911,3 +923,57 @@ def create_icon_button(icon_type: str, tooltip: str, size: int = 40,
         btn.SetBackgroundColour(wx.Colour(255, 255, 255))
 
     return btn
+
+
+def load_icon(path: str, size: Optional[int] = None,
+              mask_black: bool = True) -> wx.Bitmap:
+    """이미지 파일에서 아이콘 비트맵을 로드하는 헬퍼 함수
+
+    PNG는 알파 채널을 유지하고, JPG/BMP 등 알파가 없는 포맷은
+    검은색(0,0,0)을 투명 마스크로 지정합니다.
+
+    Args:
+        path: 이미지 파일 경로 (PNG, JPG, BMP 등)
+        size: 리사이즈할 크기 (정사각형). None이면 원본 크기 유지
+        mask_black: 알파 채널이 없을 때 검은색을 투명 마스크로 지정할지 여부
+
+    Returns:
+        wx.Bitmap: 투명도가 적용된 비트맵
+    """
+    if not os.path.isfile(path):
+        # 파일이 없으면 빈 투명 비트맵 반환
+        s = size or IconFactory.DEFAULT_SIZE
+        return IconFactory._create_transparent_bitmap(s, s)
+
+    ext = os.path.splitext(path)[1].lower()
+
+    # wx.Image로 로드 (포맷 자동 감지)
+    img = wx.Image(path, wx.BITMAP_TYPE_ANY)
+    if not img.IsOk():
+        s = size or IconFactory.DEFAULT_SIZE
+        return IconFactory._create_transparent_bitmap(s, s)
+
+    # PNG: 알파 채널 유지
+    if ext == '.png':
+        if not img.HasAlpha():
+            img.InitAlpha()
+    else:
+        # JPG, BMP 등: 알파 채널이 없으므로 검은색을 마스크로 지정
+        if mask_black and not img.HasAlpha():
+            img.SetMaskColour(0, 0, 0)
+
+    # 리사이즈 (고품질 보간)
+    if size is not None:
+        orig_w, orig_h = img.GetWidth(), img.GetHeight()
+        if orig_w != size or orig_h != size:
+            img = img.Scale(size, size, wx.IMAGE_QUALITY_HIGH)
+
+    # 비트맵 변환
+    if img.HasAlpha():
+        return wx.Bitmap(img, 32)
+    else:
+        bmp = wx.Bitmap(img)
+        if img.HasMask():
+            mask = wx.Mask(bmp, wx.Colour(0, 0, 0))
+            bmp.SetMask(mask)
+        return bmp

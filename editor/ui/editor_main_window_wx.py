@@ -35,13 +35,7 @@ from .dialogs.sticker_dialog_wx import StickerDialog
 from .dialogs.speed_dialog_wx import SpeedDialog
 from .dialogs.target_frame_hint_dialog_wx import TargetFrameHintDialog
 
-# SaveDialog는 wxPython 버전이 없으므로 나중에 구현 필요
-# 임시로 원본 사용 (PyQt6 의존성 있음)
-try:
-    from .save_dialog_wx import SaveDialog
-except ImportError:
-    # PyQt6가 없으면 더미 클래스 사용
-    SaveDialog = None
+from .save_dialog_wx import SaveDialog
 
 # 인라인 툴바 (wxPython 버전) - 개별 임포트
 from .inline_toolbars.speed_toolbar_wx import SpeedToolbar
@@ -697,8 +691,6 @@ class MainWindow(wx.Frame):
 
     def save_file_as(self):
         """다른 이름으로 저장 (고급 설정 다이얼로그)"""
-        from .save_dialog_wx import SaveDialog
-
         dlg = SaveDialog(self)
         if dlg.ShowModal() == wx.ID_OK:
             file_path = dlg.get_file_path()

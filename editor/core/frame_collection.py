@@ -291,9 +291,6 @@ class FrameCollection:
         if self._is_valid_index(value):
             old_index = self._current_index
             self._current_index = value
-            # print(f"[FrameCollection] current_index 변경: {old_index} -> {value}")
-        # else:
-        #     print(f"[FrameCollection] 잘못된 인덱스: {value} (범위: 0-{len(self._frames)-1})")
     
     @property
     def current_frame(self) -> Optional[Frame]:
