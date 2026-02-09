@@ -122,12 +122,6 @@ def _check_cupy():
         if _cupy_available is not None:
             return _cupy_available
 
-        # 환경 변수로 GPU 비활성화 옵션
-        if os.environ.get('GIFFY_DISABLE_GPU', '').lower() in ('1', 'true', 'yes'):
-            logger.info("GPU disabled by environment variable")
-            _cupy_available = False
-            return False
-
         _cupy_available = False
 
         try:
@@ -177,11 +171,6 @@ def detect_gpu(skip_cupy: bool = False) -> GpuInfo:
             if skip_cupy or _gpu_info.has_cupy or not _gpu_info.has_cuda:
                 return _gpu_info
             # CuPy 정보가 없는데 skip_cupy=False → CuPy 확인 추가 실행
-
-        # 환경 변수로 GPU 비활성화 옵션
-        if os.environ.get('GIFFY_DISABLE_GPU', '').lower() in ('1', 'true', 'yes'):
-            _gpu_info = GpuInfo()
-            return _gpu_info
 
         # 하드웨어 정보가 아직 없으면 감지
         if _gpu_info is None:

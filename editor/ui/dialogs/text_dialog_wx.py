@@ -35,6 +35,8 @@ class TextDialog(wx.Dialog):
         text_sizer.AddSpacer(10)
 
         self._text_ctrl = wx.TextCtrl(self, style=wx.TE_MULTILINE, size=(-1, 100))
+        self._text_ctrl.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._text_ctrl.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._text_ctrl.SetValue("텍스트를 입력하세요")
         text_sizer.Add(self._text_ctrl, 0, wx.EXPAND | wx.ALL, 10)
 
@@ -54,6 +56,8 @@ class TextDialog(wx.Dialog):
         size_sizer.Add(size_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._size_spin = wx.SpinCtrl(self, min=8, max=200, initial=32)
+        self._size_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._size_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         size_sizer.Add(self._size_spin, 0)
 
         font_sizer.Add(size_sizer, 0, wx.ALL, 10)

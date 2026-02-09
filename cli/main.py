@@ -27,7 +27,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version", "-V", action="version", version=f"XGif {__version__}"
     )
-    parser.add_argument("--debug", action="store_true", help="디버그 로깅 활성화")
     parser.add_argument("--quiet", action="store_true", help="최소 출력 (에러만)")
 
     subparsers = parser.add_subparsers(dest="command")
@@ -219,7 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def setup_cli_logging(debug=False, quiet=False):
+def setup_cli_logging(quiet=False):
     """CLI 모드 로깅 설정"""
     from logging.handlers import RotatingFileHandler
 
@@ -237,7 +236,7 @@ def setup_cli_logging(debug=False, quiet=False):
             backupCount=3,
             encoding="utf-8",
         )
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(logging.INFO)
         handlers.append(file_handler)
     except (OSError, PermissionError):
         pass
@@ -246,14 +245,12 @@ def setup_cli_logging(debug=False, quiet=False):
     console_handler = logging.StreamHandler()
     if quiet:
         console_handler.setLevel(logging.ERROR)
-    elif debug:
-        console_handler.setLevel(logging.DEBUG)
     else:
         console_handler.setLevel(logging.WARNING)
     handlers.append(console_handler)
 
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=handlers,
     )
@@ -301,9 +298,7 @@ def cli_main(argv=None) -> int:
         return 0
 
     # 로깅 설정
-    setup_cli_logging(
-        debug=getattr(args, "debug", False), quiet=getattr(args, "quiet", False)
-    )
+    setup_cli_logging(quiet=getattr(args, "quiet", False))
 
     if args.command == "record":
         args.output = _resolve_output(args)

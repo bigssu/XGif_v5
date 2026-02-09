@@ -122,6 +122,8 @@ class StickerDialog(wx.Dialog):
         pos_row.Add(x_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._x_spin = wx.SpinCtrl(self, min=0, max=10000, initial=50)
+        self._x_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._x_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._x_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
         pos_row.Add(self._x_spin, 1)
 
@@ -132,6 +134,8 @@ class StickerDialog(wx.Dialog):
         pos_row.Add(y_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._y_spin = wx.SpinCtrl(self, min=0, max=10000, initial=50)
+        self._y_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._y_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._y_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
         pos_row.Add(self._y_spin, 1)
 
@@ -144,6 +148,8 @@ class StickerDialog(wx.Dialog):
         size_row.Add(w_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._width_spin = wx.SpinCtrl(self, min=10, max=1000, initial=100)
+        self._width_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._width_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._width_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
         size_row.Add(self._width_spin, 1)
 
@@ -154,6 +160,8 @@ class StickerDialog(wx.Dialog):
         size_row.Add(h_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         self._height_spin = wx.SpinCtrl(self, min=10, max=1000, initial=100)
+        self._height_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._height_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._height_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
         size_row.Add(self._height_spin, 1)
 
@@ -196,6 +204,8 @@ class StickerDialog(wx.Dialog):
         stroke_row.Add(self._stroke_color_btn, 0, wx.RIGHT, 10)
 
         self._stroke_width_spin = wx.SpinCtrl(self, min=1, max=20, initial=2)
+        self._stroke_width_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._stroke_width_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._stroke_width_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
         stroke_row.Add(self._stroke_width_spin, 0)
 
@@ -210,6 +220,7 @@ class StickerDialog(wx.Dialog):
 
         self._opacity_slider = wx.Slider(self, value=100, minValue=0, maxValue=100,
                                         style=wx.SL_HORIZONTAL)
+        self._opacity_slider.SetBackgroundColour(Colors.BG_PRIMARY)
         self._opacity_slider.Bind(wx.EVT_SLIDER, self._on_setting_changed)
         opacity_row.Add(self._opacity_slider, 1)
 
@@ -230,6 +241,8 @@ class StickerDialog(wx.Dialog):
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
                                         choices=["현재 프레임만", "선택한 프레임", "모든 프레임"])
+        self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(1)
         target_sizer.Add(self._target_combo, 1, wx.ALL, 10)
 

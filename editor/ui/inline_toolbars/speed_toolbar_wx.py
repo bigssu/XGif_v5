@@ -33,6 +33,7 @@ class SpeedToolbar(InlineToolbarBase):
         self._speed_slider = wx.Slider(self._controls_widget, value=100,
                                       minValue=10, maxValue=400,
                                       style=wx.SL_HORIZONTAL)
+        self._speed_slider.SetBackgroundColour(Colors.BG_TOOLBAR)
         self._speed_slider.SetMinSize((120, -1))
         speed_tooltip = translations.tr("speed_speed") if translations else "속도"
         self._speed_slider.SetToolTip(speed_tooltip)
@@ -42,6 +43,8 @@ class SpeedToolbar(InlineToolbarBase):
         # 스핀박스
         self._speed_spin = wx.SpinCtrlDouble(self._controls_widget, min=0.1, max=4.0,
                                              initial=1.0, inc=0.1)
+        self._speed_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._speed_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._speed_spin.SetDigits(2)
         self._speed_spin.SetMinSize((70, -1))
         self._speed_spin.Bind(wx.EVT_SPINCTRLDOUBLE, self._on_spin_changed)

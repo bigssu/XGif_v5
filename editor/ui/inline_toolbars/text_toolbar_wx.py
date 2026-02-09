@@ -5,6 +5,7 @@ import wx
 from PIL import Image, ImageDraw, ImageFont
 from typing import TYPE_CHECKING, Optional, List
 from .base_toolbar_wx import InlineToolbarBase
+from ..style_constants_wx import Colors
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -58,6 +59,8 @@ class TextToolbar(InlineToolbarBase):
             target_choices = ["모두", "선택", "현재"]
 
         self._target_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY, choices=target_choices)
+        self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(1)
         self._target_combo.SetMinSize((70, -1))
         self._target_combo.SetToolTip(target_tooltip)
@@ -71,6 +74,8 @@ class TextToolbar(InlineToolbarBase):
         self.add_icon_label("text", 20, text_input_tooltip)
 
         self._text_input = wx.TextCtrl(self._controls_widget)
+        self._text_input.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._text_input.SetForegroundColour(Colors.TEXT_PRIMARY)
         text_placeholder = translations.tr("text_placeholder") if translations else "텍스트"
         self._text_input.SetHint(text_placeholder)
         self._text_input.SetValue("Hello!")
@@ -83,6 +88,8 @@ class TextToolbar(InlineToolbarBase):
         self.add_icon_label("font_size", 20, font_size_tooltip)
 
         self._size_spin = wx.SpinCtrl(self._controls_widget, min=8, max=200, initial=32)
+        self._size_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._size_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._size_spin.SetMinSize((70, -1))
         self._size_spin.SetToolTip(font_size_tooltip)
         self._size_spin.Bind(wx.EVT_SPINCTRL, lambda e: self._on_setting_changed())
@@ -90,6 +97,8 @@ class TextToolbar(InlineToolbarBase):
 
         # 폰트 선택
         self._font_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY)
+        self._font_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._font_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         font_select_tooltip = translations.tr("text_font_select") if translations else "폰트 선택"
         self._font_combo.SetToolTip(font_select_tooltip)
         self._load_system_fonts()
@@ -116,6 +125,8 @@ class TextToolbar(InlineToolbarBase):
         self.add_control(self._outline_check)
 
         self._outline_width_spin = wx.SpinCtrl(self._controls_widget, min=1, max=20, initial=2)
+        self._outline_width_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._outline_width_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._outline_width_spin.SetMinSize((70, -1))
         outline_width_tooltip = translations.tr("text_outline_width") if translations else "외곽선 두께"
         self._outline_width_spin.SetToolTip(outline_width_tooltip)
@@ -133,6 +144,8 @@ class TextToolbar(InlineToolbarBase):
             self._anim_names = AnimationPreset.get_animation_names()
             anim_choices = [name for name, _ in self._anim_names]
             self._anim_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY, choices=anim_choices)
+            self._anim_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+            self._anim_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
             self._anim_combo.SetSelection(0)
             self._anim_combo.SetMinSize((100, -1))
             self._anim_combo.SetToolTip("애니메이션")
@@ -155,6 +168,8 @@ class TextToolbar(InlineToolbarBase):
         self.add_icon_label("clock", 20, blink_interval_tooltip)
 
         self._blink_spin = wx.SpinCtrlDouble(self._controls_widget, min=0.1, max=5.0, initial=0.3, inc=0.1)
+        self._blink_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._blink_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._blink_spin.SetMinSize((70, -1))
         self._blink_spin.SetToolTip(blink_interval_tooltip)
         self._blink_spin.SetDigits(1)

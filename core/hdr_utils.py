@@ -237,32 +237,25 @@ def apply_hdr_correction_adaptive(frame: np.ndarray) -> np.ndarray:
     if frame is None or frame.size == 0 or frame.dtype != np.uint8:
         return frame
 
-    # 환경변수로 수동 모드 선택 가능
-    manual_mode = os.environ.get("XGIF_HDR_MODE", "").strip().lower()
-
     # 첫 프레임만 분석 (캐시, 스레드 안전)
     if not hasattr(apply_hdr_correction_adaptive, '_mode'):
         with _hdr_mode_lock:
             # 이중 체크 (Double-checked locking)
             if not hasattr(apply_hdr_correction_adaptive, '_mode'):
-                if manual_mode:
-                    apply_hdr_correction_adaptive._mode = manual_mode
-                    logger.info(f"[HDR] Manual mode selected: {manual_mode}")
+                stats = analyze_dxcam_output(frame)
+                diagnosis = stats.get('diagnosis', 'unknown')
+
+                if diagnosis == 'over_bright_linear':
+                    apply_hdr_correction_adaptive._mode = 'linear_to_srgb'
+                elif diagnosis == 'needs_gamma':
+                    apply_hdr_correction_adaptive._mode = 'gamma_down'
+                elif diagnosis == 'likely_srgb':
+                    apply_hdr_correction_adaptive._mode = 'passthrough'
                 else:
-                    stats = analyze_dxcam_output(frame)
-                    diagnosis = stats.get('diagnosis', 'unknown')
+                    # 기본: OBS 방식
+                    apply_hdr_correction_adaptive._mode = 'obs'
 
-                    if diagnosis == 'over_bright_linear':
-                        apply_hdr_correction_adaptive._mode = 'linear_to_srgb'
-                    elif diagnosis == 'needs_gamma':
-                        apply_hdr_correction_adaptive._mode = 'gamma_down'
-                    elif diagnosis == 'likely_srgb':
-                        apply_hdr_correction_adaptive._mode = 'passthrough'
-                    else:
-                        # 기본: OBS 방식
-                        apply_hdr_correction_adaptive._mode = 'obs'
-
-                    logger.info(f"[HDR] Auto-detected mode: {apply_hdr_correction_adaptive._mode} (diagnosis: {diagnosis})")
+                logger.info(f"[HDR] Auto-detected mode: {apply_hdr_correction_adaptive._mode} (diagnosis: {diagnosis})")
 
     mode = apply_hdr_correction_adaptive._mode
     
@@ -314,56 +307,32 @@ def apply_hdr_correction_obs(frame: np.ndarray) -> np.ndarray:
     h, w = frame.shape[:2]
     use_gpu = (h * w) >= 640 * 480  # 640x480 이상만 GPU 사용
     
-    use_pq = os.environ.get("XGIF_HDR_PQ", "").strip() == "1"
     try:
         xp = _get_array_module() if use_gpu else np
         v = xp.asarray(frame, dtype=xp.float32) / 255.0
 
-        if use_pq:
-            # PQ(ST.2084) 역변환 → BT.2020 → BT.709 → 톤매핑 → sRGB (OBS 방식)
-            # BGR → RGB 변환
-            rgb_pq = xp.stack([v[:, :, 2], v[:, :, 1], v[:, :, 0]], axis=-1)
-            
-            # PQ → 선형 (nits)
-            linear_2020_nits = _st2084_to_linear_simple(rgb_pq, xp)
-            # nits를 0-1 범위로 정규화 (10000 nits 기준)
-            linear_2020 = linear_2020_nits / _HDR_MAX_NITS
-            
-            # BT.2020 → BT.709 (색역 변환, OBS는 항상 적용)
-            rgb_709 = _linear_bt2020_to_bt709(linear_2020, xp)
-            
-            # 톤매핑: Reinhard 스타일 (OBS 방식)
-            rgb_709 = rgb_709 / (1.0 + rgb_709)
-            rgb_709 = xp.clip(rgb_709, 0.0, 1.0)
-            
-            # 선형 → sRGB OETF
-            srgb = linear_to_srgb(rgb_709)
-            
-            # RGB → BGR
-            out_bgr = xp.stack([srgb[:, :, 2], srgb[:, :, 1], srgb[:, :, 0]], axis=-1)
-        else:
-            # 선형 입력 가정: OBS 방식 - BT.2020 가정 → BT.709 → 톤매핑 → sRGB
-            # DXGI가 선형 데이터를 반환하지만 스케일이 잘못되었을 수 있음
-            # BGR → RGB
-            rgb_linear = xp.stack([v[:, :, 2], v[:, :, 1], v[:, :, 0]], axis=-1)
-            
-            # 스케일 다운 (HDR 선형 값이 0-1 범위를 초과할 수 있음)
-            # OBS는 sdr_white_nits_over_maximum을 곱함 (80/10000 = 0.008)
-            rgb_linear = rgb_linear * _HDR_SDR_WHITE_SCALE
-            
-            # BT.2020 → BT.709 (색역 변환, OBS는 항상 적용)
-            rgb_709 = _linear_bt2020_to_bt709(rgb_linear, xp)
-            
-            # 톤매핑: Reinhard (OBS 방식)
-            rgb_709 = rgb_709 / (1.0 + rgb_709)
-            rgb_709 = xp.clip(rgb_709, 0.0, 1.0)
-            
-            # 선형 → sRGB OETF
-            srgb = linear_to_srgb(rgb_709)
-            
-            # RGB → BGR
-            out_bgr = xp.stack([srgb[:, :, 2], srgb[:, :, 1], srgb[:, :, 0]], axis=-1)
-        
+        # 선형 입력 가정: OBS 방식 - BT.2020 가정 → BT.709 → 톤매핑 → sRGB
+        # DXGI가 선형 데이터를 반환하지만 스케일이 잘못되었을 수 있음
+        # BGR → RGB
+        rgb_linear = xp.stack([v[:, :, 2], v[:, :, 1], v[:, :, 0]], axis=-1)
+
+        # 스케일 다운 (HDR 선형 값이 0-1 범위를 초과할 수 있음)
+        # OBS는 sdr_white_nits_over_maximum을 곱함 (80/10000 = 0.008)
+        rgb_linear = rgb_linear * _HDR_SDR_WHITE_SCALE
+
+        # BT.2020 → BT.709 (색역 변환, OBS는 항상 적용)
+        rgb_709 = _linear_bt2020_to_bt709(rgb_linear, xp)
+
+        # 톤매핑: Reinhard (OBS 방식)
+        rgb_709 = rgb_709 / (1.0 + rgb_709)
+        rgb_709 = xp.clip(rgb_709, 0.0, 1.0)
+
+        # 선형 → sRGB OETF
+        srgb = linear_to_srgb(rgb_709)
+
+        # RGB → BGR
+        out_bgr = xp.stack([srgb[:, :, 2], srgb[:, :, 1], srgb[:, :, 0]], axis=-1)
+
         out = (out_bgr * 255.0).clip(0, 255).astype(np.uint8)
         if hasattr(out, "get"):
             out = out.get()

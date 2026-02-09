@@ -79,6 +79,7 @@ class PencilDialog(wx.Dialog):
         self._width_slider = wx.Slider(self, value=self._pencil_width,
                                       minValue=1, maxValue=20,
                                       style=wx.SL_HORIZONTAL)
+        self._width_slider.SetBackgroundColour(Colors.BG_PRIMARY)
         self._width_slider.Bind(wx.EVT_SLIDER, self._on_width_changed)
         width_control.Add(self._width_slider, 1, wx.ALIGN_CENTER_VERTICAL)
 
@@ -103,6 +104,8 @@ class PencilDialog(wx.Dialog):
 
         self._duration_spin = wx.SpinCtrlDouble(self, min=0.1, max=30.0,
                                                 initial=self._duration, inc=0.1)
+        self._duration_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._duration_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._duration_spin.SetDigits(1)
         self._duration_spin.SetMinSize((100, 40))
         duration_row.Add(self._duration_spin, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -138,6 +141,8 @@ class PencilDialog(wx.Dialog):
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
                                         choices=["모두", "선택", "현재"])
+        self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(self._target_mode)
         self._target_combo.SetMinSize((90, -1))
         target_sizer.Add(self._target_combo, 0, wx.ALIGN_CENTER_VERTICAL)

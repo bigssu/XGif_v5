@@ -96,5 +96,8 @@ ffmpeg/
 *.spec
 file_version_info.txt
 
+# Code signing certificates (sensitive)
+signing/
+
 # Windows NUL device artifact
 nul

@@ -23,32 +23,6 @@ from .capture_backend import (
 # HDR 모니터 대응 (톤 매핑)
 from .hdr_utils import is_hdr_active, apply_hdr_correction_adaptive
 
-# HDR 비교용 PNG 저장: XGIF_DEBUG_HDR_PNG=1 이거나 Temp\xgif_hdr_debug 폴더가 있을 때
-def _is_debug_hdr_png_enabled() -> bool:
-    import tempfile
-    d = os.path.join(tempfile.gettempdir(), "xgif_hdr_debug")
-    if os.environ.get("XGIF_DEBUG_HDR_PNG", "").strip() == "1":
-        return True
-    return os.path.isdir(d)
-
-
-def _save_debug_hdr_png(frame_bgr: np.ndarray, name: str) -> None:
-    """BGR 프레임을 PNG로 저장 (HDR 비교용). Temp\\xgif_hdr_debug 폴더를 만들어 두면 자동 활성화."""
-    if not _is_debug_hdr_png_enabled() or frame_bgr is None or frame_bgr.size == 0:
-        return
-    import tempfile
-    debug_dir = os.path.join(tempfile.gettempdir(), "xgif_hdr_debug")
-    path = os.path.abspath(os.path.join(debug_dir, f"{name}.png"))
-    try:
-        from PIL import Image
-        os.makedirs(debug_dir, exist_ok=True)
-        rgb = frame_bgr[:, :, ::-1].copy()  # 연속 메모리로 복사 (PIL 호환)
-        Image.fromarray(rgb).save(path)
-        logger.info("[HDR 디버그] 저장됨: %s", path)
-    except Exception as e:
-        logger.warning("HDR 디버그 PNG 저장 실패: %s | 경로: %s", e, path)
-
-
 # Windows에서 마우스 커서 캡처를 위한 모듈
 try:
     import ctypes
@@ -287,17 +261,12 @@ class ScreenRecorder:
             if frame is None or frame.size == 0:
                 return None
             
-            # HDR 비교용: 캡처 직후 원본 1장 PNG 저장 (XGIF_DEBUG_HDR_PNG=1)
-            _save_debug_hdr_png(frame, "capture_frame_before_hdr")
-            
             # HDR 보정: 사용자가 수동으로 켤 때만 적용
             # 단, GDI 백엔드는 Windows가 자동으로 색상 관리를 처리하므로 보정 스킵
             backend_name = (backend.get_name() if backend else "").lower()
             is_gdi = backend_name == "gdi"
             if not is_gdi and self.hdr_correction_force:
                 frame = apply_hdr_correction_adaptive(frame)
-            # 비교용 after PNG (보정 여부 무관하게 저장)
-            _save_debug_hdr_png(frame, "capture_frame_after_hdr")
             
             # 마우스 커서 그리기
             if self.include_cursor and HAS_WIN32:
@@ -755,7 +724,6 @@ class CaptureThread(threading.Thread):
         self.keyboard_enabled = keyboard_enabled
         self.hdr_correction_force = hdr_correction_force
         self._on_failed = on_failed  # 백엔드/캡처 실패 시 메인 스레드에 알림
-        self._debug_png_saved = False  # HDR 비교용 PNG 첫 프레임만 저장
         self._backend_is_dxcam = False  # run()에서 실제 백엔드로 설정
         self._backend_is_gdi = False    # GDI 사용 시 HDR 보정 스킵
         
@@ -869,16 +837,13 @@ class CaptureThread(threading.Thread):
                     timing_samples['grab'].append(t1 - t0)
                     
                     if frame is not None:
-                        # HDR 비교용: 녹화 첫 프레임만 캡처 직전/직후 PNG 저장 (XGIF_DEBUG_HDR_PNG=1)
-                        if not getattr(self, '_debug_png_saved', True):
-                            _save_debug_hdr_png(frame, "recording_frame_before_hdr")
                         # 첫 프레임 캡처 성공
                         if not first_frame_captured:
                             first_frame_captured = True
                             next_capture_time = current_time
                             self._first_frame_ready.set()
                             logger.info(f"[CaptureThread] First frame captured - recording active!")
-                        
+
                         # HDR 보정: 사용자가 수동으로 켤 때만 적용 (적응형)
                         # 단, GDI 백엔드는 Windows가 자동으로 색상 관리를 처리하므로 보정 스킵
                         t2 = time.perf_counter()
@@ -886,11 +851,6 @@ class CaptureThread(threading.Thread):
                             frame = apply_hdr_correction_adaptive(frame)
                         t3 = time.perf_counter()
                         timing_samples['hdr'].append(t3 - t2)
-
-                        # 비교용 after PNG (보정 여부 무관하게 저장)
-                        if not getattr(self, '_debug_png_saved', True):
-                            _save_debug_hdr_png(frame, "recording_frame_after_hdr")
-                            self._debug_png_saved = True
 
                         # 오버레이 필요 시 단일 writable 복사 (이후 모든 처리 in-place)
                         needs_overlay = ((self.include_cursor and HAS_WIN32)

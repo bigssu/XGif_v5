@@ -252,6 +252,10 @@ def apply_dark_theme(window: wx.Window):
             apply_combobox_style(child)
         elif isinstance(child, (wx.SpinCtrl, wx.SpinCtrlDouble)):
             apply_spin_ctrl_style(child)
+        elif isinstance(child, wx.Slider):
+            child.SetBackgroundColour(Colors.BG_PRIMARY)
+        elif isinstance(child, wx.CheckBox):
+            child.SetForegroundColour(Colors.TEXT_SECONDARY)
 
         if hasattr(child, 'GetChildren'):
             apply_dark_theme(child)

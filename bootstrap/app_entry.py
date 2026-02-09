@@ -58,47 +58,33 @@ def _setup_logging():
 
 
 # ──────────────────────────────────────────────────────────
-# 메인 앱 스텁 — 실제 앱으로 교체하세요
+# 메인 앱 실행
 # ──────────────────────────────────────────────────────────
 
-class MainAppStub(wx.Frame):
-    """메인 앱 플레이스홀더.
-
-    TODO: 이 클래스를 삭제하고 launch_main_app() 에서
-          실제 메인 윈도우를 생성하세요.
-    """
-
-    def __init__(self):
-        super().__init__(None, title=f"{APP_NAME}", size=(900, 600))
-        self.SetBackgroundColour(wx.Colour(32, 32, 32))
-
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.AddStretchSpacer()
-
-        msg = wx.StaticText(self, label="\ud658\uacbd \uc9c4\ub2e8 \uc644\ub8cc! \uba54\uc778 \uc571\uc774 \uc2e4\ud589\ub418\uc5c8\uc2b5\ub2c8\ub2e4.")
-        # 환경 진단 완료! 메인 앱이 실행되었습니다.
-        msg.SetForegroundColour(wx.Colour(255, 255, 255))
-        msg.SetFont(wx.Font(
-            14, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
-            wx.FONTWEIGHT_NORMAL, faceName="Segoe UI Variable",
-        ))
-        sizer.Add(msg, 0, wx.ALIGN_CENTER)
-
-        sizer.AddStretchSpacer()
-        self.SetSizer(sizer)
-        self.Centre()
-
-
 def launch_main_app():
-    """메인 앱 윈도우를 생성하고 표시합니다.
+    """메인 앱 윈도우를 생성하고 표시합니다."""
+    try:
+        from ui import MainWindow
+    except ImportError as e:
+        logging.critical("Cannot import UI module: %s", e)
+        wx.MessageBox(
+            f"UI 모듈을 불러올 수 없습니다:\n{e}\n\n"
+            "필요한 패키지를 설치했는지 확인하세요.",
+            "시작 실패",
+            wx.OK | wx.ICON_ERROR,
+        )
+        return
 
-    TODO: 아래를 실제 메인 윈도우로 교체하세요:
-        from ui.main_window import MainWindow
+    try:
         frame = MainWindow(None)
         frame.Show()
-    """
-    frame = MainAppStub()
-    frame.Show()
+    except Exception as e:
+        logging.critical("Cannot create main window: %s", e)
+        wx.MessageBox(
+            f"메인 윈도우를 생성할 수 없습니다:\n{e}",
+            "시작 실패",
+            wx.OK | wx.ICON_ERROR,
+        )
 
 
 # ──────────────────────────────────────────────────────────
@@ -134,10 +120,9 @@ def run():
     else:
         # 필수 항목 미충족 → 앱 종료
         wx.MessageBox(
-            "\ud544\uc218 \ud658\uacbd\uc774 \uc124\uce58\ub418\uc9c0 \uc54a\uc544 "
-            "\uc571\uc744 \uc2e4\ud589\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.",
-            # 필수 환경이 설치되지 않아 앱을 실행할 수 없습니다.
-            "\uc2e4\ud589 \ubd88\uac00",  # 실행 불가
+            "필수 환경이 설치되지 않아 "
+            "앱을 실행할 수 없습니다.",
+            "실행 불가",
             wx.OK | wx.ICON_ERROR,
         )
         # app.MainLoop() 호출하지 않음 → 앱 즉시 종료

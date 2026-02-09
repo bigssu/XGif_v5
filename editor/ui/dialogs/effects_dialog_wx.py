@@ -20,6 +20,7 @@ class EffectSlider(wx.Panel):
     def __init__(self, parent, name: str, min_val: int, max_val: int,
                  default: int, suffix: str = ""):
         super().__init__(parent)
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
         self._name = name
         self._default = default
         self._suffix = suffix
@@ -215,6 +216,8 @@ class EffectsDialog(wx.Dialog):
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
                                         choices=["현재 프레임만", "선택한 프레임", "모든 프레임"])
+        self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(1)
         target_sizer.Add(self._target_combo, 1, wx.ALL, 10)
 

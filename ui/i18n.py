@@ -515,7 +515,9 @@ class TranslationManager:
             "target_selected": "선택",
             "target_current": "현재",
             "target_tooltip": "적용 대상 프레임",
-            "target_frame_hint_message": "왼쪽 프레임 창에서 효과가 적용되길 원하는 프레임을 여러 개 선택해 주세요.",
+            "target_frame_hint_title": "대상 프레임 선택",
+            "target_frame_hint_message": "프레임 선택 안내:\n\n\u2022 현재 프레임: 현재 보고 있는 프레임에만 적용\n\u2022 선택한 프레임: 프레임 목록에서 선택한 프레임들에 적용\n\u2022 모든 프레임: 전체 프레임에 적용\n\n프레임 목록에서 Shift+클릭 또는 Ctrl+클릭으로\n여러 프레임을 선택할 수 있습니다.",
+            "dont_show_again": "다음부터 이 안내를 표시하지 않음",
 
             # 말풍선 툴바
             "speech_bubble_text": "말풍선 텍스트",
@@ -525,7 +527,6 @@ class TranslationManager:
             "speech_bubble_tail": "꼬리 방향",
             "speech_bubble_bg_color": "배경색",
             "speech_bubble_text_color": "텍스트 색상",
-            "dont_show_again": "다음 부터 안보기",
             
             # 효과 툴바
             "effects_brightness": "밝기",
@@ -912,7 +913,9 @@ class TranslationManager:
             "target_selected": "Selected",
             "target_current": "Current",
             "target_tooltip": "Target Frames",
-            "target_frame_hint_message": "Please select multiple frames in the left frame pane where you want the effect to be applied.",
+            "target_frame_hint_title": "Target Frame Selection",
+            "target_frame_hint_message": "Frame Selection Guide:\n\n\u2022 Current Frame: Apply to the currently viewed frame only\n\u2022 Selected Frames: Apply to frames selected in the frame list\n\u2022 All Frames: Apply to all frames\n\nUse Shift+Click or Ctrl+Click in the frame list\nto select multiple frames.",
+            "dont_show_again": "Don't show this again",
 
             # Speech Bubble Toolbar
             "speech_bubble_text": "Bubble Text",
@@ -922,7 +925,6 @@ class TranslationManager:
             "speech_bubble_tail": "Tail Direction",
             "speech_bubble_bg_color": "Background Color",
             "speech_bubble_text_color": "Text Color",
-            "dont_show_again": "Don't show again",
             
             # 효과 툴바
             "effects_brightness": "Brightness",

@@ -144,7 +144,15 @@ class InlineToolbarBase(wx.Panel):
     # === 유틸리티 메서드 ===
 
     def add_control(self, widget: wx.Window):
-        """컨트롤 영역에 위젯 추가"""
+        """컨트롤 영역에 위젯 추가 (다크 테마 자동 적용)"""
+        if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)):
+            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+        elif isinstance(widget, wx.ComboBox):
+            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+        elif isinstance(widget, wx.Slider):
+            widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
         self._controls_sizer.Add(widget, 0, wx.ALL, 8)
 
     def add_icon_label(self, icon_type: str, size: int = 20, tooltip: str = None) -> wx.StaticBitmap:

@@ -1,3 +1,4 @@
+import argparse
 import os
 import subprocess
 import sys
@@ -427,20 +428,110 @@ def run_pyinstaller_build():
     print("Starting PyInstaller build process...")
     subprocess.run(cmd, check=True)
 
+def _find_iscc():
+    """Inno Setup 컴파일러(ISCC.exe) 경로 자동 감지"""
+    # PATH에서 찾기
+    for p in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(p, "ISCC.exe")
+        if os.path.isfile(candidate):
+            return candidate
+
+    # 기본 설치 경로
+    for prog in [os.environ.get("ProgramFiles(x86)", ""), os.environ.get("ProgramFiles", "")]:
+        if not prog:
+            continue
+        for name in ("Inno Setup 6", "Inno Setup 5"):
+            candidate = os.path.join(prog, name, "ISCC.exe")
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
+def run_sign(pfx_path, pfx_password, exe_paths=None):
+    """코드 서명 실행 (scripts/sign_exe.ps1 호출)"""
+    sign_script = os.path.join(PROJECT_DIR, "scripts", "sign_exe.ps1")
+    if not os.path.isfile(sign_script):
+        print(f"[ERROR] Sign script not found: {sign_script}")
+        sys.exit(1)
+
+    if exe_paths is None:
+        exe_paths = [os.path.join(PROJECT_DIR, "dist", "XGif.exe")]
+
+    cmd = [
+        "powershell.exe", "-ExecutionPolicy", "Bypass",
+        "-File", sign_script,
+        "-PfxPath", pfx_path,
+        "-Password", pfx_password,
+        "-ExePaths", ",".join(exe_paths),
+    ]
+
+    print(f"\n=== Code Signing ===")
+    subprocess.run(cmd, check=True, cwd=PROJECT_DIR)
+
+
+def run_installer():
+    """Inno Setup 인스톨러 빌드 (ISCC.exe 호출)"""
+    iss_path = os.path.join(PROJECT_DIR, "installer", "xgif_setup.iss")
+    if not os.path.isfile(iss_path):
+        print(f"[ERROR] Installer script not found: {iss_path}")
+        sys.exit(1)
+
+    iscc = _find_iscc()
+    if not iscc:
+        print("[ERROR] ISCC.exe (Inno Setup Compiler) not found.")
+        print("        Install Inno Setup 6: https://jrsoftware.org/isdl.php")
+        print("        Or add ISCC.exe to PATH.")
+        sys.exit(1)
+
+    print(f"\n=== Building Installer ===")
+    print(f"  ISCC: {iscc}")
+    print(f"  Script: {iss_path}")
+    subprocess.run([iscc, iss_path], check=True, cwd=PROJECT_DIR)
+    print("  Installer created successfully!")
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description="XGif Build Script")
+    parser.add_argument(
+        "--tool", choices=["pyinstaller", "nuitka"], default=None,
+        help="Build tool (default: pyinstaller, or set XGIF_BUILD_TOOL env var)"
+    )
+    parser.add_argument(
+        "--sign", action="store_true",
+        help="Sign EXE after build (requires signing/XGif_CodeSign.pfx)"
+    )
+    parser.add_argument(
+        "--sign-pfx", default=os.path.join(PROJECT_DIR, "signing", "XGif_CodeSign.pfx"),
+        help="PFX certificate path (default: signing/XGif_CodeSign.pfx)"
+    )
+    parser.add_argument(
+        "--sign-password", default="XGif2024!",
+        help="PFX certificate password"
+    )
+    parser.add_argument(
+        "--installer", action="store_true",
+        help="Create Inno Setup installer after build (requires ISCC.exe)"
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = _parse_args()
+
     try:
         setup_venv()
 
-        # 기본적으로 PyInstaller 방식 사용 (빠른 빌드)
+        # 빌드 도구 결정: CLI 인자 > 환경 변수 > 기본값
+        if args.tool:
+            build_tool = "2" if args.tool == "nuitka" else "1"
+        else:
+            build_tool = os.environ.get("XGIF_BUILD_TOOL", "1").strip()
+            if build_tool not in ["1", "2"]:
+                build_tool = "1"
+
         print("\nBuild system comparison:")
         print("1. PyInstaller: Faster build, medium size")
         print("2. Nuitka: Much slower build, smaller size, faster performance")
-
-        # 환경 변수로 빌드 도구 선택 가능, 기본값은 PyInstaller
-        build_tool = os.environ.get("XGIF_BUILD_TOOL", "1").strip()
-        if build_tool not in ["1", "2"]:
-            build_tool = "1"
-
         print(f"\nUsing build tool: {'PyInstaller' if build_tool == '1' else 'Nuitka'}")
 
         if build_tool == "2":
@@ -451,6 +542,29 @@ if __name__ == "__main__":
             run_pyinstaller_build()
 
         print("\nBuild finished successfully!")
+
+        # 빌드 후 단계: 서명 → 인스톨러 (인스톨러에 서명된 EXE 포함)
+        exe_path = os.path.join(PROJECT_DIR, "dist", "XGif.exe")
+
+        if args.sign:
+            run_sign(args.sign_pfx, args.sign_password, [exe_path])
+
+        if args.installer:
+            run_installer()
+
+            # 인스톨러 EXE도 서명
+            if args.sign:
+                sys.path.insert(0, PROJECT_DIR)
+                from core.version import APP_VERSION
+                sys.path.pop(0)
+                installer_exe = os.path.join(
+                    PROJECT_DIR, "dist", f"XGif_Setup_{APP_VERSION}.exe"
+                )
+                if os.path.isfile(installer_exe):
+                    run_sign(args.sign_pfx, args.sign_password, [installer_exe])
+
+        print("\n=== All done! ===")
+
     except Exception as e:
         print(f"\nBuild failed: {e}")
         import traceback

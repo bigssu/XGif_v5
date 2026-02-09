@@ -48,6 +48,8 @@ class CropDialog(wx.Dialog):
         x_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         x_sizer.Add(x_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
         self._x_spin = wx.SpinCtrl(self, min=0, max=10000, initial=0)
+        self._x_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._x_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         x_sizer.Add(self._x_spin, 1)
         crop_sizer.Add(x_sizer, 0, wx.EXPAND | wx.ALL, 10)
 
@@ -57,6 +59,8 @@ class CropDialog(wx.Dialog):
         y_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         y_sizer.Add(y_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
         self._y_spin = wx.SpinCtrl(self, min=0, max=10000, initial=0)
+        self._y_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._y_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         y_sizer.Add(self._y_spin, 1)
         crop_sizer.Add(y_sizer, 0, wx.EXPAND | wx.ALL, 10)
 
@@ -66,6 +70,8 @@ class CropDialog(wx.Dialog):
         w_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         w_sizer.Add(w_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
         self._w_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._w_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._w_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         w_sizer.Add(self._w_spin, 1)
         crop_sizer.Add(w_sizer, 0, wx.EXPAND | wx.ALL, 10)
 
@@ -75,6 +81,8 @@ class CropDialog(wx.Dialog):
         h_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         h_sizer.Add(h_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
         self._h_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._h_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._h_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         h_sizer.Add(self._h_spin, 1)
         crop_sizer.Add(h_sizer, 0, wx.EXPAND | wx.ALL, 10)
 

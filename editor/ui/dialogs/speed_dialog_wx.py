@@ -52,12 +52,15 @@ class SpeedDialog(wx.Dialog):
             self, value=100, minValue=10, maxValue=400,
             style=wx.SL_HORIZONTAL
         )
+        self._speed_slider.SetBackgroundColour(Colors.BG_PRIMARY)
         self._speed_slider.Bind(wx.EVT_SLIDER, self._on_slider_changed)
         slider_sizer.Add(self._speed_slider, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._speed_spin = wx.SpinCtrlDouble(
             self, value="1.0", min=0.1, max=4.0, inc=0.1
         )
+        self._speed_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._speed_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._speed_spin.SetDigits(2)
         self._speed_spin.SetSize((80, -1))
         self._speed_spin.Bind(wx.EVT_SPINCTRLDOUBLE, self._on_spin_changed)

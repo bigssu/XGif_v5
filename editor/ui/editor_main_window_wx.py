@@ -243,8 +243,8 @@ class MainWindow(wx.Frame):
     def _setup_ui(self):
         """UI 초기화"""
         self.SetTitle("GIF Editor")
-        self.SetMinSize((1260, 840))
-        self.SetSize((1260, 980))
+        self.SetMinSize((1008, 840))
+        self.SetSize((1008, 840))
 
         # 중앙 패널
         central_panel = wx.Panel(self)
@@ -414,6 +414,7 @@ class MainWindow(wx.Frame):
         controls_sizer.Add(self._play_btn, 0, wx.ALL, 5)
 
         self._frame_slider = wx.Slider(self._bottom_controls, style=wx.SL_HORIZONTAL)
+        self._frame_slider.SetBackgroundColour(Colors.BG_SECONDARY)
         self._frame_slider.SetMin(0)
         self._frame_slider.SetValue(0)
         self._frame_slider.Bind(wx.EVT_SLIDER, lambda e: self._on_slider_changed(e.GetInt()))
@@ -2286,26 +2287,17 @@ class MainWindow(wx.Frame):
                 canvas.stop_drawing_mode()
 
     def _maybe_show_target_frame_hint(self) -> None:
-        """대상 프레임 선택 안내 팝업 표시"""
-        # 설정에서 "다시 보지 않기"를 체크했는지 확인
-        show_hint = self._settings.ReadBool("show_target_frame_hint", True)
-        if not show_hint:
+        """대상 프레임 선택 안내 팝업 표시 ("다시 보지 않기" 토글 포함)"""
+        from .dialogs.target_frame_hint_dialog_wx import TargetFrameHintDialog
+
+        if not TargetFrameHintDialog.should_show(self._settings):
             return
 
-        # 안내 다이얼로그 표시
-        dlg = wx.MessageDialog(
-            self,
-            "프레임 선택 안내:\n\n"
-            "• 현재 프레임: 현재 보고 있는 프레임에만 적용\n"
-            "• 선택한 프레임: 프레임 목록에서 선택한 프레임들에 적용\n"
-            "• 모든 프레임: 전체 프레임에 적용\n\n"
-            "프레임 목록에서 Shift+클릭 또는 Ctrl+클릭으로 여러 프레임을 선택할 수 있습니다.",
-            "대상 프레임 선택",
-            wx.OK | wx.ICON_INFORMATION
+        dlg = TargetFrameHintDialog(
+            parent=self,
+            settings=self._settings,
+            translations=getattr(self, '_trans', None),
         )
-
-        # "다시 보지 않기" 체크박스 추가는 wxPython에서 복잡하므로 생략
-        # 사용자가 OK를 누르면 일단 표시
         dlg.ShowModal()
         dlg.Destroy()
 

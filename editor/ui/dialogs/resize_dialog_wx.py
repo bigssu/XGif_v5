@@ -64,6 +64,8 @@ class ResizeDialog(wx.Dialog):
         width_sizer.Add(width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._width_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._width_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._width_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._width_spin.SetSize((100, -1))
         self._width_spin.Bind(wx.EVT_SPINCTRL, self._on_width_changed)
         width_sizer.Add(self._width_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
@@ -81,6 +83,8 @@ class ResizeDialog(wx.Dialog):
         height_sizer.Add(height_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._height_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._height_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._height_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._height_spin.SetSize((100, -1))
         self._height_spin.Bind(wx.EVT_SPINCTRL, self._on_height_changed)
         height_sizer.Add(self._height_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
@@ -110,6 +114,8 @@ class ResizeDialog(wx.Dialog):
             self, style=wx.CB_READONLY,
             choices=list(self.RESAMPLE_METHODS.keys())
         )
+        self._method_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._method_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._method_combo.SetSelection(2)  # Bicubic 기본
         method_sizer.Add(self._method_combo, 0, wx.EXPAND | wx.ALL, 10)
 
@@ -126,6 +132,8 @@ class ResizeDialog(wx.Dialog):
             self, style=wx.CB_READONLY,
             choices=["50%", "75%", "100%", "150%", "200%"]
         )
+        self._preset_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._preset_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._preset_combo.SetSelection(2)  # 100% 기본
         self._preset_combo.Bind(wx.EVT_COMBOBOX, self._on_preset_changed)
         preset_sizer.Add(self._preset_combo, 0, wx.EXPAND | wx.ALL, 10)
