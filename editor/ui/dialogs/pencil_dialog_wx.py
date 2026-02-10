@@ -5,17 +5,17 @@ PyQt6 QDialog를 wx.Dialog로 마이그레이션
 """
 import wx
 from typing import TYPE_CHECKING, Tuple
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
-class PencilDialog(wx.Dialog):
+class PencilDialog(ThemedDialog):
     """펜슬 설정 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="펜슬 설정", size=(400, 500))
+        super().__init__(parent or main_window, title="펜슬 설정")
         self._main_window = main_window
         self._pencil_color = wx.Colour(255, 0, 0)  # 기본 빨간색
         self._pencil_width = 3
@@ -28,8 +28,6 @@ class PencilDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(15)
 

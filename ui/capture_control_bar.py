@@ -49,6 +49,9 @@ class FlatButton(wx.Control):
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
 
+        # apply_dark_theme()가 이 커스텀 위젯의 색상을 덮어쓰지 않도록 표시
+        self._skip_auto_theme = True
+
         # 폰트
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
 
@@ -209,6 +212,9 @@ class CustomToggleSwitch(wx.Panel):
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
 
+        # apply_dark_theme()가 이 커스텀 위젯의 색상을 덮어쓰지 않도록 표시
+        self._skip_auto_theme = True
+
         self._on_changed_callback = None
         self._anim_timer = wx.Timer(self)
         self._anim_target = 4.0
@@ -329,6 +335,9 @@ class CaptureControlBar(wx.Panel):
 
         # 배경색 (Windows 11 Dark)
         self.SetBackgroundColour(Colors.BG_TOOLBAR)
+
+        # 버튼 다수 생성 중 개별 Refresh 방지 — 완료 후 한 번에 갱신
+        self.Freeze()
 
         # 메인 레이아웃 (inner_panel 없이 직접 배치 — 패널 중첩 크래시 방지)
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -466,18 +475,7 @@ class CaptureControlBar(wx.Panel):
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
         self.pause_btn.Enable(False)
         self.pause_btn.Bind(wx.EVT_BUTTON, self._on_pause_button_clicked)
-        main_sizer.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-
-        # Stop 버튼
-        self.stop_btn = FlatButton(self, label="■", size=(34, 28),
-                                   bg_color=Colors.ACCENT.Get()[:3],
-                                   fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                   hover_color=Colors.ACCENT_HOVER.Get()[:3],
-                                   pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
-        self.stop_btn.SetToolTip(tr('stop_tooltip'))
-        self.stop_btn.Enable(False)
-        self.stop_btn.Bind(wx.EVT_BUTTON, self._on_stop_button_clicked)
-        main_sizer.Add(self.stop_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 설정 버튼 (아이콘 2배 크기)
         self.settings_button = FlatButton(self, label="⚙", size=(48, 40),
@@ -492,6 +490,7 @@ class CaptureControlBar(wx.Panel):
         main_sizer.Add((8, 0))  # 우측 패딩
 
         self.Layout()
+        self.Thaw()  # Freeze() 해제 — 이제 한 번에 화면 갱신
 
         self.Bind(wx.EVT_SIZE, self._on_control_bar_size)
 
@@ -593,6 +592,11 @@ class CaptureControlBar(wx.Panel):
             self._on_region_toggled(checked)
 
     def _on_rec_button_clicked(self, event):
+        # 녹화 중이면 Stop 동작
+        if self._recording_state and not self._paused_state:
+            if self._on_stop_clicked:
+                self._on_stop_clicked()
+            return
         if self._on_recording_requested:
             self._on_recording_requested()
 
@@ -683,7 +687,6 @@ class CaptureControlBar(wx.Panel):
         self.gpu_status_button.SetToolTip(tr('gpu_status_tooltip'))
         self.rec_button.SetToolTip(tr('rec_tooltip'))
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
-        self.stop_btn.SetToolTip(tr('stop_tooltip'))
         self.settings_button.SetToolTip(tr('settings_tooltip'))
 
     def _on_destroy(self, event):
@@ -701,23 +704,26 @@ class CaptureControlBar(wx.Panel):
         self._paused_state = is_paused
 
         if is_recording:
-            self.rec_button.SetLabel("● REC")
-            self.rec_button.Enable(False)
-            self._apply_recording_style()
+            # 녹화 중 → REC 버튼이 STOP 역할
+            self.rec_button.SetLabel("■ STOP")
+            self.rec_button.Enable(True)
+            self.rec_button.SetBackgroundColour(Colors.ACCENT)
+            self.rec_button.SetHoverColour(Colors.ACCENT_HOVER)
+            self.rec_button.SetPressedColour(Colors.ACCENT_PRESSED)
+            self.rec_button.SetForegroundColour(Colors.TEXT_PRIMARY)
             self.set_pause_enabled(True)
-            self.set_stop_enabled(True)
         elif is_paused:
+            # 일시정지 → REC 버튼이 재개 역할
             self.rec_button.SetLabel("▶ REC")
             self.rec_button.Enable(True)
             self._apply_paused_style()
             self.set_pause_enabled(False)
-            self.set_stop_enabled(True)
         else:
+            # 준비 상태
             self.rec_button.SetLabel("● REC")
             self.rec_button.Enable(True)
             self._apply_ready_style()
             self.set_pause_enabled(False)
-            self.set_stop_enabled(False)
 
     def set_cursor_enabled(self, enabled):
         self.cursor_toggle.SetChecked(enabled, trigger_callback=False)
@@ -730,8 +736,8 @@ class CaptureControlBar(wx.Panel):
         self.pause_btn.Enable(enabled)
 
     def set_stop_enabled(self, enabled):
-        self._stop_enabled = enabled
-        self.stop_btn.Enable(enabled)
+        """호환성 유지용 no-op (Stop 버튼이 REC 토글로 통합됨)"""
+        pass
 
     def set_format(self, format_text):
         index = 0 if format_text == "GIF" else 1

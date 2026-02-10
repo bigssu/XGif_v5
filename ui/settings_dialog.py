@@ -14,14 +14,14 @@ from ui.constants import (
     CAPTURE_BACKEND_OPTIONS, CAPTURE_BACKEND_OPTIONS_MAP,
     VERSION,
 )
-from ui.theme import Colors, Fonts
+from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr, get_trans_manager
 from ui.capture_control_bar import FlatButton
 
 logger = logging.getLogger(__name__)
 
 
-class SettingsDialog(wx.Dialog):
+class SettingsDialog(ThemedDialog):
     """설정 다이얼로그 - Windows 11 Dark Theme"""
 
     DEFAULT_SETTINGS = {
@@ -43,8 +43,8 @@ class SettingsDialog(wx.Dialog):
     }
 
     def __init__(self, parent=None, settings=None):
-        wx.Dialog.__init__(self, parent, title=tr('settings'), size=(520, 580),
-                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        ThemedDialog.__init__(self, parent, title=tr('settings'), size=(520, 580),
+                              style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.settings = settings
         self.trans = get_trans_manager()
         self.trans.register_callback(self.retranslateUi)

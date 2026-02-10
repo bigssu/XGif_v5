@@ -6,17 +6,17 @@ CropDialog - 이미지 자르기 다이얼로그 (wxPython 버전)
 import wx
 from PIL import Image
 from typing import TYPE_CHECKING, Tuple
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
-class CropDialog(wx.Dialog):
+class CropDialog(ThemedDialog):
     """크롭 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="이미지 자르기", size=(380, 400))
+        super().__init__(parent or main_window, title="이미지 자르기")
         self._main_window = main_window
         self._img_width = 0
         self._img_height = 0
@@ -26,8 +26,6 @@ class CropDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 

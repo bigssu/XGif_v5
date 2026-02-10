@@ -425,8 +425,6 @@ class MainWindow(wx.Frame):
         self._frame_indicator.SetForegroundColour(Colors.TEXT_SECONDARY)
         controls_sizer.Add(self._frame_indicator, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
-        controls_sizer.AddStretchSpacer()
-
         # 공유 액션 버튼 (도구 활성 시만 표시)
         translations = self._translations
 
@@ -2015,13 +2013,14 @@ class MainWindow(wx.Frame):
     def _show_gpu_info(self):
         """GPU 정보 표시"""
         if not gpu_utils.is_gpu_available():
-            # CuPy 미설치 + NVIDIA GPU 존재 → 설치 제안
+            # CuPy 미설치 + NVIDIA GPU 존재 → 설치 가이드
             init_error = gpu_utils.get_gpu_init_error() or ""
             if ("CuPy" in init_error or "cupy" in init_error.lower()) and gpu_utils.has_nvidia_gpu_hardware():
                 self._offer_cupy_install()
             else:
+                # NVIDIA GPU 없음
                 wx.MessageBox(
-                    self._translations.tr("msg_gpu_not_found") + "\n\n" + self._translations.tr("msg_gpu_requirements"),
+                    self._translations.tr("cupy_guide_no_nvidia"),
                     self._translations.tr("msg_gpu_info"),
                     wx.OK | wx.ICON_INFORMATION
                 )
@@ -2056,80 +2055,18 @@ class MainWindow(wx.Frame):
             self._logger.debug(f"CuPy install check skipped: {e}")
 
     def _offer_cupy_install(self):
-        """CuPy 설치 제안 다이얼로그"""
-        package_name = gpu_utils.get_cupy_package_name()
-        if package_name is None:
-            wx.MessageBox(
-                self._translations.tr("cupy_cuda_detect_failed"),
-                self._translations.tr("msg_gpu_info"),
-                wx.OK | wx.ICON_WARNING
-            )
-            return
-
-        cuda_ver = gpu_utils.detect_cuda_driver_version()
-        cuda_ver_str = f"{cuda_ver[0]}.{cuda_ver[1]}" if cuda_ver else "Unknown"
-
-        dlg = wx.MessageDialog(
-            self,
-            self._translations.tr("cupy_install_msg", cuda_version=cuda_ver_str, package=package_name),
-            self._translations.tr("cupy_install_title"),
-            wx.YES_NO | wx.ICON_QUESTION | wx.YES_DEFAULT
-        )
-        reply = dlg.ShowModal()
+        """CuPy 설치 가이드 다이얼로그 표시"""
+        from ui.dependency_dialogs import CuPyInstallGuideDialog
+        dlg = CuPyInstallGuideDialog(self)
+        ret = dlg.ShowModal()
         dlg.Destroy()
 
-        if reply == wx.ID_YES:
-            self._install_cupy(package_name)
-        else:
-            self._settings.WriteBool("cupy_install_dismissed", True)
-
-    def _install_cupy(self, package_name: str):
-        """백그라운드 스레드로 CuPy pip install"""
-        import threading
-
-        if getattr(sys, 'frozen', False):
-            wx.MessageBox(
-                "패키징된 환경에서는 pip install을 실행할 수 없습니다.",
-                "경고", wx.OK | wx.ICON_WARNING
-            )
-            return
-
-        busy = wx.BusyInfo(self._translations.tr("cupy_installing", package=package_name))
-
-        def do_install():
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", package_name],
-                    capture_output=True, text=True, timeout=600
-                )
-                success = result.returncode == 0
-                msg = result.stdout if success else result.stderr
-                wx.CallAfter(self._on_cupy_install_done, success, msg, busy)
-            except subprocess.TimeoutExpired:
-                wx.CallAfter(self._on_cupy_install_done, False, "Installation timed out.", busy)
-            except Exception as e:
-                wx.CallAfter(self._on_cupy_install_done, False, str(e), busy)
-
-        threading.Thread(target=do_install, daemon=True).start()
-
-    def _on_cupy_install_done(self, success: bool, message: str, busy):
-        """CuPy 설치 완료 콜백"""
-        del busy  # BusyInfo 해제
-
-        if success:
-            wx.MessageBox(
-                self._translations.tr("cupy_install_success"),
-                self._translations.tr("install_complete"),
-                wx.OK | wx.ICON_INFORMATION
-            )
+        if ret == wx.ID_OK:
+            # 설치 성공 → GPU 재초기화
             gpu_utils.initialize_gpu(force=True)
             self._update_gpu_status()
         else:
-            wx.MessageBox(
-                self._translations.tr("cupy_install_failed").format(message[:500]),
-                self._translations.tr("install_failed"),
-                wx.OK | wx.ICON_WARNING
-            )
+            self._settings.WriteBool("cupy_install_dismissed", True)
 
     # ==================== 이벤트 핸들러 ====================
 

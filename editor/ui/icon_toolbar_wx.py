@@ -51,6 +51,7 @@ class FlatIconButton(wx.Control):
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         self.SetMinSize(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self._skip_auto_theme = True
 
         # 아이콘 비트맵 생성
         self._create_icon()

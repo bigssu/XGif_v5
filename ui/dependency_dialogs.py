@@ -5,9 +5,10 @@ Windows 11 Dark Theme 스타일
 """
 
 import logging
+import sys
 import wx
 
-from ui.theme import Colors, Fonts
+from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr
 from ui.capture_control_bar import FlatButton
 from core.dependency_checker import DependencyState, DependencyStatus
@@ -20,7 +21,7 @@ ID_DISABLE = wx.NewIdRef()
 ID_CANCEL_DEP = wx.NewIdRef()
 
 
-class DependencyInstallDialog(wx.Dialog):
+class DependencyInstallDialog(ThemedDialog):
     """3버튼 의존성 설치 모달 다이얼로그"""
 
     def __init__(self, parent, dep_status, feature_description,
@@ -34,7 +35,7 @@ class DependencyInstallDialog(wx.Dialog):
             show_dont_ask: "다시 묻지 않기" 체크박스 표시 여부
         """
         title = tr('dep_dialog_title')
-        wx.Dialog.__init__(self, parent, title=title, size=(460, 300),
+        ThemedDialog.__init__(self, parent, title=title, size=(460, 300),
                           style=wx.DEFAULT_DIALOG_STYLE)
         self.dep_status = dep_status
         self.result_id = ID_CANCEL_DEP
@@ -141,12 +142,12 @@ class DependencyInstallDialog(wx.Dialog):
         self.EndModal(ID_CANCEL_DEP.GetId())
 
 
-class DependencyRescanDialog(wx.Dialog):
+class DependencyRescanDialog(ThemedDialog):
     """설치 안내 + 재검사 버튼 다이얼로그"""
 
     def __init__(self, parent, dep_name, guide_text):
         title = tr('dep_rescan_title')
-        wx.Dialog.__init__(self, parent, title=title, size=(440, 280),
+        ThemedDialog.__init__(self, parent, title=title, size=(440, 280),
                           style=wx.DEFAULT_DIALOG_STYLE)
         self.SetBackgroundColour(Colors.BG_PANEL)
         self._build_ui(dep_name, guide_text)
@@ -189,6 +190,245 @@ class DependencyRescanDialog(wx.Dialog):
 
         sizer.Add(btn_sizer, 0, wx.ALL | wx.ALIGN_RIGHT, 16)
         self.SetSizer(sizer)
+
+
+def _detect_nvidia_gpu_name():
+    """NVIDIA GPU 이름 감지 (pynvml 사용)"""
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        name = pynvml.nvmlDeviceGetName(handle)
+        if isinstance(name, bytes):
+            name = name.decode('utf-8')
+        pynvml.nvmlShutdown()
+        return name
+    except Exception:
+        return None
+
+
+def _detect_cuda_driver_version():
+    """CUDA 드라이버 버전 감지 (pynvml 사용)"""
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        try:
+            cuda_ver = pynvml.nvmlSystemGetCudaDriverVersion_v2()
+        except AttributeError:
+            cuda_ver = pynvml.nvmlSystemGetCudaDriverVersion()
+        pynvml.nvmlShutdown()
+        major = cuda_ver // 1000
+        minor = (cuda_ver % 1000) // 10
+        return (major, minor)
+    except Exception:
+        return None
+
+
+def _get_cupy_package_name():
+    """CUDA 드라이버 버전에 맞는 CuPy 패키지명 반환"""
+    version = _detect_cuda_driver_version()
+    if version is None:
+        return "cupy-cuda12x"
+    major, _ = version
+    if major >= 12:
+        return "cupy-cuda12x"
+    elif major >= 11:
+        return "cupy-cuda11x"
+    else:
+        return "cupy-cuda12x"
+
+
+def _has_nvidia_gpu_hardware():
+    """NVIDIA GPU 하드웨어 존재 여부 확인"""
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        count = pynvml.nvmlDeviceGetCount()
+        pynvml.nvmlShutdown()
+        return count > 0
+    except Exception:
+        return False
+
+
+class CuPyInstallGuideDialog(ThemedDialog):
+    """CuPy 설치 가이드 다이얼로그
+
+    NVIDIA GPU 정보, CUDA 드라이버 버전, 설치 명령어를 보여주고
+    명령어 복사 및 재검사 기능 제공.
+    dev 모드에서는 직접 설치 버튼도 제공.
+    """
+
+    def __init__(self, parent):
+        title = tr('cupy_guide_title')
+        ThemedDialog.__init__(self, parent, title=title, size=(500, 380),
+                          style=wx.DEFAULT_DIALOG_STYLE)
+        self.SetBackgroundColour(Colors.BG_PANEL)
+        self._is_frozen = getattr(sys, 'frozen', False)
+        self._package_name = _get_cupy_package_name()
+        self._build_ui()
+        self.CenterOnParent()
+
+    def _build_ui(self):
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # GPU / CUDA 정보 감지
+        gpu_name = _detect_nvidia_gpu_name() or "N/A"
+        cuda_ver = _detect_cuda_driver_version()
+        cuda_ver_str = f"{cuda_ver[0]}.{cuda_ver[1]}" if cuda_ver else "N/A"
+
+        # 제목
+        title_label = wx.StaticText(self, label=tr('cupy_guide_title'))
+        title_label.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
+        title_label.SetForegroundColour(Colors.TEXT_PRIMARY)
+        sizer.Add(title_label, 0, wx.ALL, 16)
+
+        # GPU 정보 + 안내 메시지
+        info_text = tr('cupy_guide_msg', gpu_name=gpu_name, cuda_version=cuda_ver_str)
+        if self._is_frozen:
+            info_text += "\n\n" + tr('cupy_guide_frozen_msg')
+        else:
+            info_text += "\n\n" + tr('cupy_guide_dev_msg')
+
+        desc = wx.StaticText(self, label=info_text)
+        desc.SetForegroundColour(Colors.TEXT_SECONDARY)
+        desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
+        desc.Wrap(460)
+        sizer.Add(desc, 0, wx.LEFT | wx.RIGHT, 16)
+
+        sizer.Add((0, 12))
+
+        # 명령어 영역
+        cmd_text = tr('cupy_guide_cmd', package=self._package_name)
+        cmd_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        self._cmd_ctrl = wx.TextCtrl(
+            self, value=cmd_text,
+            style=wx.TE_READONLY | wx.BORDER_SIMPLE
+        )
+        self._cmd_ctrl.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
+        self._cmd_ctrl.SetBackgroundColour(wx.Colour(40, 40, 40))
+        self._cmd_ctrl.SetForegroundColour(wx.Colour(220, 220, 220))
+        cmd_sizer.Add(self._cmd_ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+
+        copy_btn = FlatButton(self, label=tr('cupy_guide_copy'), size=(110, 30),
+                               bg_color=Colors.ACCENT.Get()[:3],
+                               fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                               hover_color=Colors.ACCENT_HOVER.Get()[:3],
+                               pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
+        copy_btn.Bind(wx.EVT_BUTTON, self._on_copy)
+        cmd_sizer.Add(copy_btn, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        sizer.Add(cmd_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 16)
+
+        sizer.AddStretchSpacer()
+
+        # 하단 버튼 행
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_sizer.AddStretchSpacer()
+
+        # dev 모드에서만 직접 설치 버튼
+        if not self._is_frozen:
+            direct_btn = FlatButton(self, label=tr('cupy_guide_direct_install'), size=(110, 32),
+                                     bg_color=Colors.ACCENT.Get()[:3],
+                                     fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                     hover_color=Colors.ACCENT_HOVER.Get()[:3],
+                                     pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
+            direct_btn.Bind(wx.EVT_BUTTON, self._on_direct_install)
+            btn_sizer.Add(direct_btn, 0, wx.RIGHT, 8)
+
+        # 재검사 버튼
+        recheck_btn = FlatButton(self, label=tr('cupy_guide_recheck'), size=(90, 32),
+                                  bg_color=Colors.BG_TERTIARY.Get()[:3],
+                                  fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                                  hover_color=Colors.BG_HOVER.Get()[:3])
+        recheck_btn.Bind(wx.EVT_BUTTON, self._on_recheck)
+        btn_sizer.Add(recheck_btn, 0, wx.RIGHT, 8)
+
+        # CPU 모드로 계속 버튼
+        cpu_btn = FlatButton(self, label=tr('dep_use_cpu_instead'), size=(140, 32),
+                              bg_color=Colors.BG_TERTIARY.Get()[:3],
+                              fg_color=Colors.TEXT_PRIMARY.Get()[:3],
+                              hover_color=Colors.BG_HOVER.Get()[:3])
+        cpu_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
+        btn_sizer.Add(cpu_btn, 0)
+
+        sizer.Add(btn_sizer, 0, wx.ALL | wx.ALIGN_RIGHT, 16)
+        self.SetSizer(sizer)
+
+    def _on_copy(self, event):
+        """명령어를 클립보드에 복사"""
+        cmd_text = self._cmd_ctrl.GetValue()
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(wx.TextDataObject(cmd_text))
+            wx.TheClipboard.Close()
+        # 복사됨 피드백
+        btn = event.GetEventObject()
+        btn.SetLabel(tr('cupy_guide_copied'))
+
+        def _restore_label():
+            try:
+                btn.SetLabel(tr('cupy_guide_copy'))
+            except Exception:
+                pass
+
+        wx.CallLater(1500, _restore_label)
+
+    def _on_recheck(self, event):
+        """CuPy 재검사"""
+        from core.dependency_checker import check_cupy
+        status = check_cupy()
+        if status.state == DependencyState.INSTALLED:
+            wx.MessageBox(
+                tr('dep_cupy_installed_ok'),
+                tr('info'),
+                wx.OK | wx.ICON_INFORMATION
+            )
+            self.EndModal(wx.ID_OK)
+        else:
+            wx.MessageBox(
+                tr('dep_cupy_still_missing'),
+                tr('warning'),
+                wx.OK | wx.ICON_WARNING
+            )
+
+    def _on_direct_install(self, event):
+        """dev 모드에서 pip install 직접 실행"""
+        import subprocess
+        import threading
+
+        busy = wx.BusyInfo(f"Installing {self._package_name}...")
+
+        def do_install():
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", self._package_name],
+                    capture_output=True, text=True, timeout=600
+                )
+                success = result.returncode == 0
+                msg = result.stdout if success else result.stderr
+                wx.CallAfter(_on_done, success, msg, busy)
+            except subprocess.TimeoutExpired:
+                wx.CallAfter(_on_done, False, "Installation timed out.", busy)
+            except Exception as e:
+                wx.CallAfter(_on_done, False, str(e), busy)
+
+        def _on_done(success, message, busy_ref):
+            del busy_ref
+            if success:
+                wx.MessageBox(
+                    tr('dep_cupy_installed_ok'),
+                    tr('info'),
+                    wx.OK | wx.ICON_INFORMATION
+                )
+                self.EndModal(wx.ID_OK)
+            else:
+                wx.MessageBox(
+                    tr('cupy_install_failed').format(message[:500]),
+                    tr('install_failed'),
+                    wx.OK | wx.ICON_WARNING
+                )
+
+        threading.Thread(target=do_install, daemon=True).start()
 
 
 def show_install_flow(parent, dep_name, dep_status, settings=None):
@@ -292,34 +532,11 @@ def _install_ffmpeg(parent, dep_status):
 
 
 def _install_cupy(parent, dep_status):
-    """CuPy 설치 흐름 — 브라우저 + 재검사"""
-    import webbrowser
-    webbrowser.open("https://docs.cupy.dev/en/stable/install.html")
-
-    dlg = DependencyRescanDialog(parent, "CuPy", tr('dep_cupy_install_guide'))
-    while True:
-        ret = dlg.ShowModal()
-        if ret == wx.ID_OK:
-            from core.dependency_checker import check_cupy
-            status = check_cupy()
-            if status.state == DependencyState.INSTALLED:
-                dlg.Destroy()
-                wx.MessageBox(
-                    tr('dep_cupy_installed_ok'),
-                    tr('info'),
-                    wx.OK | wx.ICON_INFORMATION
-                )
-                return True
-            else:
-                wx.MessageBox(
-                    tr('dep_cupy_still_missing'),
-                    tr('warning'),
-                    wx.OK | wx.ICON_WARNING
-                )
-        else:
-            break
+    """CuPy 설치 흐름 — 설치 가이드 다이얼로그 표시"""
+    dlg = CuPyInstallGuideDialog(parent)
+    ret = dlg.ShowModal()
     dlg.Destroy()
-    return False
+    return ret == wx.ID_OK
 
 
 def _install_dxcam(parent, dep_status):

@@ -8,7 +8,7 @@ import math
 from PIL import Image, ImageDraw
 from typing import TYPE_CHECKING, Optional
 from ...utils.image_utils import pil_to_wx_bitmap
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -38,11 +38,12 @@ class ShapeButton(wx.Button):
         self.Refresh()
 
 
-class StickerDialog(wx.Dialog):
+class StickerDialog(ThemedDialog):
     """스티커/도형 추가 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="스티커/도형 추가", size=(650, 550))
+        super().__init__(parent or main_window, title="스티커/도형 추가",
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._main_window = main_window
         self._original_image: Optional[Image.Image] = None
         self._fill_color = wx.Colour(255, 107, 107)
@@ -59,8 +60,6 @@ class StickerDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         main_sizer.AddSpacer(15)
 

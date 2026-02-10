@@ -4,17 +4,17 @@ TextDialog - 텍스트 추가 다이얼로그 (wxPython 버전)
 import wx
 from typing import TYPE_CHECKING, Tuple
 
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
-class TextDialog(wx.Dialog):
+class TextDialog(ThemedDialog):
     """텍스트 추가 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="텍스트 추가", size=(420, 450))
+        super().__init__(parent or main_window, title="텍스트 추가")
         self._main_window = main_window
         self._text_color = wx.Colour(255, 255, 255)
         self._bg_color = wx.Colour(0, 0, 0, 128)
@@ -23,8 +23,6 @@ class TextDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 

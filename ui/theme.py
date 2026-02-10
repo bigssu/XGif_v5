@@ -216,6 +216,7 @@ def apply_panel_style(panel: wx.Panel, bg_color=None):
     if bg_color is None:
         bg_color = Colors.BG_PRIMARY
     panel.SetBackgroundColour(bg_color)
+    panel.SetForegroundColour(Colors.TEXT_PRIMARY)
 
 
 def apply_text_ctrl_style(text_ctrl: wx.TextCtrl):
@@ -236,26 +237,206 @@ def apply_combobox_style(combobox: wx.ComboBox):
     combobox.SetForegroundColour(Colors.TEXT_PRIMARY)
 
 
+def apply_static_box_style(static_box: wx.StaticBox):
+    """StaticBox에 다크 테마 스타일 적용"""
+    static_box.SetForegroundColour(Colors.TEXT_PRIMARY)
+
+
+def apply_notebook_style(notebook: wx.Notebook):
+    """Notebook에 다크 테마 스타일 적용"""
+    notebook.SetBackgroundColour(Colors.BG_PRIMARY)
+    notebook.SetForegroundColour(Colors.TEXT_PRIMARY)
+
+
+def apply_dialog_style(dialog: wx.Dialog, bg_color=None):
+    """Dialog에 다크 테마 배경+폰트 적용"""
+    if bg_color is None:
+        bg_color = Colors.BG_PANEL
+    dialog.SetBackgroundColour(bg_color)
+    dialog.SetForegroundColour(Colors.TEXT_PRIMARY)
+    dialog.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
+
+
+# ── 자동 테마 적용 엔진 ──
+
+def _is_unstyled_fg(widget: wx.Window) -> bool:
+    """fg가 OS 기본 텍스트색(검정 계열)이면 True → 테마 적용 대상"""
+    fg = widget.GetForegroundColour()
+    return (fg.Red() + fg.Green() + fg.Blue()) < 60
+
+
+def _is_system_bg(widget: wx.Window) -> bool:
+    """bg가 OS 기본 밝은색이면 True → 테마 적용 대상"""
+    bg = widget.GetBackgroundColour()
+    return (bg.Red() + bg.Green() + bg.Blue()) > 500
+
+
+def _apply_child_theme(widget: wx.Window):
+    """개별 자식 위젯에 다크 테마 적용 (이미 설정된 색상은 보존)
+
+    판정 기준:
+      - fg가 검정 계열(OS 기본) → TEXT_PRIMARY/SECONDARY로 교체
+      - bg가 밝은색(OS 기본) → 다크 테마 bg로 교체
+      - 이미 다크 테마 색상이면 건드리지 않음
+    """
+    if getattr(widget, '_skip_auto_theme', False):
+        return
+
+    unstyled = _is_unstyled_fg(widget)
+    sys_bg = _is_system_bg(widget)
+
+    # 입력 위젯: bg + fg
+    if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)):
+        if sys_bg:
+            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+    elif isinstance(widget, (wx.ComboBox, wx.Choice)):
+        if sys_bg:
+            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+    # 텍스트/라벨: fg만
+    elif isinstance(widget, wx.StaticText):
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+    elif isinstance(widget, wx.StaticBox):
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+    elif isinstance(widget, (wx.CheckBox, wx.RadioButton)):
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_SECONDARY)
+    # 버튼: bg + fg (ACCENT 등 의도적 색상은 이미 dark → 보존됨)
+    elif isinstance(widget, (wx.Button, wx.ToggleButton)):
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+        if sys_bg:
+            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+    # 컨테이너
+    elif isinstance(widget, wx.Notebook):
+        if sys_bg:
+            widget.SetBackgroundColour(Colors.BG_PRIMARY)
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+    elif isinstance(widget, wx.Panel):
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+        if sys_bg:
+            widget.SetBackgroundColour(Colors.BG_PRIMARY)
+    elif isinstance(widget, wx.ListCtrl):
+        if sys_bg:
+            widget.SetBackgroundColour(Colors.BG_PRIMARY)
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+    elif isinstance(widget, wx.Slider):
+        if sys_bg:
+            widget.SetBackgroundColour(Colors.BG_PRIMARY)
+    else:
+        # 기타 위젯: fg만 보정
+        if unstyled:
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+
+    # 재귀
+    if hasattr(widget, 'GetChildren'):
+        for child in widget.GetChildren():
+            _apply_child_theme(child)
+
+
 def apply_dark_theme(window: wx.Window):
-    """윈도우 전체에 다크 테마 적용 (재귀적)"""
-    window.SetBackgroundColour(Colors.BG_PRIMARY)
-    window.SetForegroundColour(Colors.TEXT_PRIMARY)
+    """윈도우 전체에 다크 테마 적용 (재귀적)
+
+    이미 명시적으로 색상이 설정된 위젯은 건너뛰므로,
+    ACCENT 버튼이나 TEXT_MUTED 라벨 등 의도적 오버라이드가 보존됩니다.
+    """
+    if _is_system_bg(window):
+        window.SetBackgroundColour(Colors.BG_PRIMARY)
+    if _is_unstyled_fg(window):
+        window.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     for child in window.GetChildren():
-        if isinstance(child, wx.Panel):
-            apply_panel_style(child)
-        elif isinstance(child, wx.Button):
-            apply_button_style(child)
-        elif isinstance(child, wx.TextCtrl):
-            apply_text_ctrl_style(child)
-        elif isinstance(child, wx.ComboBox):
-            apply_combobox_style(child)
-        elif isinstance(child, (wx.SpinCtrl, wx.SpinCtrlDouble)):
-            apply_spin_ctrl_style(child)
-        elif isinstance(child, wx.Slider):
-            child.SetBackgroundColour(Colors.BG_PRIMARY)
-        elif isinstance(child, wx.CheckBox):
-            child.SetForegroundColour(Colors.TEXT_SECONDARY)
+        _apply_child_theme(child)
 
-        if hasattr(child, 'GetChildren'):
-            apply_dark_theme(child)
+
+# ── 테마 베이스 클래스 ──
+
+class ThemedDialog(wx.Dialog):
+    """다크 테마 자동 적용 Dialog 베이스 클래스
+
+    사용법 (신규 다이얼로그):
+        class MyDialog(ThemedDialog):
+            def __init__(self, parent):
+                super().__init__(parent, title="제목", size=(400, 300))
+                label = wx.StaticText(self, label="텍스트")   # 색상 설정 불필요
+                btn = wx.Button(self, label="확인")            # 색상 설정 불필요
+                btn.SetBackgroundColour(Colors.ACCENT)         # 의도적 오버라이드만
+
+    ShowModal()/Show() 호출 시 미설정 위젯에 다크 테마가 자동 적용됩니다.
+    이미 색상이 설정된 위젯(ACCENT, TEXT_MUTED 등)은 보존됩니다.
+    """
+
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
+        self.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._theme_applied = False
+
+    def apply_theme(self):
+        """다크 테마를 모든 자식 위젯에 즉시 적용"""
+        apply_dark_theme(self)
+        self._theme_applied = True
+
+    def fit_to_content(self, min_width=300, min_height=150, margin=40):
+        """콘텐츠에 맞게 창 크기 자동 조절
+
+        Sizer가 계산한 최적 크기를 기준으로, 지정 size=()보다
+        콘텐츠가 클 경우 자동으로 확장합니다.
+        """
+        self.Layout()
+        sizer = self.GetSizer()
+        if not sizer:
+            return
+        best = sizer.ComputeFittingWindowSize(self)
+        cur = self.GetSize()
+        new_w = max(cur.width, best.width + margin, min_width)
+        new_h = max(cur.height, best.height + margin, min_height)
+        # 화면 크기 제한
+        display = wx.Display(wx.Display.GetFromWindow(self) if wx.Display.GetFromWindow(self) >= 0 else 0)
+        screen = display.GetClientArea()
+        new_w = min(new_w, screen.width - 40)
+        new_h = min(new_h, screen.height - 40)
+        self.SetSize(new_w, new_h)
+
+    def ShowModal(self):
+        if not self._theme_applied:
+            apply_dark_theme(self)
+        self.fit_to_content()
+        return super().ShowModal()
+
+    def Show(self, show=True):
+        if show and not self._theme_applied:
+            apply_dark_theme(self)
+        if show:
+            self.fit_to_content()
+        return super().Show(show)
+
+
+class ThemedPanel(wx.Panel):
+    """다크 테마 자동 적용 Panel 베이스 클래스
+
+    사용법:
+        class MyPanel(ThemedPanel):
+            def __init__(self, parent):
+                super().__init__(parent, bg_color=Colors.BG_SECONDARY)
+                label = wx.StaticText(self, label="텍스트")   # 색상 설정 불필요
+    """
+
+    def __init__(self, parent, *args, **kwargs):
+        bg_color = kwargs.pop('bg_color', None)
+        super().__init__(parent, *args, **kwargs)
+        self.SetBackgroundColour(bg_color or Colors.BG_PRIMARY)
+        self.SetForegroundColour(Colors.TEXT_PRIMARY)
+
+    def apply_theme(self):
+        """다크 테마를 모든 자식 위젯에 적용"""
+        for child in self.GetChildren():
+            _apply_child_theme(child)

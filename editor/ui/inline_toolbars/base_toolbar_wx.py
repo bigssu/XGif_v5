@@ -153,6 +153,16 @@ class InlineToolbarBase(wx.Panel):
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
         elif isinstance(widget, wx.Slider):
             widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
+        elif isinstance(widget, wx.StaticText):
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+        elif isinstance(widget, wx.CheckBox):
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+        elif isinstance(widget, wx.ToggleButton):
+            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+        elif isinstance(widget, wx.Choice):
+            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._controls_sizer.Add(widget, 0, wx.ALL, 8)
 
     def add_icon_label(self, icon_type: str, size: int = 20, tooltip: str = None) -> wx.StaticBitmap:

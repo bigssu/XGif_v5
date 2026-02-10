@@ -6,13 +6,13 @@ PyQt6 QDialog를 wx.Dialog로 마이그레이션
 import wx
 from PIL import Image
 from typing import TYPE_CHECKING, Tuple
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
-class ResizeDialog(wx.Dialog):
+class ResizeDialog(ThemedDialog):
     """리사이즈 다이얼로그 (wxPython)"""
 
     # 리샘플링 방법
@@ -24,7 +24,7 @@ class ResizeDialog(wx.Dialog):
     }
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="크기 조절", size=(400, 380))
+        super().__init__(parent or main_window, title="크기 조절")
         self._main_window = main_window
         self._original_width = 0
         self._original_height = 0
@@ -36,9 +36,6 @@ class ResizeDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        # 배경색 설정
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         # 메인 레이아웃
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)

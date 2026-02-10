@@ -7,7 +7,7 @@ Windows 11 Dark Theme 스타일
 import logging
 import wx
 
-from ui.theme import Colors, Fonts
+from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr
 from ui.capture_control_bar import FlatButton
 from core.dependency_checker import DependencyState, DependencyStatus
@@ -32,7 +32,7 @@ _DEP_INFO = {
 }
 
 
-class StartupCheckDialog(wx.Dialog):
+class StartupCheckDialog(ThemedDialog):
     """첫 실행 환경 진단 다이얼로그"""
 
     def __init__(self, parent, dep_results):
@@ -42,7 +42,7 @@ class StartupCheckDialog(wx.Dialog):
             dep_results: list[DependencyStatus] — check_all() 결과
         """
         title = tr('dep_startup_title')
-        wx.Dialog.__init__(self, parent, title=title, size=(500, 380),
+        ThemedDialog.__init__(self, parent, title=title, size=(500, 380),
                           style=wx.DEFAULT_DIALOG_STYLE)
         self.SetBackgroundColour(Colors.BG_PANEL)
         self.dep_results = dep_results
@@ -77,7 +77,7 @@ class StartupCheckDialog(wx.Dialog):
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         btn_sizer.AddStretchSpacer()
 
-        skip_btn = FlatButton(self, label=tr('dep_skip_btn'), size=(100, 32),
+        skip_btn = FlatButton(self, label=tr('dep_skip_btn'), size=(150, 32),
                                bg_color=Colors.BG_TERTIARY.Get()[:3],
                                fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                hover_color=Colors.BG_HOVER.Get()[:3])

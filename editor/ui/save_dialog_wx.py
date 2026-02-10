@@ -9,11 +9,11 @@ from PIL import Image
 from typing import Optional, Dict, List
 from pathlib import Path
 
-from .style_constants_wx import Colors
+from .style_constants_wx import Colors, ThemedDialog
 from ..core.editor_gif_encoder import GifEncoder, EncoderSettings, QuantizationMethod
 
 
-class SaveDialog(wx.Dialog):
+class SaveDialog(ThemedDialog):
     """
     양자화 설정 및 프리뷰 다이얼로그 (wxPython 버전)
 
@@ -132,6 +132,7 @@ class SaveDialog(wx.Dialog):
 
         # === 왼쪽: 프리뷰 영역 ===
         preview_box = wx.StaticBox(self, label=self._get_translation("save_dialog_preview", "미리보기"))
+        preview_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preview_sizer = wx.StaticBoxSizer(preview_box, wx.VERTICAL)
 
         # 프리뷰 이미지 패널
@@ -197,6 +198,7 @@ class SaveDialog(wx.Dialog):
 
         # 양자화 방법 선택
         quant_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quantization", "양자화 알고리즘"))
+        quant_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         quant_sizer = wx.StaticBoxSizer(quant_box, wx.VERTICAL)
 
         self._quant_combo = wx.ComboBox(self, style=wx.CB_READONLY, size=(200, -1))
@@ -215,6 +217,7 @@ class SaveDialog(wx.Dialog):
 
         # 품질 설정
         quality_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quality", "품질 설정"))
+        quality_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         quality_sizer = wx.StaticBoxSizer(quality_box, wx.VERTICAL)
 
         # 색상 수
@@ -249,6 +252,7 @@ class SaveDialog(wx.Dialog):
 
         # 파일 크기 예상
         size_box = wx.StaticBox(self, label=self._get_translation("save_dialog_result", "예상 결과"))
+        size_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         size_sizer = wx.StaticBoxSizer(size_box, wx.VERTICAL)
 
         size_text = self._get_translation("save_dialog_size", "예상 크기:")

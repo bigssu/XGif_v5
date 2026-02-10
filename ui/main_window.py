@@ -214,7 +214,6 @@ class MainWindow(wx.Frame):
         
         # 임시 버튼 참조 (호환성을 위해 capture_control_bar의 버튼 사용)
         self.start_btn = self.capture_control_bar.rec_button
-        self.stop_btn = self.capture_control_bar.stop_btn
         
         # 프로그레스 바 영역 (툴바 하단 중앙)
         self._create_progress_area(main_sizer, main_panel)
@@ -565,6 +564,10 @@ class MainWindow(wx.Frame):
         # FFmpeg 설치 후 인코더 경로 갱신
         if self.encoder:
             self.encoder.refresh_ffmpeg_path()
+        # CuPy가 여전히 미설치이면 CPU 모드 안내
+        cupy_missing = any(r.name == "CuPy" and r.state != DependencyState.INSTALLED for r in results)
+        if cupy_missing:
+            self.status_msg_label.SetLabel(tr('cupy_cpu_mode_notice').split('\n')[0])
 
     def _check_dep_for_feature(self, dep_name, skip_flag_key, feature_desc, disable_label=None):
         """기능 선택 시 의존성 확인 통합 헬퍼
@@ -853,10 +856,12 @@ class MainWindow(wx.Frame):
         self._on_stop_clicked()
     
     def _on_rec_clicked(self):
-        """REC 버튼 클릭"""
+        """REC/STOP 토글 버튼 클릭"""
         try:
             if self.record_state == self.STATE_READY:
                 self._start_recording()
+            elif self.record_state == self.STATE_RECORDING:
+                self._stop_recording()
             elif self.record_state == self.STATE_PAUSED:
                 self._resume_recording()
         except Exception as e:
@@ -1023,23 +1028,17 @@ class MainWindow(wx.Frame):
             if backend_ready:
                 # 백엔드가 이미 준비됨 - 즉시 활성화
                 self.status_msg_label.SetLabel(tr('recording'))
-                if hasattr(self, 'stop_btn') and self.stop_btn:
-                    self.stop_btn.Enable(True)
                 logger.info("Backend pre-warmed, recording ready immediately")
             else:
                 # 백엔드 준비 안 됨 - 짧은 대기 (500ms)
                 self.status_msg_label.SetLabel(tr('recording') + " - 초기화 중...")
-                if hasattr(self, 'stop_btn') and self.stop_btn:
-                    self.stop_btn.Enable(False)
-                
-                # 500ms 후 중지 버튼 활성화 (더 빠르게)
-                def enable_stop_button():
+
+                # 500ms 후 상태 메시지 업데이트
+                def _on_backend_ready():
                     if self.record_state == self.STATE_RECORDING:
-                        if hasattr(self, 'stop_btn') and self.stop_btn:
-                            self.stop_btn.Enable(True)
                         self.status_msg_label.SetLabel(tr('recording'))
-                
-                wx.CallLater(500, enable_stop_button)
+
+                wx.CallLater(500, _on_backend_ready)
                 logger.info("Backend not pre-warmed, using 500ms delay")
             
             # 기존 타이머 정리 (안전)
@@ -1742,9 +1741,30 @@ class MainWindow(wx.Frame):
                 
                 logger.info("[MainWindow] 최적 파이프라인 적용: %s", pipeline.name)
 
+            # GPU 하드웨어 감지 시 백그라운드에서 CuPy까지 확인하여 자동 활성화
+            if caps.has_nvidia_gpu:
+                def _detect_cupy_bg():
+                    try:
+                        info = detect_gpu(skip_cupy=False)
+                    except Exception:
+                        from core.gpu_utils import GpuInfo
+                        info = GpuInfo()
+                    wx.CallAfter(self._on_auto_gpu_detect_done, info)
+                threading.Thread(target=_detect_cupy_bg, daemon=True).start()
+
         except Exception as e:
             logger.warning("[MainWindow] 시스템 능력 감지 실패: %s", e)
-    
+
+    def _on_auto_gpu_detect_done(self, gpu_info):
+        """자동 GPU 감지 완료 (메인 스레드) — CuPy 가능 시 GPU 자동 활성화"""
+        self._gpu_initialized = True
+        has_gpu = gpu_info.has_cupy
+        self.capture_control_bar.set_gpu_status(has_gpu)
+        if has_gpu:
+            logger.info("[MainWindow] GPU 자동 활성화: CuPy 사용 가능")
+        else:
+            logger.info("[MainWindow] GPU 자동 감지 완료: CuPy 미사용")
+
     def _on_gpu_button_click(self):
         """GPU 버튼 클릭 — 비동기 GPU 감지 후 정보 표시"""
         if self._gpu_initialized:
@@ -1867,6 +1887,9 @@ class MainWindow(wx.Frame):
             if self.recorder is not None:
                 self.recorder.stop_recording()
         
+        # 설정을 디스크에 저장 (해상도, FPS 등 유지)
+        self._save_settings_to_disk()
+
         # 캡처 오버레이 먼저 강제 종료 (로컬 참조 사용: Destroy 시 콜백에서 None이 됨 방지)
         overlay = self.capture_overlay
         self.capture_overlay = None

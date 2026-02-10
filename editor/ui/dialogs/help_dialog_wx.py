@@ -4,16 +4,16 @@ HelpDialog - 앱 도움말 다이얼로그 (wxPython)
 앱 소개, 핵심 기능, 단축키를 탭으로 구분하여 표시.
 """
 import wx
-from ..style_constants_wx import Colors, Fonts
+from ..style_constants_wx import Colors, Fonts, ThemedDialog
 
 
-class HelpDialog(wx.Dialog):
+class HelpDialog(ThemedDialog):
 
     def __init__(self, parent=None):
-        super().__init__(parent, title="XGif 도움말", size=(550, 500),
+        super().__init__(parent, title="XGif 도움말",
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
         self._setup_ui()
+        self.SetMinSize((500, 400))
         self.CenterOnParent()
 
     def _setup_ui(self):
@@ -47,11 +47,13 @@ class HelpDialog(wx.Dialog):
         panel.SetBackgroundColour(Colors.BG_PRIMARY)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        tc = wx.TextCtrl(panel, value=text,
+        tc = wx.TextCtrl(panel,
                          style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | wx.BORDER_NONE)
         tc.SetBackgroundColour(Colors.BG_SECONDARY)
-        tc.SetForegroundColour(Colors.TEXT_PRIMARY)
-        tc.SetFont(Fonts.get_font(Fonts.SIZE_SM))
+        tc.SetDefaultStyle(wx.TextAttr(
+            Colors.TEXT_PRIMARY, Colors.BG_SECONDARY,
+            Fonts.get_font(Fonts.SIZE_SM)))
+        tc.SetValue(text)
         sizer.Add(tc, 1, wx.EXPAND | wx.ALL, 5)
 
         panel.SetSizer(sizer)

@@ -144,11 +144,18 @@ class CaptureOverlay(wx.Frame):
     HANDLE_MOVE = 9  # 테두리 드래그로 이동
     
     def __init__(self, parent_window=None):
-        # 투명 창을 위한 스타일 설정
-        style = wx.FRAME_NO_TASKBAR | wx.STAY_ON_TOP | wx.BORDER_NONE | wx.FRAME_SHAPED
-        
-        wx.Frame.__init__(self, parent_window, style=style)
-        
+        # 투명 창을 위한 스타일 설정 (FRAME_SHAPED 제거: SetShape 미사용 + SetSize 충돌)
+        style = wx.FRAME_NO_TASKBAR | wx.STAY_ON_TOP | wx.BORDER_NONE
+
+        # 초기 크기를 __init__에서 직접 전달
+        _padding = OVERLAY_HANDLE_SIZE + OVERLAY_HANDLE_MARGIN
+        _border_offset = (OVERLAY_BORDER_WIDTH + 1) // 2
+        init_w = DEFAULT_CAPTURE_WIDTH + 2 * _padding + 2 * _border_offset
+        init_h = DEFAULT_CAPTURE_HEIGHT + 2 * _padding + 2 * _border_offset + OVERLAY_BOTTOM_EXTRA
+
+        # parent를 None으로 생성: 메인 윈도우의 DPI 스케일이 오버레이 크기에 영향 방지
+        wx.Frame.__init__(self, None, style=style, size=(init_w, init_h))
+
         self.parent_window = parent_window
         
         # Windows에서 투명 배경을 위한 설정
@@ -242,17 +249,19 @@ class CaptureOverlay(wx.Frame):
         
         # 기본 크기 및 위치 (캡처 영역 기준)
         screen = wx.Display(0).GetGeometry()
-        default_capture_width = DEFAULT_CAPTURE_WIDTH
-        default_capture_height = DEFAULT_CAPTURE_HEIGHT
-        
-        # 전체 창 크기 = 캡처 영역 + 패딩 + 테두리 + 하단 텍스트 공간
-        total_width = default_capture_width + 2 * self.padding + 2 * self.border_width
-        total_height = default_capture_height + 2 * self.padding + 2 * self.border_width + self.bottom_extra
-        
+
+        # set_capture_size()/get_capture_size()와 동일한 공식 사용
+        border_offset = (self.border_width + 1) // 2
+        total_width = DEFAULT_CAPTURE_WIDTH + 2 * self.padding + 2 * border_offset
+        total_height = DEFAULT_CAPTURE_HEIGHT + 2 * self.padding + 2 * border_offset + self.bottom_extra
+
         x = (screen.width - total_width) // 2
         y = (screen.height - total_height) // 2
         self.SetPosition((x, y))
         self.SetSize((total_width, total_height))
+
+        # Win32 API로 크기 강제 (Layered 윈도우에서 wxPython SetSize 무시 방지)
+        self._force_win32_size(x, y, total_width, total_height)
         
         # 마우스 추적 활성화
         # wxPython에서는 마우스 추적이 기본적으로 활성화됨
@@ -272,6 +281,18 @@ class CaptureOverlay(wx.Frame):
         # 초기 영역 전송
         wx.CallLater(100, self._emit_region)
     
+    def _force_win32_size(self, x: int, y: int, w: int, h: int):
+        """Win32 SetWindowPos로 윈도우 크기 강제 (wxPython SetSize가 무시되는 경우 대비)"""
+        try:
+            import ctypes
+            hwnd = self.GetHandle()
+            SWP_NOZORDER = 0x0004
+            SWP_NOACTIVATE = 0x0010
+            ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE
+            )
+        except Exception:
+            pass
+
     def OnSize(self, event):
         """크기 변경 시 모양 업데이트"""
         event.Skip()
@@ -806,7 +827,11 @@ class CaptureOverlay(wx.Frame):
         
         # 위치는 유지하고 크기만 변경
         self.SetSize((total_width, total_height))
-        
+
+        # Win32 API로 크기 강제 (Layered 윈도우 호환)
+        pos = self.GetPosition()
+        self._force_win32_size(pos.x, pos.y, total_width, total_height)
+
         # 축소 시 잘려 그려지는 문제 방지: 강제 무효화 및 다시 그리기
         self.Refresh(True)
         self.Update()

@@ -9,19 +9,20 @@ if TYPE_CHECKING:
     from ..utils.translations import Translations
 
 try:
-    from .style_constants_wx import Colors, Spacing, apply_panel_style, apply_spin_ctrl_style
+    from .style_constants_wx import Colors, Spacing, apply_panel_style, apply_spin_ctrl_style, ThemedPanel
 except ImportError:
     Colors = None
     Spacing = None
     apply_panel_style = lambda p: None
     apply_spin_ctrl_style = lambda s: None
+    ThemedPanel = wx.Panel
 
 
-class PropertiesPanel(wx.Panel):
+class PropertiesPanel(ThemedPanel):
     """속성 편집 패널 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow'):
-        super().__init__(main_window)
+        super().__init__(main_window, bg_color=Colors.BG_SECONDARY if Colors else None)
         self._main_window = main_window
         self._updating = False
 

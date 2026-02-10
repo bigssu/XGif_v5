@@ -5,10 +5,10 @@ TargetFrameHintDialog - 대상 프레임 선택 안내 팝업 (wxPython 버전)
 "다음 부터 안보기" 체크 시 이후에는 표시하지 않음.
 """
 import wx
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 
-class TargetFrameHintDialog(wx.Dialog):
+class TargetFrameHintDialog(ThemedDialog):
     """대상 프레임 선택 안내 다이얼로그 (wxPython)
 
     메시지와 "다음 부터 안보기" 체크박스를 표시하고,
@@ -18,7 +18,7 @@ class TargetFrameHintDialog(wx.Dialog):
     SETTINGS_KEY_HIDDEN = "target_frame_hint_hidden_v2"
 
     def __init__(self, parent=None, settings=None, translations=None):
-        super().__init__(parent, title="대상 프레임 선택", size=(440, 280),
+        super().__init__(parent, title="대상 프레임 선택",
                          style=wx.DEFAULT_DIALOG_STYLE)
         self._settings = settings
         self._translations = translations
@@ -49,8 +49,6 @@ class TargetFrameHintDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 

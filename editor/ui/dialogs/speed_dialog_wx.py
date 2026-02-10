@@ -6,17 +6,17 @@ PyQt6 QDialog를 wx.Dialog로 마이그레이션
 import wx
 from typing import TYPE_CHECKING
 
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
 
 
-class SpeedDialog(wx.Dialog):
+class SpeedDialog(ThemedDialog):
     """속도 조절 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="속도 조절", size=(450, 320))
+        super().__init__(parent or main_window, title="속도 조절")
         self._main_window = main_window
 
         self._setup_ui()
@@ -24,9 +24,6 @@ class SpeedDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        # 배경색 설정
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         # 메인 레이아웃
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)

@@ -8,7 +8,7 @@ from PIL import Image
 from typing import TYPE_CHECKING, Dict, Any, Optional
 from ...core.image_effects import ImageEffects
 from ...utils.image_utils import pil_to_wx_bitmap
-from ..style_constants_wx import Colors
+from ..style_constants_wx import Colors, ThemedDialog
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -95,11 +95,12 @@ class FilterButton(wx.Button):
         self.Refresh()
 
 
-class EffectsDialog(wx.Dialog):
+class EffectsDialog(ThemedDialog):
     """효과/필터 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="효과/필터", size=(700, 550))
+        super().__init__(parent or main_window, title="효과/필터",
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._main_window = main_window
         self._original_image: Optional[Image.Image] = None
         self._current_filter: Optional[str] = None
@@ -114,8 +115,6 @@ class EffectsDialog(wx.Dialog):
 
     def _setup_ui(self):
         """UI 초기화"""
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
-
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         main_sizer.AddSpacer(15)
 

@@ -147,6 +147,7 @@ class CanvasWidget(wx.Panel):
 
         # 설정
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)  # 더블 버퍼링 활성화
+        self._skip_auto_theme = True
 
         # 이벤트 바인딩
         self.Bind(wx.EVT_PAINT, self._on_paint)

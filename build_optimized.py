@@ -422,11 +422,13 @@ def run_pyinstaller_build():
     spec_path = _generate_spec_file(icon_ico, version_file)
     print(f"  Spec file: {spec_path}")
 
-    pyinstaller_exe = os.path.join(BUILD_VENV, "Scripts", "pyinstaller.exe")
-    cmd = [pyinstaller_exe, "--noconfirm", spec_path]
+    python_exe = _get_python_exe(BUILD_VENV)
+    cmd = [python_exe, "-m", "PyInstaller", "--noconfirm", spec_path]
 
     print("Starting PyInstaller build process...")
-    subprocess.run(cmd, check=True)
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    subprocess.run(cmd, check=True, env=env)
 
 def _find_iscc():
     """Inno Setup 컴파일러(ISCC.exe) 경로 자동 감지"""

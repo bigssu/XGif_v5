@@ -36,6 +36,8 @@ class PencilToolbar(InlineToolbarBase):
             style=wx.CB_READONLY,
             choices=["모두", "선택", "현재"]
         )
+        self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(self._pencil_target_mode)
         self._target_combo.Bind(wx.EVT_COMBOBOX, self._on_target_changed)
         self._controls_sizer.Add(self._target_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
@@ -57,6 +59,7 @@ class PencilToolbar(InlineToolbarBase):
             style=wx.SL_HORIZONTAL,
             size=(120, -1)
         )
+        self._width_slider.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
         self._width_slider.Bind(wx.EVT_SLIDER, self._on_width_changed)
         self._controls_sizer.Add(self._width_slider, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
@@ -76,6 +79,8 @@ class PencilToolbar(InlineToolbarBase):
             inc=0.1,
             size=(80, -1)
         )
+        self._duration_spin.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._duration_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._duration_spin.SetValue(self._pencil_duration)
         self._duration_spin.SetDigits(1)
         self._duration_spin.Bind(wx.EVT_SPINCTRLDOUBLE, self._on_duration_changed)
@@ -85,6 +90,8 @@ class PencilToolbar(InlineToolbarBase):
 
         # Auto Animation 토글
         self._auto_anim_btn = wx.ToggleButton(self._controls_widget, label="Auto", size=(70, 36))
+        self._auto_anim_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._auto_anim_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._auto_anim_btn.SetValue(self._pencil_auto_animation)
         self._auto_anim_btn.Bind(wx.EVT_TOGGLEBUTTON, self._on_auto_anim_toggled)
         self._controls_sizer.Add(self._auto_anim_btn, 0, wx.ALIGN_CENTER_VERTICAL)
