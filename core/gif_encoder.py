@@ -16,10 +16,9 @@ import uuid
 import logging
 import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Callable
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
-from typing import Optional, Callable
 from .utils import safe_rmtree, run_subprocess_silent
 
 logger = logging.getLogger(__name__)

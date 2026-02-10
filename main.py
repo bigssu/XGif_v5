@@ -92,7 +92,7 @@ def setup_logging():
     except (OSError, PermissionError) as e:
         print(f"Warning: Cannot create log file: {e}")
     
-    level = logging.INFO
+    level = logging.DEBUG if os.environ.get('XGIF_DEBUG') else logging.INFO
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

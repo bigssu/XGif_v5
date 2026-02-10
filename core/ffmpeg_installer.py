@@ -6,6 +6,7 @@ FFmpeg 자동 다운로드 및 설치 모듈
 import os
 import sys
 import zipfile
+import hashlib
 import urllib.request
 import shutil
 import tempfile
@@ -132,6 +133,13 @@ class FFmpegDownloader(threading.Thread):
                 self._safe_callback(self._finished_callback, False, "다운로드 취소됨")
                 return
 
+            # 다운로드 파일 무결성 검증
+            self._safe_callback(self._status_callback, "파일 무결성 검증 중...")
+            if not self._verify_zip_integrity(zip_path):
+                self._safe_callback(self._finished_callback, False,
+                                    "다운로드 파일이 손상되었습니다. 다시 시도하세요.")
+                return
+
             self._safe_callback(self._status_callback, "압축 해제 중...")
 
             # ZIP 압축 해제 및 ffmpeg.exe 추출
@@ -182,6 +190,34 @@ class FFmpegDownloader(threading.Thread):
             logger.error(f"다운로드 에러: {e}")
             return False
     
+    @staticmethod
+    def _verify_zip_integrity(zip_path: str) -> bool:
+        """다운로드된 ZIP 파일 무결성 검증 (CRC + 최소 크기)"""
+        try:
+            # 최소 크기 검증 (FFmpeg zip은 최소 30MB 이상)
+            file_size = os.path.getsize(zip_path)
+            if file_size < 30 * 1024 * 1024:
+                logger.warning("FFmpeg ZIP too small: %d bytes", file_size)
+                return False
+
+            # ZIP 내부 CRC 검증
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                bad = zf.testzip()
+                if bad is not None:
+                    logger.warning("Corrupt entry in FFmpeg ZIP: %s", bad)
+                    return False
+
+                # ffmpeg.exe가 포함되어 있는지 확인
+                has_ffmpeg = any(n.endswith('bin/ffmpeg.exe') for n in zf.namelist())
+                if not has_ffmpeg:
+                    logger.warning("ffmpeg.exe not found in ZIP")
+                    return False
+
+            return True
+        except (zipfile.BadZipFile, OSError) as e:
+            logger.warning("FFmpeg ZIP integrity check failed: %s", e)
+            return False
+
     def _extract_ffmpeg(self, zip_path: str, dest_dir: Path):
         """ZIP에서 ffmpeg.exe 추출"""
         with zipfile.ZipFile(zip_path, 'r') as zf:

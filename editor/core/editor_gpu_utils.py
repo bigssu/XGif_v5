@@ -47,8 +47,14 @@ def _check_gpu() -> bool:
         return False
     
     try:
+        from core.utils import ensure_system_site_packages
+        ensure_system_site_packages()
+    except Exception:
+        pass
+
+    try:
         import cupy as cp
-        
+
         # CUDA 런타임 버전 확인
         cuda_version = cp.cuda.runtime.runtimeGetVersion()
         _logger.info(f"CUDA 런타임 버전: {cuda_version // 1000}.{(cuda_version % 1000) // 10}")
@@ -110,16 +116,6 @@ def is_gpu_available() -> bool:
             if _gpu_available is None:  # Double-checked locking
                 _gpu_available = _check_gpu()
     return _gpu_available
-
-
-def is_numba_available() -> bool:
-    """Numba는 제거됨 - 항상 False 반환"""
-    return False
-
-
-def get_numba_info() -> Dict[str, Any]:
-    """Numba는 제거됨 - 빈 정보 반환"""
-    return {"available": False, "version": "N/A", "cuda_available": False}
 
 
 def is_gpu_enabled() -> bool:
@@ -828,10 +824,10 @@ def initialize_gpu(force: bool = False) -> bool:
 
 
 def get_diagnostic_info() -> str:
-    """GPU/Numba 진단 정보 문자열 반환
-    
-    디버깅 및 지원 목적으로 상세한 GPU/Numba 정보를 반환합니다.
-    
+    """GPU 진단 정보 문자열 반환
+
+    디버깅 및 지원 목적으로 상세한 GPU 정보를 반환합니다.
+
     Returns:
         str: 포맷된 진단 정보
     """
@@ -842,10 +838,10 @@ def get_diagnostic_info() -> str:
         f"GPU 사용 가능: {is_gpu_available()}",
         f"GPU 사용 활성화: {_gpu_enabled}",
     ]
-    
+
     if _gpu_init_error:
         lines.append(f"초기화 에러: {_gpu_init_error}")
-    
+
     if is_gpu_available():
         info = get_gpu_info()
         lines.extend([
@@ -857,13 +853,7 @@ def get_diagnostic_info() -> str:
             f"사용 중: {info.get('memory_used', 0):,} MB",
             f"여유: {info.get('memory_free', 0):,} MB",
         ])
-    
-    lines.extend([
-        "",
-        "--- Numba JIT ---",
-        "Numba: 제거됨 (NumPy 폴백 사용)",
-    ])
-    
+
     # 환경 변수 정보
     lines.extend([
         "",
@@ -871,7 +861,7 @@ def get_diagnostic_info() -> str:
     ])
     cuda_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '(설정되지 않음)')
     lines.append(f"CUDA_VISIBLE_DEVICES: {cuda_devices}")
-    
+
     lines.append("=" * 25)
     return "\n".join(lines)
 

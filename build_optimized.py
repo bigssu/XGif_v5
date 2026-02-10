@@ -258,8 +258,8 @@ def create_version_file():
     from core.version import APP_VERSION
     sys.path.pop(0)
     parts = APP_VERSION.split(".")
-    major = int(parts[0]) if len(parts) > 0 else 0
-    minor = int(parts[1]) if len(parts) > 1 else 0
+    major = int(re.match(r'\d+', parts[0]).group()) if len(parts) > 0 else 0
+    minor = int(re.match(r'\d+', parts[1]).group()) if len(parts) > 1 else 0
     version_file = os.path.join(PROJECT_DIR, "file_version_info.txt")
     content = f"""VSVersionInfo(
   ffi=FixedFileInfo(
@@ -507,8 +507,8 @@ def _parse_args():
         help="PFX certificate path (default: signing/XGif_CodeSign.pfx)"
     )
     parser.add_argument(
-        "--sign-password", default="XGif2024!",
-        help="PFX certificate password"
+        "--sign-password", default=os.environ.get("XGIF_SIGN_PASSWORD", ""),
+        help="PFX certificate password (or set XGIF_SIGN_PASSWORD env var)"
     )
     parser.add_argument(
         "--installer", action="store_true",

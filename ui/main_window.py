@@ -318,12 +318,6 @@ class MainWindow(wx.Frame):
     
     def _on_cursor_toggled(self, enabled: bool):
         """커서 토글 변경 처리"""
-        from core.utils import BlockSignals
-        # 기존 체크박스 상태 동기화
-        if hasattr(self, 'include_cursor_cb'):
-            with BlockSignals(self.include_cursor_cb):
-                self.include_cursor_cb.setChecked(enabled)
-        
         # recorder에 즉시 반영 (녹화 중이 아닐 때)
         if self.recorder and self.record_state == self.STATE_READY:
             self.recorder.include_cursor = enabled

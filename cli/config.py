@@ -7,20 +7,9 @@ from typing import Dict, Optional
 # core.utils에서 앱 이름 가져오기
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.utils import APP_SETTINGS_NAME
+from core.defaults import COMMON_DEFAULTS
 
-# GUI의 SettingsDialog와 동일한 기본 설정
-DEFAULT_SETTINGS = {
-    "language": "ko",
-    "capture_backend": "gdi",
-    "encoder": "auto",
-    "codec": "h264",
-    "memory_limit_mb": "1024",
-    "hdr_correction": "false",
-    "mic_audio": "false",
-    "watermark": "false",
-    "click_highlight": "false",
-    "keyboard_display": "false",
-}
+DEFAULT_SETTINGS = dict(COMMON_DEFAULTS)
 
 
 def get_config_path() -> str:

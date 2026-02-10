@@ -51,6 +51,12 @@ def check_ffmpeg() -> DependencyStatus:
 def check_cupy(min_version="12.0") -> DependencyStatus:
     """CuPy 설치 상태 확인"""
     try:
+        from core.utils import ensure_system_site_packages
+        ensure_system_site_packages()
+    except Exception:
+        pass
+
+    try:
         import cupy
         installed = cupy.__version__
         # 버전 비교 (tuple)

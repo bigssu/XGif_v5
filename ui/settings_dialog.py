@@ -17,30 +17,24 @@ from ui.constants import (
 from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr, get_trans_manager
 from ui.capture_control_bar import FlatButton
+from core.defaults import COMMON_DEFAULTS
 
 logger = logging.getLogger(__name__)
+
+# UI 전용 설정 키
+_UI_ONLY_DEFAULTS = {
+    "preview_enabled": "false",
+    "skip_ffmpeg_check": "false",
+    "skip_cupy_check": "false",
+    "skip_dxcam_check": "false",
+    "startup_dep_checked": "false",
+}
 
 
 class SettingsDialog(ThemedDialog):
     """설정 다이얼로그 - Windows 11 Dark Theme"""
 
-    DEFAULT_SETTINGS = {
-        "mic_audio": "false",
-        "watermark": "false",
-        "click_highlight": "false",
-        "keyboard_display": "false",
-        "preview_enabled": "false",
-        "encoder": "auto",
-        "codec": "h264",
-        "capture_backend": "gdi",
-        "memory_limit_mb": "1024",
-        "language": "ko",
-        "hdr_correction": "false",
-        "skip_ffmpeg_check": "false",
-        "skip_cupy_check": "false",
-        "skip_dxcam_check": "false",
-        "startup_dep_checked": "false",
-    }
+    DEFAULT_SETTINGS = {**COMMON_DEFAULTS, **_UI_ONLY_DEFAULTS}
 
     def __init__(self, parent=None, settings=None):
         ThemedDialog.__init__(self, parent, title=tr('settings'), size=(520, 580),

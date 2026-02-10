@@ -96,6 +96,11 @@ ffmpeg/
 *.spec
 file_version_info.txt
 
+# Build logs
+build_log.txt
+build_stderr.txt
+build_stdout.txt
+
 # Code signing certificates (sensitive)
 signing/
 

@@ -6,6 +6,11 @@
 import os
 import sys
 import logging
+import shutil
+import stat
+import time
+import gc
+import subprocess
 from typing import Tuple, Optional
 import numpy as np
 from PIL import Image, ImageFont
@@ -24,6 +29,80 @@ def get_resource_path(relative_path: str) -> str:
     else:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, relative_path)
+
+
+def ensure_system_site_packages():
+    """frozen 앱에서 시스템 Python site-packages를 sys.path에 추가.
+
+    PyInstaller 빌드에서 제외된 패키지(CuPy 등)를
+    시스템 Python에서 찾을 수 있게 합니다.
+    소스 실행 시에는 아무 동작도 하지 않습니다.
+    """
+    _log = logging.getLogger(__name__)
+
+    if not getattr(sys, 'frozen', False):
+        return
+
+    if getattr(sys, '_xgif_site_packages_added', False):
+        return
+
+    import shutil
+    import subprocess
+
+    python_exe = shutil.which('python') or shutil.which('python3')
+    if not python_exe:
+        _log.debug("[site-packages] system python not found in PATH")
+        return
+
+    _log.debug("[site-packages] system python: %s", python_exe)
+
+    try:
+        # site-packages + stdlib(Lib, DLLs) 경로를 한꺼번에 수집
+        _script = (
+            'import site, sysconfig, os, sys;'
+            'ps = list(site.getsitepackages());'
+            'ps.append(sysconfig.get_path("stdlib"));'
+            'ps.append(sysconfig.get_path("purelib"));'
+            'ps.append(sysconfig.get_path("platlib"));'
+            'dll = os.path.join(sys.prefix, "DLLs");'
+            'ps.append(dll) if os.path.isdir(dll) else None;'
+            'print(chr(10).join(dict.fromkeys(ps)))'
+        )
+        result = subprocess.run(
+            [python_exe, '-c', _script],
+            capture_output=True, text=True, timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        added = []
+        for p in result.stdout.strip().splitlines():
+            if p and os.path.isdir(p) and p not in sys.path:
+                sys.path.append(p)
+                added.append(p)
+        sys._xgif_site_packages_added = True
+        if added:
+            _log.info("[site-packages] added %d paths: %s", len(added), added)
+            # frozen numpy는 submodule(numpy.testing 등)이 빠져 있을 수 있음
+            # 시스템 numpy 경로를 numpy.__path__에 추가하여 CuPy가 필요로 하는
+            # submodule을 찾을 수 있게 함
+            _patch_frozen_numpy_path(added, _log)
+        else:
+            _log.debug("[site-packages] no new paths to add (stderr=%s)",
+                       result.stderr.strip()[:200] if result.stderr else "")
+    except Exception as exc:
+        _log.debug("[site-packages] failed: %s", exc)
+
+
+def _patch_frozen_numpy_path(site_dirs, _log):
+    """frozen numpy에 시스템 numpy 경로를 추가 (numpy.testing 등 접근 가능하게)"""
+    try:
+        import numpy
+        for sp in site_dirs:
+            np_dir = os.path.join(sp, 'numpy')
+            if os.path.isdir(np_dir) and np_dir not in numpy.__path__:
+                numpy.__path__.append(np_dir)
+                _log.debug("[site-packages] patched numpy.__path__ += %s", np_dir)
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -225,95 +304,22 @@ def validate_resolution(width: int, height: int, min_res: int = 50, max_res: int
     return (min_res <= width <= max_res and min_res <= height <= max_res)
 
 
-# ═══════════════════════════════════════════════════════════════
-# Qt 리소스 정리 유틸리티
-# ═══════════════════════════════════════════════════════════════
-
-def safe_disconnect_signal(signal, slot):
-    """Qt 시그널을 안전하게 연결 해제
-    
-    Args:
-        signal: Qt 시그널
-        slot: 연결된 슬롯
-    """
-    try:
-        signal.disconnect(slot)
-    except (TypeError, RuntimeError):
-        pass  # 이미 연결 해제됨
-
-
 def safe_delete_timer(timer):
     """wxPython 타이머를 안전하게 정리
-    
+
     Args:
         timer: wx.Timer 객체
     """
     if timer is None:
         return
-    
+
     try:
         timer.Stop()  # wxPython은 대문자 Stop()
     except (TypeError, RuntimeError, AttributeError):
         pass
-    
+
     # wxPython Timer는 deleteLater()가 없음
     # 참조만 해제하면 됨
-
-
-def safe_delete_animation(animation):
-    """Qt 애니메이션을 안전하게 정리
-    
-    Args:
-        animation: QPropertyAnimation 객체
-    """
-    if animation is None:
-        return
-    
-    try:
-        animation.stop()
-    except (TypeError, RuntimeError):
-        pass
-    
-    try:
-        animation.deleteLater()
-    except (RuntimeError, AttributeError):
-        pass
-
-
-class BlockSignals:
-    """Qt 위젯의 시그널을 일시적으로 차단하는 Context Manager
-    
-    사용 예:
-        with BlockSignals(widget):
-            widget.setValue(10)  # 시그널 발생 안 함
-        # 자동으로 시그널 복원
-    """
-    
-    def __init__(self, *widgets):
-        """
-        Args:
-            *widgets: 시그널을 차단할 Qt 위젯들
-        """
-        self.widgets = widgets
-        self.original_states = []
-    
-    def __enter__(self):
-        """시그널 차단"""
-        for widget in self.widgets:
-            if widget is not None:
-                self.original_states.append(widget.signalsBlocked())
-                widget.blockSignals(True)
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """시그널 복원"""
-        for widget, original_state in zip(self.widgets, self.original_states):
-            if widget is not None:
-                try:
-                    widget.blockSignals(original_state)
-                except RuntimeError:
-                    pass  # 위젯이 이미 삭제됨
-        return False
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -328,11 +334,6 @@ APP_SETTINGS_NAME = "XGif"
 # ═══════════════════════════════════════════════════════════════
 # 파일 시스템 유틸리티
 # ═══════════════════════════════════════════════════════════════
-
-import shutil
-import stat
-import time
-import gc
 
 
 def safe_rmtree(path: str, max_retries: int = 3) -> bool:
@@ -371,8 +372,6 @@ def safe_rmtree(path: str, max_retries: int = 3) -> bool:
 # ═══════════════════════════════════════════════════════════════
 # 서브프로세스 유틸리티
 # ═══════════════════════════════════════════════════════════════
-
-import subprocess
 
 
 def run_subprocess_silent(cmd: list, timeout: int = 60, **kwargs) -> subprocess.CompletedProcess:

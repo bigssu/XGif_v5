@@ -125,6 +125,13 @@ def _check_cupy():
         _cupy_available = False
 
         try:
+            # frozen 앱에서 시스템 site-packages 경로 추가
+            from .utils import ensure_system_site_packages
+            ensure_system_site_packages()
+        except Exception:
+            pass
+
+        try:
             # 경고 메시지 억제
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -141,12 +148,12 @@ def _check_cupy():
                 _cp = cp
                 logger.info(f"CuPy initialized successfully with {device_count} device(s)")
 
-        except ImportError:
+        except ImportError as e:
             # CuPy가 설치되지 않음
-            logger.debug("CuPy not installed")
+            logger.debug("CuPy not installed: %s", e)
         except (RuntimeError, OSError, AttributeError) as e:
             # CUDA 드라이버 오류, 메모리 문제, DLL 충돌 등
-            logger.debug(f"CuPy initialization failed: {e}")
+            logger.debug("CuPy initialization failed: %s", e)
 
         return _cupy_available
 
@@ -199,8 +206,7 @@ def detect_gpu(skip_cupy: bool = False) -> GpuInfo:
                         info.has_cuda = True
                         gpu_detected = True
                 except (pynvml.NVMLError, AttributeError, ValueError) as e:
-                    import logging
-                    logging.debug(f"[gpu_utils] pynvml GPU 감지 실패: {e}")
+                    logger.debug(f"[gpu_utils] pynvml GPU 감지 실패: {e}")
 
             # 2. pynvml 실패 시 nvidia-smi 폴백
             if not gpu_detected:
