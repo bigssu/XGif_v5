@@ -1,0 +1,39 @@
+[project]
+name = "xgif"
+version = "0.56"
+description = "Windows용 GIF/MP4 화면 녹화 프로그램"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+keywords = ["gif", "screen-recorder", "capture", "mp4", "wxpython"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E402",   # module level import not at top (CLI 조기 분기에 필요)
+    "B010",   # setattr with constant
+    "SIM108", # ternary operator
+]
+
+[tool.ruff.lint.per-file-ignores]
+"main.py" = ["E402"]
+"cli/*.py" = ["E402"]
+"tests/*.py" = ["B"]

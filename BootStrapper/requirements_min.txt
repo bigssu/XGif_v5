@@ -1,0 +1,4 @@
+# requirements_min.txt
+# Minimal packages needed to RUN the bootstrapper from source.
+# wxPython may already be in the build environment.
+wxPython>=4.2.0
