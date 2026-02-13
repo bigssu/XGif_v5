@@ -9,7 +9,6 @@ import sys
 import logging
 import wx
 import threading
-import configparser
 import numpy as np
 
 # 로깅 설정
@@ -136,22 +135,13 @@ class MainWindow(wx.Frame):
         # 오디오 관련
         self.audio_file_path = None
         
-        # 설정 저장/불러오기
-        from core.utils import APP_SETTINGS_ORG, APP_SETTINGS_NAME
-        import os
-        appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
-        config_dir = os.path.join(appdata, APP_SETTINGS_NAME)
-        os.makedirs(config_dir, exist_ok=True)
-        config_path = os.path.join(config_dir, 'config.ini')
-        self.settings = configparser.ConfigParser()
-        if os.path.exists(config_path):
-            self.settings.read(config_path, encoding='utf-8')
-        if not self.settings.has_section('General'):
-            self.settings.add_section('General')
+        # 설정 로드 (AppSettings 단일 소스)
+        from core.settings import AppSettings
+        self.settings = AppSettings.load()
         
         # 언어 관리자 초기화
         self.trans = get_trans_manager()
-        language = self.settings.get('General', 'language', fallback='ko')
+        language = self.settings.get('language', fallback='ko')
         self.trans.set_language(str(language))
         self.trans.register_callback(self.retranslateUi)
         
@@ -170,21 +160,32 @@ class MainWindow(wx.Frame):
         # GPU 초기화 플래그 (버튼 클릭 시 지연 초기화)
         self._gpu_initialized = False
 
+        # 컨트롤러 초기화
+        from ui.controllers import (
+            RecordingController, EncodingController,
+            PreviewManager, OverlayManager, SystemDetector,
+        )
+        self._recording_ctrl = RecordingController(self)
+        self._encoding_ctrl = EncodingController(self)
+        self._preview_mgr = PreviewManager(self)
+        self._overlay_mgr = OverlayManager(self)
+        self._system_detector = SystemDetector(self)
+
         self._init_ui()
         self._init_recorder()
         self._setup_shortcuts()
-        
+
         # 프로그램 시작 시 자동으로 캡처 영역 표시
         wx.CallLater(100, self._show_capture_overlay)
-        
+
         # 시스템 능력 감지 (UI 프리즈 방지를 위해 백그라운드 스레드에서 실행)
         wx.CallLater(50, self._detect_system_capabilities)
-        
+
         # HDR 레이블 갱신 (설정에서 수동 켠 경우 표시)
         wx.CallLater(100, self._update_hdr_label)
         
         # 미리보기 시작 (설정에서 활성화된 경우)
-        saved_preview = self.settings.get('General', 'preview_enabled', fallback='false')
+        saved_preview = self.settings.get('preview_enabled', fallback='false')
         if saved_preview == "true":
             self.preview_enabled = True
             self._start_preview()
@@ -328,9 +329,8 @@ class MainWindow(wx.Frame):
     def _on_region_toggled(self, visible: bool):
         """영역 표시 토글 변경 처리"""
         # 설정에 저장
-        if not self.settings.has_section('General'):
-            self.settings.add_section('General')
-        self.settings.set("General", "click_highlight", "true" if visible else "false")
+
+        self.settings.set("click_highlight", "true" if visible else "false")
         
         # recorder에 즉시 반영 (녹화 중이 아닐 때)
         if self.recorder and self.record_state == self.STATE_READY:
@@ -346,18 +346,18 @@ class MainWindow(wx.Frame):
         self.capture_control_bar.set_cursor_enabled(cursor_enabled)
         
         # 영역 표시 상태 (클릭 하이라이트)
-        region_visible = self.settings.get("General", "click_highlight", fallback="false") == "true"
+        region_visible = self.settings.get("click_highlight", fallback="false") == "true"
         self.capture_control_bar.set_region_visible(region_visible)
         
         # 저장된 설정에서 FPS, 해상도 불러오기
-        saved_fps = self.settings.get("General", "fps", fallback="15")
+        saved_fps = self.settings.get("fps", fallback="15")
         try:
             fps_val = int(saved_fps)
             self.capture_control_bar.set_fps(fps_val)
         except ValueError:
             self.capture_control_bar.set_fps(15)
         
-        saved_resolution = self.settings.get("General", "resolution_preset", fallback="320 × 240")
+        saved_resolution = self.settings.get("resolution_preset", fallback="320 × 240")
         self.capture_control_bar.set_resolution(saved_resolution)
         
         # GPU 버튼 클릭 콜백 등록
@@ -499,7 +499,7 @@ class MainWindow(wx.Frame):
         self.encoder = GifEncoder()
         
         # 설정에서 캡처 백엔드 로드 및 적용
-        capture_backend = self.settings.get("General", "capture_backend", fallback="gdi")  # 기본값 gdi
+        capture_backend = self.settings.get("capture_backend", fallback="gdi")  # 기본값 gdi
         
         # Auto인 경우 HDR 상태에 따라 백엔드 선택
         if capture_backend == "auto":
@@ -529,7 +529,7 @@ class MainWindow(wx.Frame):
         self.recorder.set_error_occurred_callback(lambda msg: wx.CallAfter(self._on_recording_error, msg))
         
         # HDR 보정 설정: 사용자 설정값만 사용 (기본 OFF)
-        hdr_on = self.settings.get('General', 'hdr_correction', fallback='false') == "true"
+        hdr_on = self.settings.get('hdr_correction', fallback='false') == "true"
         self.recorder.set_hdr_correction(hdr_on)
     
     # ── 의존성 관리 ──
@@ -541,7 +541,7 @@ class MainWindow(wx.Frame):
             True=사용 가능 (설치됨 또는 설치 성공), False=사용 불가
         """
         # skip 플래그 확인
-        if self.settings.get('General', skip_flag_key, fallback='false') == 'true':
+        if self.settings.get(skip_flag_key, fallback='false') == 'true':
             return False  # 이전에 "다시 묻지 않기" 선택 → 대안 사용
 
         # 동기 감지 (각 <100ms)
@@ -565,9 +565,7 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
         if dont_ask:
-            if not self.settings.has_section('General'):
-                self.settings.add_section('General')
-            self.settings.set('General', skip_flag_key, 'true')
+            self.settings.set(skip_flag_key, 'true')
             self._save_settings_to_disk()
 
         if ret == ID_INSTALL.GetId():
@@ -581,13 +579,7 @@ class MainWindow(wx.Frame):
     def _save_settings_to_disk(self):
         """config.ini에 설정 저장"""
         try:
-            from core.utils import APP_SETTINGS_NAME
-            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
-            config_dir = os.path.join(appdata, APP_SETTINGS_NAME)
-            os.makedirs(config_dir, exist_ok=True)
-            config_path = os.path.join(config_dir, 'config.ini')
-            with open(config_path, 'w', encoding='utf-8') as f:
-                self.settings.write(f)
+            self.settings.save()
         except Exception as e:
             logger.warning("설정 저장 실패: %s", e)
     
@@ -614,7 +606,7 @@ class MainWindow(wx.Frame):
             self.capture_overlay.set_closed_callback(self._on_overlay_closed)
             
             # 저장된 해상도 적용 (없으면 기본 320x240)
-            saved_resolution = self.settings.get("General", "resolution_preset", fallback="320 × 240")
+            saved_resolution = self.settings.get("resolution_preset", fallback="320 × 240")
             try:
                 clean_text = saved_resolution.replace("×", "x").replace(" ", "").lower()
                 if "x" in clean_text:
@@ -682,16 +674,13 @@ class MainWindow(wx.Frame):
             self._updating_resolution = False
         
         # 마지막 크기 저장
-        if not self.settings.has_section('General'):
-            self.settings.add_section('General')
-        self.settings.set("General", "resolution_preset", size_text)
+
+        self.settings.set("resolution_preset", size_text)
     
     def _on_fps_changed(self, text):
         """FPS 값 변경됨"""
         if text:
-            if not self.settings.has_section('General'):
-                self.settings.add_section('General')
-            self.settings.set("General", "fps", text)
+            self.settings.set("fps", text)
     
     def _on_format_changed(self, format_text):
         """출력 포맷 변경 시 FPS 자동 조정 + FFmpeg 인터셉트"""
@@ -718,9 +707,8 @@ class MainWindow(wx.Frame):
         if getattr(self, '_updating_resolution', False):
             return
 
-        if not self.settings.has_section('General'):
-            self.settings.add_section('General')
-        self.settings.set("General", "resolution_preset", text)
+
+        self.settings.set("resolution_preset", text)
 
         # 해상도 파싱 후 CallAfter로 비동기 적용
         # (콤보박스 이벤트 처리 중 오버레이 크기 변경 시 크래시 방지)
@@ -808,23 +796,21 @@ class MainWindow(wx.Frame):
             
             # 워터마크
             if self.recorder and self.recorder.watermark:
-                watermark_enabled = self.settings.get("General", "watermark", fallback="false") == "true"
+                watermark_enabled = self.settings.get("watermark", fallback="false") == "true"
                 self.recorder.watermark.set_enabled(watermark_enabled)
             
             # 키보드 입력 표시
             if self.recorder and self.recorder.keyboard_display:
-                keyboard_enabled = self.settings.get("General", "keyboard_display", fallback="false") == "true"
+                keyboard_enabled = self.settings.get("keyboard_display", fallback="false") == "true"
                 if keyboard_enabled:
                     if not self.recorder.keyboard_display.is_available():
                         wx.MessageBox(tr('keyboard_unavailable'), tr('warning'), wx.OK | wx.ICON_WARNING)
-                        if not self.settings.has_section('General'):
-                            self.settings.add_section('General')
-                        self.settings.set("General", "keyboard_display", "false")
+                        self.settings.set("keyboard_display", "false")
                         return
                 self.recorder.keyboard_display.set_enabled(keyboard_enabled)
             
             # 실시간 미리보기
-            preview_enabled = self.settings.get("General", "preview_enabled", fallback="false") == "true"
+            preview_enabled = self.settings.get("preview_enabled", fallback="false") == "true"
             if preview_enabled != self.preview_enabled:
                 self.preview_enabled = preview_enabled
                 if preview_enabled:
@@ -833,7 +819,7 @@ class MainWindow(wx.Frame):
                     self._stop_preview()
             
             # HDR 보정 설정 반영
-            hdr_on = self.settings.get("General", "hdr_correction", fallback="false") == "true"
+            hdr_on = self.settings.get("hdr_correction", fallback="false") == "true"
             if self.recorder:
                 self.recorder.set_hdr_correction(hdr_on)
             self._update_hdr_label()
@@ -969,7 +955,7 @@ class MainWindow(wx.Frame):
         """실제 녹화 시작 (오버레이 숨김 후)"""
         
         # 백엔드 설정: 매 녹화 시작 시 설정값 적용
-        user_backend = str(self.settings.get("General", "capture_backend", fallback="gdi"))
+        user_backend = str(self.settings.get("capture_backend", fallback="gdi"))
         if self.recorder:
             if user_backend == "auto":
                 # Auto 모드: HDR 상태에 따라 백엔드 선택
@@ -986,19 +972,18 @@ class MainWindow(wx.Frame):
         # 워터마크, 키보드 표시 설정 적용 (녹화 시작 전)
         try:
             if self.recorder and self.recorder.watermark:
-                watermark_enabled = self.settings.get("General", "watermark", fallback="false") == "true"
+                watermark_enabled = self.settings.get("watermark", fallback="false") == "true"
                 self.recorder.watermark.set_enabled(watermark_enabled)
         except (AttributeError, RuntimeError) as e:
             logger.error(f"Watermark setup failed: {e}")
         
         try:
             if self.recorder and self.recorder.keyboard_display:
-                keyboard_enabled = self.settings.get("General", "keyboard_display", fallback="false") == "true"
+                keyboard_enabled = self.settings.get("keyboard_display", fallback="false") == "true"
                 if keyboard_enabled and not self.recorder.keyboard_display.is_available():
                     wx.MessageBox(tr('keyboard_unavailable'), tr('warning'), wx.OK | wx.ICON_WARNING)
-                    if not self.settings.has_section('General'):
-                        self.settings.add_section('General')
-                    self.settings.set("General", "keyboard_display", "false")
+
+                    self.settings.set("keyboard_display", "false")
                     keyboard_enabled = False
                 self.recorder.keyboard_display.set_enabled(keyboard_enabled)
         except (AttributeError, RuntimeError) as e:
@@ -1357,7 +1342,7 @@ class MainWindow(wx.Frame):
                 memory_mb = 0.0
             
             # 사용자 설정 메모리 제한 확인
-            max_mem_mb = int(self.settings.get("General", "memory_limit_mb", fallback="1024"))
+            max_mem_mb = int(self.settings.get("memory_limit_mb", fallback="1024"))
             
             # 메모리 임계값 도달 시 강제 중지
             if memory_mb >= max_mem_mb:
@@ -1452,7 +1437,7 @@ class MainWindow(wx.Frame):
             output_format = 'gif'
         
         # 마지막 저장 경로 불러오기 (디렉토리만)
-        last_dir = self.settings.get("General", "last_save_dir", fallback="")
+        last_dir = self.settings.get("last_save_dir", fallback="")
         
         # 포맷에 따른 파일 다이얼로그
         if output_format == 'mp4':
@@ -1484,9 +1469,8 @@ class MainWindow(wx.Frame):
         file_path = base_path + file_ext
         
         # 저장 디렉토리 기억
-        if not self.settings.has_section('General'):
-            self.settings.add_section('General')
-        self.settings.set("General", "last_save_dir", os.path.dirname(file_path))
+
+        self.settings.set("last_save_dir", os.path.dirname(file_path))
         
         # 품질 설정
         if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
@@ -1689,16 +1673,8 @@ class MainWindow(wx.Frame):
         self.status_msg_label.SetLabel(tr('ready'))
     
     def _detect_system_capabilities(self):
-        """시스템 능력 감지 및 최적 파이프라인 적용 (비동기 시작)"""
-        def _worker():
-            try:
-                caps = self._capability_manager.detect_capabilities()
-            except Exception as e:
-                logger.warning("[MainWindow] 시스템 능력 감지 실패: %s", e)
-                return
-            wx.CallAfter(self._apply_detected_capabilities, caps)
-
-        threading.Thread(target=_worker, daemon=True).start()
+        """시스템 능력 감지 → SystemDetector 위임."""
+        self._system_detector.detect_system_capabilities()
 
     def _apply_detected_capabilities(self, caps):
         """감지된 시스템 능력을 UI에 적용 (메인 스레드)"""
@@ -1707,7 +1683,7 @@ class MainWindow(wx.Frame):
             pipeline = caps.optimal_pipeline
             if pipeline:
                 # 캡처 백엔드 설정
-                user_backend = self.settings.get("General", "capture_backend", fallback="gdi")
+                user_backend = self.settings.get("capture_backend", fallback="gdi")
                 if self.recorder:
                     if user_backend == "auto":
                         # Auto 모드: HDR 감지하여 백엔드 선택

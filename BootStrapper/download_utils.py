@@ -3,6 +3,8 @@ download_utils.py – Robust HTTP downloader with progress callbacks and retry.
 """
 
 import os
+import socket
+import ssl
 import time
 import urllib.request
 import urllib.error
@@ -11,6 +13,39 @@ from logging_setup import log_and_ui, get_logger
 DEFAULT_TIMEOUT = 120  # seconds per request
 MAX_RETRIES = 3
 CHUNK_SIZE = 1024 * 256  # 256 KB
+
+
+def _get_ssl_context() -> ssl.SSLContext:
+    """certifi CA 번들이 있으면 사용, 없으면 시스템 기본 SSL 컨텍스트 반환"""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def check_connectivity(timeout: int = 5) -> bool:
+    """
+    인터넷 연결 상태를 빠르게 확인.
+    DNS 해석 + HTTPS HEAD 요청으로 확인한다.
+    """
+    test_hosts = [
+        ("https://www.google.com", "www.google.com"),
+        ("https://pypi.org", "pypi.org"),
+    ]
+    for url, host in test_hosts:
+        try:
+            # 1차: DNS 확인
+            socket.getaddrinfo(host, 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            # 2차: HEAD 요청
+            req = urllib.request.Request(url, method="HEAD",
+                                         headers={"User-Agent": "EnvSetupApp/1.0"})
+            ctx = _get_ssl_context()
+            urllib.request.urlopen(req, timeout=timeout, context=ctx)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def download_file(
@@ -36,7 +71,8 @@ def download_file(
             logger.debug("URL: %s", url)
 
             req = urllib.request.Request(url, headers={"User-Agent": "EnvSetupApp/1.0"})
-            resp = urllib.request.urlopen(req, timeout=timeout)
+            ctx = _get_ssl_context()
+            resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
 
             total = resp.headers.get("Content-Length")
             total = int(total) if total else None

@@ -1,6 +1,7 @@
 @echo off
 REM XGif Bootstrapper 빌드 스크립트
 REM Python 3.11 + wxPython이 설치된 환경에서 실행
+REM spec 파일(XGif_Bootstrapper.spec)을 사용하여 빌드 결과를 통일
 
 echo ============================================
 echo XGif Bootstrapper 빌드
@@ -23,25 +24,18 @@ if exist "dist" rmdir /s /q dist
 if exist "build" rmdir /s /q build
 
 echo.
-echo PyInstaller 빌드 시작...
+echo PyInstaller 빌드 시작 (spec 파일 사용)...
 echo.
 
-REM PyInstaller 빌드 (ONEDIR 모드)
-pyinstaller ^
-    --noconfirm ^
-    --clean ^
-    --onedir ^
-    --windowed ^
-    --name "XGif_Bootstrapper" ^
-    --icon "icon.ico" ^
-    --add-data "*.py;." ^
-    --hidden-import "wx" ^
-    --hidden-import "wx._core" ^
-    --hidden-import "wx._adv" ^
-    --hidden-import "wx._html" ^
-    --hidden-import "wx._xml" ^
-    --collect-all "wx" ^
-    app_entry.py
+REM spec 파일 존재 확인
+if not exist "XGif_Bootstrapper.spec" (
+    echo [오류] XGif_Bootstrapper.spec 파일을 찾을 수 없습니다!
+    pause
+    exit /b 1
+)
+
+REM PyInstaller 빌드 — spec 파일로 통일 (certifi, wx, hidden imports 모두 포함)
+pyinstaller XGif_Bootstrapper.spec --clean --noconfirm
 
 if errorlevel 1 (
     echo.
@@ -53,11 +47,11 @@ if errorlevel 1 (
 echo.
 echo ============================================
 echo 빌드 완료!
-echo 출력 위치: dist\XGif_Bootstrapper\
+echo 출력 위치: dist\
 echo ============================================
 echo.
 
 REM 빌드 결과 폴더 열기
-explorer dist\XGif_Bootstrapper
+explorer dist
 
 pause

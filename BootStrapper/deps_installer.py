@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 
 import paths
 import deps_specs
@@ -39,16 +40,18 @@ def _stream_run(cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT_LONG, cwd=None
             cwd=cwd,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        import threading
 
         def _reader():
-            for line in proc.stdout:
-                log_subprocess_output(line)
+            try:
+                for line in proc.stdout:
+                    log_subprocess_output(line)
+            except (OSError, ValueError):
+                pass  # stdout closed or process terminated
 
         t = threading.Thread(target=_reader, daemon=True)
         t.start()
         proc.wait(timeout=timeout)
-        t.join(timeout=5)
+        t.join(timeout=10)
         return proc.returncode
     except subprocess.TimeoutExpired:
         if proc:
@@ -91,28 +94,42 @@ def install_python311(progress_cb=None) -> bool:
 
     # ── CRITICAL: Enable pip in embedded Python ───────────────────
     # The embeddable Python ships with python311._pth that blocks
-    # site-packages and pip. We must modify it.
+    # site-packages and pip. We must modify it to allow "import site".
     pth_files = glob.glob(os.path.join(paths.PY311_DIR, "python*._pth"))
     for pth in pth_files:
         log_and_ui(f"._pth 파일 수정: {os.path.basename(pth)}")
+        
         with open(pth, "r", encoding="utf-8") as f:
             lines = f.readlines()
+        
+        new_lines = []
         found_import_site = False
+        
+        for line in lines:
+            stripped = line.strip()
+            # Uncomment if commented
+            if stripped.startswith("#"):
+                 if stripped.lstrip("#").strip() == "import site":
+                     new_lines.append("import site\n")
+                     found_import_site = True
+                     continue
+            
+            # Keep existing if already uncommented
+            if stripped == "import site":
+                found_import_site = True
+                new_lines.append(line)
+                continue
+                
+            new_lines.append(line)
+        
+        # If not found, append it
+        if not found_import_site:
+            if new_lines and not new_lines[-1].endswith("\n"):
+                new_lines.append("\n")
+            new_lines.append("import site\n")
+            
         with open(pth, "w", encoding="utf-8") as f:
-            for line in lines:
-                stripped = line.strip()
-                if stripped == "#import site" or stripped == "# import site":
-                    # 주석 해제
-                    f.write("import site\n")
-                    found_import_site = True
-                elif stripped == "import site":
-                    f.write(line)
-                    found_import_site = True
-                else:
-                    f.write(line)
-            # import site 줄이 아예 없었다면 추가
-            if not found_import_site:
-                f.write("import site\n")
+            f.writelines(new_lines)
 
     # Cleanup
     try:
@@ -153,7 +170,36 @@ def install_pip(progress_cb=None) -> bool:
 # ──────────────────────────────────────────────────────────────────
 #  venv
 # ──────────────────────────────────────────────────────────────────
-def install_venv(progress_cb=None) -> bool:
+def _is_venv_healthy() -> bool:
+    """venv가 존재하고 python/pip가 정상 작동하는지 확인"""
+    if not os.path.isfile(paths.VENV_PYTHON):
+        return False
+    try:
+        result = subprocess.run(
+            [paths.VENV_PYTHON, "-m", "pip", "--version"],
+            capture_output=True, text=True, timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def install_venv(progress_cb=None, force: bool = False) -> bool:
+    log_and_ui("가상 환경 확인 중…")
+
+    # 기존 venv가 정상이면 pip 업그레이드만 수행 (CuPy 등 기존 패키지 보존)
+    if not force and _is_venv_healthy():
+        log_and_ui("기존 가상 환경이 정상입니다 — pip만 업그레이드합니다.")
+        rc = _stream_run([
+            paths.VENV_PYTHON, "-m", "pip", "install",
+            "--upgrade", "pip>=24.0", "--quiet",
+        ])
+        if rc != 0:
+            log_and_ui("pip 업그레이드 실패 (계속 진행)")
+        log_and_ui("가상 환경 확인 완료")
+        return True
+
     log_and_ui("가상 환경 생성 중…")
 
     # Use the embedded Python's pip to install virtualenv,
@@ -164,8 +210,9 @@ def install_venv(progress_cb=None) -> bool:
         log_and_ui("virtualenv 설치 실패")
         return False
 
-    # Step 2: create venv
+    # Step 2: create venv (기존 venv가 있으면 삭제)
     if os.path.exists(paths.VENV_DIR):
+        log_and_ui("손상된 기존 venv를 삭제합니다…")
         shutil.rmtree(paths.VENV_DIR, ignore_errors=True)
 
     rc = _stream_run([paths.PY311_EXE, "-m", "virtualenv", paths.VENV_DIR])
@@ -220,7 +267,13 @@ def install_ffmpeg(progress_cb=None) -> bool:
 
     ok = download_file(deps_specs.FFMPEG_ZIP_URL, zip_dest, progress_cb=progress_cb)
     if not ok:
-        return False
+        # fallback URL 시도
+        fallback_url = getattr(deps_specs, "FFMPEG_ZIP_URL_FALLBACK", None)
+        if fallback_url:
+            log_and_ui("대체 서버에서 FFmpeg 다운로드 시도 중…")
+            ok = download_file(fallback_url, zip_dest, progress_cb=progress_cb)
+        if not ok:
+            return False
 
     log_and_ui("FFmpeg 압축 해제 중… (파일이 많아 시간이 걸릴 수 있습니다)")
 

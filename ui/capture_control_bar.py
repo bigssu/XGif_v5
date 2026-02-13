@@ -8,6 +8,7 @@ import wx
 from ui.i18n import tr, get_trans_manager
 from ui.theme import Colors, Fonts
 from core.utils import parse_resolution, validate_resolution
+from core.events import AppEvent, get_event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -598,51 +599,63 @@ class CaptureControlBar(wx.Panel):
     # ═══════════════════════════════════════════════════════════════
 
     def _on_cursor_toggle_changed(self, checked):
+        get_event_bus().emit(AppEvent.CURSOR_TOGGLED, checked)
         if self._on_cursor_toggled:
             self._on_cursor_toggled(checked)
 
     def _on_region_toggle_changed(self, checked):
+        get_event_bus().emit(AppEvent.REGION_TOGGLED, checked)
         if self._on_region_toggled:
             self._on_region_toggled(checked)
 
     def _on_rec_button_clicked(self, event):
         # 녹화 중이면 Stop 동작
         if self._recording_state and not self._paused_state:
+            get_event_bus().emit(AppEvent.STOP_CLICKED)
             if self._on_stop_clicked:
                 self._on_stop_clicked()
             return
+        get_event_bus().emit(AppEvent.RECORDING_REQUESTED)
         if self._on_recording_requested:
             self._on_recording_requested()
 
     def _on_pause_button_clicked(self, event):
+        get_event_bus().emit(AppEvent.PAUSE_CLICKED)
         if self._on_pause_clicked:
             self._on_pause_clicked()
 
     def _on_stop_button_clicked(self, event):
+        get_event_bus().emit(AppEvent.STOP_CLICKED)
         if self._on_stop_clicked:
             self._on_stop_clicked()
 
     def _on_gpu_button_clicked(self, event):
+        get_event_bus().emit(AppEvent.GPU_CLICK)
         if self._on_gpu_click_callback:
             self._on_gpu_click_callback()
 
     def _on_settings_button_clicked(self, event):
+        get_event_bus().emit(AppEvent.SETTINGS_REQUESTED)
         if self._on_settings_requested:
             self._on_settings_requested()
 
     def _on_help_button_clicked(self, event):
+        get_event_bus().emit(AppEvent.HELP_REQUESTED)
         if self._on_help_requested:
             self._on_help_requested()
 
     def _on_format_combo_changed(self, event):
+        fmt = self.format_combo.GetValue()
+        get_event_bus().emit(AppEvent.FORMAT_CHANGED, fmt)
         if self._on_format_changed:
-            self._on_format_changed(self.format_combo.GetValue())
+            self._on_format_changed(fmt)
 
     def _on_fps_combo_changed(self, event):
         fps_value = self.fps_combo.GetValue().strip()
         try:
             fps_int = int(fps_value)
             if 1 <= fps_int <= 60:
+                get_event_bus().emit(AppEvent.FPS_CHANGED, fps_value)
                 if self._on_fps_changed:
                     self._on_fps_changed(fps_value)
         except ValueError:
@@ -665,17 +678,21 @@ class CaptureControlBar(wx.Panel):
             if validate_resolution(width, height, MIN_RESOLUTION, MAX_RESOLUTION):
                 normalized = f"{width} × {height}"
                 self.resolution_combo.SetValue(normalized)
+                get_event_bus().emit(AppEvent.RESOLUTION_CHANGED, normalized)
                 if self._on_resolution_changed:
                     self._on_resolution_changed(normalized)
             else:
                 logger.warning(f"유효하지 않은 해상도: {width}x{height}")
         else:
+            get_event_bus().emit(AppEvent.RESOLUTION_CHANGED, text)
             if self._on_resolution_changed:
                 self._on_resolution_changed(text)
 
     def _on_quality_combo_changed(self, event):
+        quality_idx = self.quality_combo.GetSelection()
+        get_event_bus().emit(AppEvent.QUALITY_CHANGED, quality_idx)
         if self._on_quality_changed:
-            self._on_quality_changed(self.quality_combo.GetSelection())
+            self._on_quality_changed(quality_idx)
 
     # ═══════════════════════════════════════════════════════════════
     # 공개 메서드

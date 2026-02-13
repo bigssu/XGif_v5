@@ -1,0 +1,1754 @@
+================================================================================
+  XGif v1.0.3 - 전체 아키텍처 분석 & 재설계 계획서
+  분석일: 2026-02-12
+  분석 대상: F:\ProjectX\XGif_V6 (125개 Python 소스 파일, ~39,000 LOC)
+================================================================================
+
+목차:
+  1. 프로젝트 구조 탐색 보고서
+  2. Core 엔진 모듈 심층 분석
+  3. UI 모듈 심층 분석
+  4. Editor 모듈 심층 분석
+  5. CLI & 설정 시스템 분석
+  6. 종합 설계 리뷰 & 재설계 계획
+
+================================================================================
+  1. 프로젝트 구조 탐색 보고서
+================================================================================
+
+1.1 최상위 디렉토리 구조
+────────────────────────────────────────
+
+F:\ProjectX\XGif_V6/
+├── .claude/                    # Claude 설정 (숨김)
+├── .git/                       # Git 저장소
+├── .gitignore                  # Git ignore 규칙
+├── .editorconfig               # 에디터 설정
+├── BootStrapper/               # 의존성 관리 부트스트래퍼 (478 MB)
+├── build/                      # 빌드 아티팩트
+├── build_venv/                 # 빌드용 가상 환경
+├── cli/                        # CLI 모듈 (77 KB)
+├── core/                       # 핵심 레코딩 엔진 (597 KB, 6,484 LOC)
+├── dist/                       # 배포 출력
+├── editor/                     # GIF/비디오 에디터 (2.3 MB, 15,563 LOC)
+├── installer/                  # 설치 스크립트
+├── resources/                  # 앱 리소스
+├── scripts/                    # 유틸 스크립트 (12 KB)
+├── tests/                      # 테스트 스위트 (45 KB)
+├── ui/                         # 메인 UI 모듈 (698 KB, 15,273 LOC)
+├── __pycache__/                # Python 캐시
+├── main.py                     # 메인 진입점 (290 LOC)
+├── build_optimized.py          # 빌드 스크립트 (982 LOC)
+├── pyproject.toml              # 프로젝트 설정
+├── requirements.txt            # 메인 의존성
+├── requirements_cli.txt        # CLI 전용 의존성
+├── requirements_minimal.txt    # 최소 의존성
+├── XGif.spec                   # PyInstaller 스펙
+├── CHANGELOG.md                # 버전 히스토리
+├── CLAUDE.md                   # 프로젝트 규칙
+├── file_version_info.txt       # Windows 버전 정보
+├── LICENSE                     # MIT 라이선스
+├── config.ini.example          # 설정 템플릿
+└── README.md                   # 문서
+
+
+1.2 Python 모듈별 역할
+────────────────────────────────────────
+
+[루트 레벨]
+- main.py (290 LOC): 메인 진입점
+  - CLI 모드 감지 (record, convert, config, doctor)
+  - GUI 초기화 (크래시 리포팅 포함)
+  - DPI 인식 설정 (Windows 전용)
+  - 단일 인스턴스 체크
+  - 로깅 설정 (로테이션)
+
+- build_optimized.py (982 LOC): 빌드 자동화 스크립트
+  - PyInstaller 설정 관리
+  - 의존성 체크 및 venv 설정
+  - 바이너리 필터링 및 최적화
+
+[core/ 모듈 — 18개 파일, 6,484 LOC]
+  __init__.py          모듈 초기화
+  version.py           버전 관리 (APP_VERSION = "1.0.3")
+  defaults.py          공유 기본 설정 상수
+  utils.py             유틸리티 (리소스 경로, 폰트, 해상도 파싱)
+  screen_recorder.py   메인 녹화 엔진 (DXCam/WinRT, 프레임 캡처, 타이밍)
+  gif_encoder.py       GIF/MP4 인코딩 (FFmpeg 서브프로세스)
+  capture_backend.py   화면 캡처 추상화 (DXCam, FastGDI, GDI)
+  audio_recorder.py    오디오 녹음 (sounddevice + soundfile)
+  gpu_utils.py         GPU 모니터링 (NVIDIA/AMD, pynvml)
+  hdr_utils.py         HDR 모드 감지/색공간 변환
+  keyboard_display.py  키보드 입력 시각화
+  watermark.py         워터마크 렌더링
+  ffmpeg_installer.py  FFmpeg 다운로드/설치 관리
+  dependency_checker.py 런타임 의존성 검사
+  capability_manager.py 시스템 능력 감지 & 캐싱
+  crash_handler.py     글로벌 예외 핸들러
+  app_shutdown.py      정상 종료 관리
+
+[cli/ 모듈 — 9개 파일, 1,413 LOC]
+  __init__.py          모듈 초기화 (종료 코드 정의)
+  main.py              Argparse 정의 (record, convert, config, doctor)
+  recorder.py          CLI 녹화 로직 (실시간 진행 표시)
+  converter.py         비디오 포맷 변환 (MP4↔GIF)
+  doctor.py            환경 진단 (Python, FFmpeg, GPU 등)
+  config.py            설정 파일 핸들링 (INI)
+  progress.py          CLI 진행률 바
+  signal_handler.py    SIGINT/SIGTERM 핸들링
+
+[ui/ 모듈 — 10개 파일, 15,273 LOC]
+  __init__.py              모듈 exports (MainWindow, CaptureOverlay)
+  main_window.py           메인 앱 윈도우 (레코더 컨트롤, 탭, 메뉴바)
+  capture_control_bar.py   녹화 툴바 (FlatButton, CustomToggleSwitch)
+  capture_overlay.py       화면 오버레이 (영역 선택)
+  i18n.py                  국제화 (한국어/영어, 콜백 기반)
+  settings_dialog.py       환경설정 다이얼로그
+  dependency_dialogs.py    의존성 설치 프롬프트
+  theme.py                 다크 테마 (THEME_MID: #202020, #FFFFFF, #0078D4)
+  constants.py             UI 상수/색상 정의
+  help_dialog.py           도움말/정보 다이얼로그
+
+[editor/ 모듈 — 68개 파일, 15,563 LOC]
+
+  editor/core/ (처리 엔진):
+    __init__.py              모듈 초기화
+    editor_main_window_wx.py 에디터 메인 윈도우
+    canvas_widget_wx.py      프레임 렌더링 캔버스 (줌/팬)
+    frame_list_widget_wx.py  프레임 썸네일 리스트
+    timeline_widget_wx.py    플레이백 타임라인
+    properties_panel_wx.py   프레임 속성 편집기
+    property_bar_wx.py       퀵 액세스 속성 바
+    icon_toolbar_wx.py       아이콘 툴바
+    icon_utils_wx.py         아이콘 로딩/캐싱
+    save_dialog_wx.py        내보내기 다이얼로그
+    style_constants_wx.py    Colors/Fonts 클래스
+    frame_collection.py      프레임 저장/시퀀싱
+    frame.py                 개별 프레임 메타데이터/이펙트
+    gif_decoder.py           GIF 파일 디코딩
+    video_decoder.py         비디오 디코딩 (imageio)
+    editor_gif_encoder.py    에디터용 GIF 인코딩
+    image_effects.py         이미지 변환 (blur, sharpen, grayscale 등)
+    animation_effects.py     프레임 애니메이션 (fade, slide, scale)
+    transitions.py           프레임 전환 (cross-fade, wipe, dissolve)
+    overlays.py              텍스트, 도형, 스티커, 워터마크
+    ai_effects.py            AI 이펙트 (업스케일링, 향상)
+    editor_gpu_utils.py      GPU 가속 처리 (CUDA)
+    fast_image.py            최적화 이미지 래퍼
+    undo_manager.py          Undo/Redo 히스토리 관리
+    worker_wx.py             백그라운드 처리 스레드 풀
+
+  editor/ui/inline_toolbars/ (15개):
+    base_toolbar_wx.py       베이스 툴바 클래스
+    crop_toolbar_wx.py       크롭 파라미터
+    resize_toolbar_wx.py     스케일 파라미터
+    rotate_toolbar_wx.py     회전 컨트롤
+    speed_toolbar_wx.py      프레임 속도/지연
+    reduce_toolbar_wx.py     프레임 감소/데시메이션
+    mosaic_toolbar_wx.py     픽셀화 컨트롤
+    effects_toolbar_wx.py    이펙트 적용 패널
+    text_toolbar_wx.py       텍스트 오버레이 속성
+    pencil_toolbar_wx.py     자유 드로잉 파라미터
+    sticker_toolbar_wx.py    스티커 선택/배치
+    watermark_toolbar_wx.py  워터마크 속성
+    speech_bubble_toolbar_wx.py 말풍선 커스터마이징
+    __init__.py              모듈 초기화
+
+  editor/ui/dialogs/ (10개):
+    crop_dialog_wx.py, resize_dialog_wx.py, rotate_dialog_wx.py
+    speed_dialog_wx.py, effects_dialog_wx.py, text_dialog_wx.py
+    pencil_dialog_wx.py, sticker_dialog_wx.py
+    target_frame_hint_dialog_wx.py, help_dialog_wx.py
+
+  editor/utils/ (6개):
+    image_utils.py           이미지 조작 유틸
+    wx_paint_utils.py        wxPython 페인팅 헬퍼
+    wx_events.py             이벤트 바인딩 유틸
+    translations.py          에디터 문자열 번역
+    logger.py                로깅 설정
+    __init__.py              모듈 초기화
+
+[BootStrapper/ — 11개 파일]
+  ui_main.py          의존성 설치 GUI
+  app_entry.py        부트스트랩 진입점
+  deps_installer.py   Python 3.11 + pip + venv + FFmpeg + CuPy 설치
+  deps_checker.py     의존성 검증
+  deps_specs.py       의존성 사양/소스
+  download_utils.py   다운로드 관리 (재시도 로직)
+  extract_utils.py    아카이브 추출 (ZIP, TAR)
+  paths.py            경로 관리/정규화
+  diagnose.py         시스템 진단 보고서
+  logging_setup.py    로깅 설정
+  XGif_Setup.bat      BAT 설치 스크립트 (주 배포 방법)
+
+[tests/ — 7개 파일]
+  test_config.py                설정 파일 I/O
+  test_safety.py                코드 품질 체크
+  test_utils.py                 유틸 함수 테스트
+  test_version.py               버전 모듈 검증
+  test_encoder_e2e.py           E2E GIF 인코딩
+  test_screen_recorder_runtime.py 스크린 레코더 동작
+  __init__.py                   테스트 모듈 초기화
+
+[scripts/ — 1개 파일]
+  create_ico.py       PNG → ICO 아이콘 생성
+
+
+1.3 파일 수 및 크기 요약
+────────────────────────────────────────
+
+디렉토리       | 크기     | Python 파일 | 용도
+────────────────────────────────────────────────────────
+core/          | 597 KB   | 18          | 레코딩 엔진 (wx 무관)
+cli/           | 77 KB    | 9           | CLI 인터페이스
+ui/            | 698 KB   | 10          | 메인 GUI (wxPython)
+editor/        | 2.3 MB   | 68          | GIF/비디오 에디터
+tests/         | 45 KB    | 7           | 테스트 스위트
+scripts/       | 12 KB    | 1           | 유틸 스크립트
+BootStrapper/  | 478 MB   | 11          | 의존성 설치
+Root           | -        | 1           | 진입점 (main.py)
+────────────────────────────────────────────────────────
+합계 (소스)    | ~3.8 MB  | 125 파일    |
+
+
+1.4 진입점
+────────────────────────────────────────
+
+[메인 진입점]
+- F:\ProjectX\XGif_V6\main.py (290 LOC)
+  - 호출: .venv/Scripts/python.exe main.py
+  - 빌드: XGif_{version}.exe (PyInstaller onefile)
+  - CLI vs GUI 모드 조기 감지
+  - wx import 전 크래시 리포터 설치
+
+[CLI 진입점]
+- F:\ProjectX\XGif_V6\cli/main.py (327 LOC)
+  - sys.argv[1]이 record, convert, config, doctor일 때
+  - wxPython import 없음
+
+[에디터 진입점]
+- F:\ProjectX\XGif_V6\editor/__main__.py
+  - 메인 UI에서 실행: python -m editor
+  - GIF/비디오 편집용
+
+[부트스트래퍼 진입점]
+- F:\ProjectX\XGif_V6\BootStrapper/XGif_Setup.bat
+  - BAT 파일 (Defender 차단 우회)
+  - Python 3.11 embedded, FFmpeg, 의존성 설치
+
+
+1.5 설정 파일
+────────────────────────────────────────
+
+[빌드 & 배포]
+- pyproject.toml: 프로젝트 메타데이터, pytest, ruff 린팅
+- XGif.spec: PyInstaller 스펙
+- file_version_info.txt: Windows PE 버전 리소스
+- requirements.txt (38줄): 메인 의존성
+- requirements_cli.txt (6줄): CLI 전용 최소 의존성
+- requirements_minimal.txt (4줄): 절대 최소 패키지
+
+[런타임 설정]
+- config.ini.example: 사용자 설정 템플릿
+- 실제 설정: %APPDATA%\XGif\config.ini (첫 실행 시 생성)
+  - 섹션: [General] (언어, 품질, 출력 포맷 등)
+
+
+1.6 버전 & Git 정보
+────────────────────────────────────────
+
+[현재 버전 (core/version.py)]
+- APP_VERSION = "1.0.3"
+- EDITOR_VERSION = "1.0.3"
+
+[최근 커밋]
+1. 1dd42cf — v1.0.3: BootStrapper 치명적 버그 5건 수정, 데드코드 제거
+2. 2ea73e7 — v1.0.2: GifRecoder2/.gifeditor 경로를 XGif로 통합, FFmpeg 탐색 강화
+3. f82e44a — Initial commit: XGif v0.62
+
+[저장소 상태]
+- 브랜치: main
+- 상태: Clean (미커밋 변경 없음)
+
+
+================================================================================
+  2. Core 엔진 모듈 심층 분석
+================================================================================
+
+2.1 모듈 개요
+────────────────────────────────────────
+
+core/ 디렉토리는 XGif의 저수준 녹화, 인코딩, GPU 가속 컴포넌트를 포함합니다.
+wxPython 독립적으로 설계되어 CLI에서도 재사용 가능합니다.
+
+
+2.2 파일별 상세 분석
+────────────────────────────────────────
+
+[version.py — 6줄]
+- 용도: 버전 관리 Single Source of Truth
+- 상수: APP_NAME, APP_VERSION, EDITOR_VERSION
+- 참고: v1.0.3, CI/CD 관행 준수
+
+[defaults.py — 14줄]
+- 용도: 공유 기본 설정 상수
+- COMMON_DEFAULTS: 14개 기본값 (언어, 캡처 백엔드, 인코더, 코덱, 메모리 한도 등)
+- 설계: CLI/UI 단일 진실 소스
+
+[utils.py — 434줄]
+- 용도: core 공유 유틸리티 함수
+- 주요 함수:
+  * get_resource_path(): PyInstaller frozen 앱 지원
+  * ensure_system_site_packages(): CuPy 외부 venv 경로 주입
+  * calculate_overlay_position(): 위치 계산 (웹캠, 워터마크, 키보드)
+  * apply_alpha_blend(): RGBA 블렌딩 (opacity)
+  * load_system_font(): 폴리폴백 폰트 로딩
+  * parse_resolution(): 유연한 해상도 문자열 파싱
+  * validate_resolution(): 해상도 범위 검증
+  * safe_delete_timer(): wxPython 타이머 정리
+  * safe_rmtree(): Windows 파일 잠금 내성 디렉토리 삭제
+  * run_subprocess_silent(): Windows 콘솔 창 억제
+- 의존성: PIL, numpy
+- 설계 패턴: 폴백 체인, 플랫폼 감지
+
+[capture_backend.py — 535줄]
+- 용도: 화면 캡처 추상화 레이어
+- 주요 클래스:
+  * CaptureBackend (Abstract): 인터페이스
+  * DXCamBackend: DXGI Desktop Duplication (GPU 가속)
+    - 공유 카메라 패턴 (클래스 레벨 _shared_camera)
+    - 인스턴스 추적 (_instance_count)
+    - atexit 훅으로 정리
+    - 재사용 위한 100ms 워밍업
+  * FastGdiBackend: 직접 GDI BitBlt + GetDIBits (DC 재사용)
+    - PIL 백업이 있는 빠른 폴백
+  * GdiBackend: PIL ImageGrab 래퍼 (레거시)
+- 팩토리 함수:
+  * create_capture_backend(): 자동/수동 선택
+  * test_capture_backend(): 하드웨어 테스트
+  * get_available_backends(): 열거
+- 스레드 안전성: 공유 카메라 작업에 잠금
+
+[screen_recorder.py — 1,080줄]
+- 용도: 메인 화면 녹화 오케스트레이션
+- 주요 클래스:
+  * ScreenRecorder: 메인 레코더
+    - 콜백 기반 이벤트 시스템
+    - 스레드 기반 캡처 + 프레임 수집기
+    - 공유 메모리 버퍼 (numpy 배열, 스레드 안전)
+  * CaptureThread: 워커 스레드
+    - 오버레이 렌더링 (커서, 클릭 하이라이트, 워터마크, 키보드)
+    - HDR 보정 적용
+    - 100프레임마다 성능 프로파일링
+    - 타이밍 드리프트 보정
+- 녹화 흐름:
+  1. start_recording(): 영역/FPS 검증, 버퍼 생성, 캡처+수집 스레드 시작
+  2. CaptureThread.run(): 프레임 캡처, 오버레이 적용, 공유 버퍼 기록
+  3. 수집 스레드: 버퍼 → 프레임 리스트 복사
+  4. stop_recording(): 스레드 조인, 실제 FPS 계산
+- HDR 처리: 첫 프레임에서 적응형 감지, 이후 보정 모드 캐시
+- 스레드 안전:
+  * Threading.Event (stop, pause, shm_event, shm_processed_event)
+  * 정리 중 None 역참조 방지를 위한 로컬 변수 캐싱
+
+[gif_encoder.py — 1,329줄]
+- 용도: GIF/MP4 인코딩 (FFmpeg)
+- 주요 클래스:
+  * GifEncoder: 메인 인코더
+    - 품질 프리셋 (high/medium/low)
+    - H.264/H.265 코덱 선택
+    - 인코더 우선순위 (NVENC>QSV>AMF>CPU)
+- 인코딩 경로:
+  1. Pipe 모드 (선호): 프레임 바이트를 FFmpeg stdin으로 직접 전송
+     - 2-pass: palettegen + paletteuse (GIF)
+     - 비동기 프레임 쓰기 (데드락 방지)
+  2. FFmpeg BMP 모드: pipe 실패 시 폴백
+  3. Pillow 모드: FFmpeg 없을 때 폴백
+- 주요 기능:
+  * GPU 감지: CuPy, pynvml, nvidia-smi
+  * 인코더 자동 선택: 하드웨어 인식 H.264/H.265
+  * MP4 지원: 오디오 믹싱, yuv420p 제약 (홀수 치수 크롭)
+  * 비동기 stderr 처리 (데드락 방지용 별도 스레드)
+  * 디스크 공간 체크: 인코딩 전 검증
+  * 하드웨어 폴백: GPU 실패 시 CPU 재시도
+- 에러 처리:
+  * process.kill() (try-finally)
+  * stderr 캡처 (진단용)
+  * 타임아웃 강제 (600s / 10분)
+
+[gpu_utils.py — 462줄]
+- 용도: GPU 감지 및 CuPy 브릿지
+- 주요 클래스:
+  * GpuInfo: 하드웨어 정보 (CUDA, CuPy, NVENC 지원)
+  * DetailedGpuInfo: 런타임 메트릭 (사용률, 온도, 전력)
+- 함수:
+  * detect_gpu(): pynvml 우선, nvidia-smi 폴백 (캐시)
+  * _check_cupy(): 지연 초기화 (더블 체크 잠금)
+  * get_array_module(): NumPy/CuPy 추상화
+  * should_use_gpu(): 크기 휴리스틱 (>=640x480)
+- 스레드 안전: pynvml 초기화에 잠금, CuPy에 더블 체크 잠금
+- 에러 복구: pynvml/CuPy 불가 시 우아한 성능 저하
+
+[hdr_utils.py — 395줄]
+- 용도: HDR → SDR 톤 매핑 (Windows DisplayConfig API)
+- HDR 감지: Windows DisplayConfig API (2초 캐시)
+- 톤 매핑 모드:
+  1. Passthrough (보정 없음)
+  2. Linear→sRGB (감마 2.2)
+  3. Gamma down (감마 1.8)
+  4. OBS 스타일: PQ→Linear→BT.2020→BT.709→Reinhard→sRGB
+- 적응형 모드: 첫 프레임 픽셀 통계로 자동 감지
+- GPU 가속: CuPy (>=640x480 프레임)
+- 상수: BT.2020→BT.709 변환 행렬, PQ 계수
+
+[audio_recorder.py — 300+줄]
+- 용도: 시스템/마이크 오디오 캡처 (sounddevice)
+- AudioRecorder: WASAPI 루프백 + 마이크 녹음
+  - 컨텍스트 매니저 지원
+  - 버퍼 크기 제한 (메모리 안전)
+  - 루프백 디바이스 자동 감지
+- 듀얼 스트림 (시스템 + 마이크) 별도 샘플레이트/채널
+- 스레드 안전: 버퍼 접근에 Lock
+
+[keyboard_display.py — 150+줄]
+- 용도: 화면 키보드 입력 시각화
+- KeyboardDisplay: pynput 기반 리스너 + 오버레이 렌더러
+  - 이벤트 deque (TTL: display_duration = 2s)
+  - 폰트 캐싱
+  - 키스트로크 히스토리 (페이드 아웃)
+
+[watermark.py — 150+줄]
+- 용도: 텍스트/이미지 워터마크 오버레이
+- Watermark: 위치, 투명도, 색상 커스터마이징
+  - PIL 기반 렌더링 + 캐싱
+
+[ffmpeg_installer.py — 200+줄]
+- 용도: FFmpeg 자동 다운로드/설치
+- FFmpegDownloader (Thread): 백그라운드 다운로드
+  - 진행률 콜백, ZIP 무결성 검증
+  - 듀얼 URL 폴백 (BtbN + gyan.dev)
+
+[dependency_checker.py — 150+줄]
+- 용도: 런타임 의존성 상태 체크
+- check_system_python(), check_ffmpeg(), check_cupy(), check_dxcam(), check_pynvml()
+
+[capability_manager.py — 150+줄]
+- 용도: 시스템 능력 감지 & 캐싱
+- SystemCapabilities: GPU, 백엔드, 인코더 정보 데이터클래스
+- CapabilityManager: 캐시 인식 탐지기 (24시간 TTL)
+- JSON 캐시 (%APPDATA%/XGif/)
+
+[crash_handler.py — 150줄]
+- 용도: 글로벌 예외 핸들러
+- CrashHandler: sys.excepthook 설치
+  - 크래시 보고서 로깅 (%APPDATA%/XGif/logs/)
+  - 최대 크래시 제한 (10) — 루프 방지
+- 데코레이터: @safe_execute()
+
+[app_shutdown.py — 80줄]
+- 용도: wxPython 정상 종료
+- ensure_exit_if_no_primary_windows(): 윈도우 종료 시 ExitMainLoop
+
+
+2.3 설계 패턴 & 아키텍처
+────────────────────────────────────────
+
+[관심사 분리]
+- core/ = CLI 사용 가능 (wx import 없음)
+- ui/ = wxPython GUI 레이어
+- editor/ = GIF 에디터 (wxPython 의존)
+- cli/ = 커맨드라인 인터페이스
+
+[콜백 기반 이벤트]
+  recorder.set_frame_captured_callback(lambda n: print(f"Frame {n}"))
+  recorder.set_error_occurred_callback(lambda e: print(f"Error: {e}"))
+  - 비블로킹, 콜백 내 안전한 예외 처리
+
+[팩토리 패턴]
+- create_capture_backend(): 런타임 선택
+- 백엔드 폴백 체인: DXCam -> GDI -> PIL
+
+[공유 리소스 풀링]
+- 단일 DXCam 카메라 (클래스 레벨 _shared_camera)
+- FastGdiBackend DC 재사용
+- 오버레이 폰트 캐싱
+
+[스레드 기반 캡처]
+- CaptureThread: 프레임 그랩, 오버레이 적용
+- FrameCollectorThread: 메인 리스트로 복사
+- Threading.Event 동기화: stop, pause, buffer ready 시그널
+- 멀티프로세싱 없음 (pickle 오버헤드 회피)
+
+[듀얼 경로 인코딩]
+1. FFmpeg Pipe (선호) — 디스크 I/O 없음
+2. BMP -> FFmpeg (폴백) — 느리지만 호환
+3. Pillow (최후 수단) — FFmpeg 불필요
+
+[지연 초기화]
+- CuPy: 더블 체크 잠금
+- pynvml: 레지스트리 플래그 + try-except
+- GPU 정보: 잠금으로 캐시
+
+[폴리폴백 전략]
+- 폰트: Segoe UI -> Arial -> Calibri -> default
+- FFmpeg: System PATH -> 번들 -> 다운로드
+- 오디오: Loopback -> default input
+- DPI: SYSTEM_AWARE (PER_MONITOR 절대 금지)
+
+
+2.4 스레드/프로세스 안전성 분석
+────────────────────────────────────────
+
+[임계 섹션]
+1. ScreenRecorder.start_recording()
+   - 공유 버퍼 초기화 (numpy 배열)
+   - CaptureThread + FrameCollectorThread 시작
+   - 스레드 시작 전 이벤트 설정
+
+2. CaptureThread.run()
+   - 읽기: region, fps, include_cursor, 오버레이 플래그
+   - 쓰기: shm_buffer (np.copyto)
+   - 설정: shm_event
+   - 대기: shm_processed_event (백프레셔)
+
+3. AudioRecorder
+   - 버퍼 접근에 Lock
+   - sounddevice 콜백 -> Lock -> append
+
+[잠재적 경쟁 조건 (완화됨)]
+- 버퍼 None (stop 후): 수집 스레드가 루프 전 로컬 캐시
+- 이벤트 None (정리 중): 정리 전 스레드 stop 대기; 로컬 이벤트 캐싱
+- 프레임 형상 불일치: 경고 로그, 프레임 드롭, 버퍼 ready 재설정
+- DXCam 카메라 누수: atexit.register(DXCamBackend.cleanup_shared_camera)
+
+
+2.5 성능 크리티컬 경로
+────────────────────────────────────────
+
+[프레임 캡처 루프] (CaptureThread, 프레임당 1-2ms 목표)
+  1. backend.grab() [0.5-2ms]
+  2. HDR 보정 (필요시) [0.5-1ms GPU]
+  3. 커서 드로잉 [0.1-0.2ms]
+  4. 워터마크/키보드 [0.2-0.5ms]
+  5. np.copyto (공유 버퍼) [0.3-0.5ms, 4K]
+  6. processed_event 대기 [백프레셔]
+
+[인코딩 파이프라인] (GifEncoder)
+  Pass 1: Frames -> FFmpeg stdin -> palettegen -> palette.png
+  Pass 2: Frames -> FFmpeg stdin -> paletteuse -> GIF
+
+[수집기 루프] (FrameCollectorThread, 프레임당 <1ms)
+  1. shm_event 대기 [블로킹]
+  2. np.copy(buffer)
+  3. 리스트 append
+  4. processed_event 설정
+
+
+2.6 의존성 그래프
+────────────────────────────────────────
+
+core/
+  version.py (의존성 없음)
+  defaults.py (의존성 없음)
+  utils.py -> PIL, numpy
+  capture_backend.py -> dxcam (옵션), ctypes
+  screen_recorder.py -> capture_backend, hdr_utils, watermark, keyboard_display, numpy
+  gif_encoder.py -> ffmpeg_installer, gpu_utils, PIL, imageio (옵션), subprocess
+  gpu_utils.py -> pynvml (옵션), cupy (옵션), numpy
+  hdr_utils.py -> numpy, ctypes (Windows), gpu_utils
+  audio_recorder.py -> sounddevice (옵션), soundfile (옵션), numpy
+  keyboard_display.py -> pynput (옵션), numpy, utils
+  watermark.py -> PIL, utils
+  ffmpeg_installer.py -> urllib, shutil, tempfile, subprocess
+  dependency_checker.py -> (core 모듈 import)
+  capability_manager.py -> gpu_utils, capture_backend
+  crash_handler.py -> 의존성 없음 (wx 옵션)
+  app_shutdown.py -> wx (필수)
+
+
+2.7 코드 품질 평가
+────────────────────────────────────────
+
+[강점]
+  + 포괄적 에러 핸들링 (특정 예외 타입, bare except 없음)
+  + 리소스 정리 (컨텍스트 매니저, finally 블록)
+  + 적절한 로깅 레벨 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  + 부분적 타입 힌트 (Optional, Callable, Tuple, List)
+  + 독스트링 + 한국어 주석
+  + 하드웨어 인식 (GPU 폴백, 백엔드 선택, 프리셋 튜닝)
+  + 성능 프로파일링 (100프레임마다 타이밍 분석)
+  + 메모리 안전 (오디오 버퍼 제한, 디스크 공간 체크)
+
+[약점]
+  - 불완전 타입 힌트 (반환 타입 누락 다수)
+  - 에러 메시지 혼재 (한국어 + 영어)
+  - 매직 넘버 다수 (100MB 프레임 제한, deque maxlen=200, 0.3s 클릭 시간 등)
+  - 대형 함수 (screen_recorder.py CaptureThread.run() = 250+줄)
+  - 단위 테스트 없음 (core/ 전체)
+  - 약한 검증 (해상도는 범위만 체크, 종횡비 무시)
+
+[잠재적 버그/안티패턴]
+  - DXCam 해제 타이밍: backend.stop() 호출 후 카메라 유지 — 빠른 재생성 시 메모리 누수 가능
+  - GDI 비트맵 버퍼 재사용: BGRA/BGR 불일치 (동작하지만 취약)
+  - NumPy 복사 성능: 대형 프레임 매 사이클 복사 — 롤링 버퍼로 최적화 가능
+  - AudioRecorder 컨텍스트 매니저: __exit__에서 cleanup() 조용히 에러
+  - FFmpeg Pipe 데드락 방지: stderr 리더 스레드 양호, 하지만 process.wait() 600s 하드 타임아웃
+
+
+2.8 Core 모듈 개선 권고사항
+────────────────────────────────────────
+
+[높은 우선순위]
+1. 모든 공개 함수에 타입 힌트 추가
+2. 매직 넘버를 모듈 레벨 상수로 추출
+3. CaptureThread.run()을 작은 헬퍼 메서드로 분할
+4. 단위 테스트 추가 (오버레이 위치, HDR 감지, 인코더 선택, 의존성 체크)
+
+[중간 우선순위]
+5. 해상도 체크에 종횡비 검증 추가
+6. FFmpeg CLI 필터 문서화 (palettegen/paletteuse)
+7. 수집 스레드에 롤링 버퍼 구현 (프레임당 복사 제거)
+8. DXCam 인스턴스 풀링 (레퍼런스 카운팅)
+
+[낮은 우선순위]
+9. 에러 메시지 국제화 (현재 한국어 하드코딩)
+10. 텔레메트리 훅 추가 (타이밍 분석)
+11. 인코더에 async/await 고려
+12. HDR 톤 매핑 메모리 할당 프로파일링
+
+
+================================================================================
+  3. UI 모듈 심층 분석
+================================================================================
+
+3.1 파일 인벤토리 & 구조
+────────────────────────────────────────
+
+ui/
+├── __init__.py                 # 모듈 exports (MainWindow, CaptureOverlay)
+├── constants.py                # UI 상수 (크기, 색상, 단축키, 한계)
+├── theme.py                    # 통합 다크 테마 시스템
+├── i18n.py                     # i18n 매니저 (한/영, 콜백 기반)
+├── main_window.py              # 메인 앱 윈도우 (1,983줄)
+├── capture_control_bar.py      # 녹화 컨트롤 툴바
+├── capture_overlay.py          # 캡처 영역 선택 오버레이
+├── settings_dialog.py          # 설정 다이얼로그
+├── help_dialog.py              # 도움말 다이얼로그
+└── dependency_dialogs.py       # 의존성 설치 다이얼로그
+
+
+3.2 constants.py — UI 설정 허브
+────────────────────────────────────────
+
+주요 상수:
+- 캡처 오버레이: 테두리 폭 (3px), 핸들 크기 (15px), 최소 크기 (50px)
+- 녹화: 기본 FPS (15), FPS 범위 (1-60), 프리셋
+- 해상도: 프리셋, 최소/최대 (50-3840px)
+- 품질: Hi/Mid/Lo -> FFmpeg 품질 매핑
+- 인코더: Auto/NVENC/QSV/AMF/CPU 매핑
+- 메모리: 경고 임계값 (500MB), 위험 (200MB)
+- UI 크기: 메인 윈도우 최소 (900x160), 프리뷰 (160x90)
+- 단축키: F9 (녹화/일시정지), F10 (정지), F11 (오버레이 토글)
+- 폰트: Segoe UI Variable (주), Segoe UI (폴백)
+
+
+3.3 theme.py — 통합 다크 테마 엔진
+────────────────────────────────────────
+
+[Colors 클래스 (wx.Colour 싱글톤)]
+- 배경: BG_PRIMARY (#202020), BG_SECONDARY, BG_TERTIARY, BG_HOVER, BG_PRESSED
+- 텍스트: TEXT_PRIMARY (#FFFFFF), TEXT_SECONDARY, TEXT_MUTED
+- 의미 색상: ACCENT (#0078D4), SUCCESS, WARNING, DANGER, INFO
+- 레코더: REC_READY, REC_RECORDING, REC_PAUSED, PAUSE_BG
+- GPU: GPU_BTN_ON (녹색), GPU_BTN_OFF (회색)
+- 오버레이: OVERLAY_BORDER (빨강), OVERLAY_HANDLE, OVERLAY_BADGE
+
+[Fonts 클래스]
+- SIZE_SM/MD/LG: 11/12/14px (에디터)
+- SIZE_DEFAULT/SMALL/LABEL: 10/9/11px (레코더)
+- get_font(size, bold) -> wx.Font
+
+[자동 테마 엔진]
+- _apply_child_theme(): 재귀 위젯 스타일링
+  * 스타일 없는 fg (검정 -> TEXT_PRIMARY) 감지
+  * 시스템 bg (밝음 -> 다크 테마) 감지
+  * 명시적 색상 보존 (ACCENT, TEXT_MUTED 등)
+- apply_dark_theme(): 트리 전체 적용
+- 마커: _skip_auto_theme = True (커스텀 위젯 오버라이드 방지)
+
+[ThemedDialog & ThemedPanel 베이스 클래스]
+- ShowModal(): 자동 테마 적용 + 콘텐츠 맞춤
+- fit_to_content(): 자식 콘텐츠에 맞는 다이얼로그 크기 (최소/최대 제약)
+- 화면 범위 체크 (화면 밖 방지)
+
+
+3.4 i18n.py — 국제화 매니저
+────────────────────────────────────────
+
+[TranslationManager (싱글톤 패턴)]
+- 언어: 'ko' (한국어, 기본), 'en' (영어)
+- 콜백 시스템: register_callback() / unregister_callback()
+  - set_language() 시 트리거, 시그니처: callback(lang_code)
+
+[번역 딕셔너리]
+- 메인 앱 (900+ 키): 설정, 언어, 오디오, 오버레이, 미리보기, GPU, 인코더 등
+- 에디터 (600+ 키): 파일/편집/관리/설정 메뉴, 도구, 속성, 이펙트
+
+[공개 API]
+- tr(key, default=None, **kwargs): 글로벌 번역 함수 (format 지원)
+- get_trans_manager(): 싱글톤 접근
+- EditorTranslations 래퍼: 에디터 호환 tr(key, **kwargs) 인터페이스
+
+
+3.5 main_window.py — 메인 앱 프레임 (1,983줄)
+────────────────────────────────────────
+
+[상태 머신 (3 상태)]
+- STATE_READY (0): 대기, 캡처 영역 표시
+- STATE_RECORDING (1): 프레임 캡처 중
+- STATE_PAUSED (2): 일시정지, 오버레이 이동 가능 (크기 변경 불가)
+
+[핵심 속성]
+- recorder: ScreenRecorder 인스턴스
+- encoder: GifEncoder 인스턴스
+- frames: 캡처된 프레임 리스트
+- capture_overlay: CaptureOverlay 윈도우
+- capture_control_bar: CaptureControlBar (툴바)
+- encoding_thread: EncodingThread (비동기 인코딩)
+- preview_enabled: 실시간 프리뷰 토글
+- settings: configparser.ConfigParser (ini)
+
+[UI 레이아웃]
+  +-MainWindow-----------------------------+
+  | +-CaptureControlBar------------------+ |
+  | | FPS | Resolution | Quality          | |
+  | | [커서] [영역] | [GPU]              | |
+  | | [REC] [일시정지] [설정] [도움말]   | |
+  | +------------------------------------+ |
+  | +-Progress Panel---------------------+ |
+  | | [=====> 50%] "GIF 인코딩 중"       | |
+  | +------------------------------------+ |
+  | +-Preview Panel----------------------+ |
+  | | [프레임 프리뷰 썸네일]             | |
+  | +------------------------------------+ |
+  +-Status Bar-----------------------------+
+  | "준비 - 캡처 영역을 조정하세요"        |
+  +----------------------------------------+
+
+[스레드 모델]
+- 메인 스레드: UI, wx 타이머, 사용자 입력
+- 인코딩 스레드 (EncodingThread): GIF/MP4 인코딩
+  - wx.CallAfter()로 콜백 (진행률, 완료, 에러)
+- 백그라운드 감지 (wx.CallLater):
+  - 시스템 능력 탐지 (GPU, FFmpeg, CuPy)
+  - HDR 체크 (2초 갱신 타이머)
+
+[주요 메서드]
+  _init_ui()                 UI 계층 구성
+  _init_recorder()           ScreenRecorder & GifEncoder 생성
+  _setup_shortcuts()         F9/F10 핫키 등록
+  _show_capture_overlay()    CaptureOverlay 표시/포커스
+  _on_rec_clicked()          녹화 시작 또는 일시정지 토글
+  _on_stop_clicked()         녹화 정지, 저장/편집/취소 프롬프트
+  _on_fps_changed()          레코더 FPS 업데이트
+  _update_preview()          프레임 가져오기, 리사이즈, 표시
+  _detect_system_capabilities() GPU, FFmpeg, CuPy 체크 (백그라운드)
+  _on_encoding_finished()    저장 다이얼로그, 상태 업데이트
+  retranslateUi(lang=None)   i18n 콜백; UI 텍스트 업데이트
+
+
+3.6 capture_control_bar.py — 녹화 툴바
+────────────────────────────────────────
+
+[FlatButton (커스텀 Owner-Draw 버튼)]
+- 모던 플랫 디자인 (3D 베벨 없음), 부드러운 hover/press 상태
+- wx.GraphicsContext로 렌더링
+- 비트맵 캐시 (상태 변경 시 무효화)
+- 상태: default, hovered, pressed, disabled
+
+[CustomToggleSwitch (애니메이션 토글)]
+- Windows 11 스타일 토글 스위치
+- 핸들 부드러운 애니메이션 (4px <-> 27px)
+- 타이머 기반 애니메이션: 16ms 업데이트 (60 FPS 보간)
+- 이징: diff * 0.3 (부드러운 감쇠)
+- 크기: 고정 45x22px
+
+[CaptureControlBar (메인 툴바 컨테이너)]
+레이아웃 (왼쪽 -> 오른쪽):
+  1. 포맷 콤보 (GIF/MP4, 65px)
+  2. FPS 컨트롤 (라벨 + 드롭다운, 60px)
+  3. 해상도 콤보 (커스텀 입력, 115px)
+  4. 품질 콤보 (Hi/Mid/Lo, 55px)
+  5. 구분선 (1px)
+  6. 커서 아이콘 + 토글
+  7. 영역 아이콘 + 토글
+  8. 구분선
+  9. GPU 상태 버튼 (회색/녹색, 55px)
+  10. REC 버튼 (빨강, 72px) — 녹화 중 STOP으로 변경
+  11. 일시정지 버튼 (노랑, 34px)
+  12. 설정 버튼 (톱니, 48px)
+  13. 도움말 버튼 (?, 40px)
+
+[콜백 시스템 (13개)]
+  set_recording_requested_callback()
+  set_stop_clicked_callback()
+  set_pause_clicked_callback()
+  set_settings_requested_callback()
+  set_help_requested_callback()
+  set_cursor_toggled_callback()
+  set_region_toggled_callback()
+  set_format_changed_callback()
+  set_fps_changed_callback()
+  set_resolution_changed_callback()
+  set_quality_changed_callback()
+  set_gpu_click_callback()
+
+[상태 관리]
+  REC 준비: 빨강 배경 -> "● REC"
+  녹화 중: 파랑 배경 -> "■ STOP"
+  일시정지: 녹색 배경 -> "▶ REC"
+
+
+3.7 capture_overlay.py — 영역 선택 윈도우
+────────────────────────────────────────
+
+[CoordinateConverter (DPI 스케일링 유틸)]
+- 논리 (wx DIP) <-> 물리 (픽셀) 좌표 변환
+- get_screen_at(x, y): 좌표 포함 모니터 감지
+- get_dpi_scale(display): PPI -> 96-DPI 스케일 비율
+- logical_to_physical(): DPI 스케일 + 모니터 오프셋 적용
+- physical_to_logical(): 역 변환
+- 멀티 모니터 지원 (각 모니터별 DPI)
+
+[CaptureOverlay (투명 선택 윈도우)]
+- 윈도우 속성: FRAME_NO_TASKBAR | STAY_ON_TOP | BORDER_NONE
+- Layered Window (Win32 API): RGB(0,0,0) 투명 키
+- 내부 사각형: 캡처 영역 테두리 (빨강)
+- 외부 핸들: 8 코너 + 4 엣지 (15x15px)
+- 하단 배지: FPS/크기/녹화 상태 텍스트
+- 투명도: 보통 100%, 녹화 중 30%
+
+[핸들 시스템 (9개)]
+  TOP_LEFT(1)     TOP(2)        TOP_RIGHT(3)
+  LEFT(8)         [캡처 영역]    RIGHT(4)
+  BOTTOM_LEFT(7)  BOTTOM(6)     BOTTOM_RIGHT(5)
+  MOVE(9): 테두리 드래그 (전체 이동)
+  NONE(0): 영역 외부
+
+[영역 계산]
+  padding = handle_size + handle_margin = 15 + 3 = 18px
+  border_offset = (border_width + 1) // 2 = (3 + 1) // 2 = 2px
+  window_width = capture_width + 2 * padding + 2 * border_offset
+
+[키보드 지원]
+  화살표 키: +-1px 이동
+  Shift+화살표: +-10px 이동
+
+
+3.8 settings_dialog.py — 설정 다이얼로그
+────────────────────────────────────────
+
+[SettingsDialog(ThemedDialog)]
+
+다이얼로그 레이아웃 (스크롤):
+  1. 언어: 한국어 / English
+  2. 미리보기: 실시간 미리보기, HDR 보정
+  3. 메모리 관리: 최대 메모리 (1/2/3/4 GB)
+  4. GPU & 인코더: 캡처 백엔드, 인코더, 코덱
+  5. 오디오: 마이크 녹음
+  6. 오버레이: 워터마크
+  7. 상호작용: 클릭 하이라이트, 키보드 표시
+  8. 버튼: [기본값 복원] [의존성 초기화] [확인] [취소]
+
+[dxcam 통합]
+  백엔드를 dxcam으로 변경 시 설치 확인
+  미설치 -> 3버튼 모달 (설치/GDI 사용/취소)
+
+
+3.9 dependency_dialogs.py — 의존성 관리 (653줄)
+────────────────────────────────────────
+
+[DependencyInstallDialog]
+  3버튼 모달: Install / Alternative / Cancel
+  상태 색상: ERROR(빨강), WARNING(주황), SUCCESS(녹색)
+  "다시 묻지 않기" 체크박스
+
+[CuPyInstallGuideDialog]
+  NVIDIA GPU 이름 감지 (pynvml)
+  CUDA 드라이버 버전 감지
+  설치 명령 표시 (cuda12x vs cuda11x)
+  클립보드 복사 + 직접 설치 버튼
+
+
+3.10 UI 모듈 교차 관심사
+────────────────────────────────────────
+
+[색상 & 테마 시스템]
+  Dark Theme:
+    BG: #202020 (primary), #1c1c1c (secondary)
+    Text: #FFFFFF (primary), #b4b4b4 (secondary)
+    Accent: #0078D4 (Windows Blue)
+  Status:
+    Success: #22c55e (green)
+    Error: #ef4444 (red)
+    Warning: #f59e0b (amber)
+  Recorder Buttons:
+    REC ready: #e94560 (red)
+    Recording: #6b7280 (gray)
+    Paused: #22c55e (green)
+
+[메모리 관리 & 정리]
+  타이머 정리: EVT_WINDOW_DESTROY에서 Stop()
+  콜백 정리: 다이얼로그 닫을 때 unregister_callback()
+  Layered Window: Win32 SetLayeredWindowAttributes() -> Destroy()
+
+[이벤트 핸들링 패턴]
+  Bind(wx.EVT_BUTTON, handler) — 프로젝트 규칙 준수
+  Bind(wx.EVT_COMBOBOX, handler) + wx.CallAfter() — 중첩 호출 방지
+  메뉴 바인딩: menu.Bind() (self.Bind(wx.EVT_MENU) 금지)
+
+
+3.11 UI 코드 품질 관찰
+────────────────────────────────────────
+
+[강점]
+  + 일관된 다크 테마 (THEME_MID, Colors, Fonts)
+  + 깔끔한 콜백 시스템 (setter 메서드)
+  + 적절한 wx.CallAfter() 사용
+  + except Exception: (bare except 없음)
+  + 타이머 정리 (window destroy)
+  + 콜백 기반 i18n (글로벌 상태 아님)
+  + Owner-draw 커스텀 위젯 (FlatButton, CustomToggleSwitch)
+  + DPI 스케일링 (CoordinateConverter)
+  + Layered Window 투명도 (Win32 API)
+
+[약점]
+  - 매우 큰 파일 (main_window.py 1,983줄) — 분할 필요
+  - help_dialog.py에 하드코딩 문자열 (i18n 키여야 함)
+  - dxcam 설치 모달 로직 분산 (통합 필요)
+  - 콤보박스 스타일링 중복 (메서드화 필요)
+  - 해상도 입력 검증 부재 (레코더 크래시 가능)
+  - 테마 재귀에 예외 처리 부족
+  - 메모리 콤보 "Auto" 영어 하드코딩
+
+
+================================================================================
+  4. Editor 모듈 심층 분석
+================================================================================
+
+4.1 아키텍처 패턴
+────────────────────────────────────────
+
+MVC (Model-View-Controller) + MVP 요소
+
+[모델 레이어]: core/ 디렉토리 — 데이터 구조 & 비즈니스 로직 (wx 독립)
+[뷰 레이어]: ui/ 디렉토리 — wxPython GUI 컴포넌트
+[컨트롤러 레이어]: ui/editor_main_window_wx.py — 메인 이벤트 핸들러 & 오케스트레이터
+
+설계 특성:
+  - 계층 분리: core 로직은 wxPython 의존성 완전 분리
+  - Non-Blocking UI: 모든 무거운 작업은 worker_wx.py를 통해 백그라운드 실행
+  - 이벤트 구동: wx_events.py에 커스텀 wx 이벤트 정의
+  - 콜백 기반 시그널: 워커 스레드가 wx.CallAfter()로 GUI 안전 업데이트
+
+
+4.2 핵심 데이터 구조
+────────────────────────────────────────
+
+[Frame (core/frame.py)]
+  - 단일 GIF 프레임 (메모리 최적화)
+  - 지연 로딩: PNG 바이트로 압축 저장
+  - FrameMemoryManager: weakref로 프레임 라이프사이클 추적
+  - 썸네일 캐싱: 프레임별 크기 기반
+  - 변환 메서드:
+    기하학: rotate(), crop(), resize(), flip_horizontal(), flip_vertical()
+    색상: adjust_brightness(), contrast(), saturation(), grayscale(), invert()
+    필터: apply_blur(), sharpen(), pixelate(), sepia(), vignette()
+    드로잉: draw_lines() (펜슬 도구)
+  - GPU 통합: compute-heavy 이펙트를 CUDA로 오프로드
+  - 스레드 안전 ID 생성 (Lock 사용)
+
+[FrameCollection (core/frame_collection.py)]
+  - 다중 프레임 관리 (선택 + 배치 처리)
+  - 선택 시스템: _selected_indices로 멀티 셀렉트
+  - 배치 연산: apply_to_all(), apply_to_selected(), apply_to_range()
+  - GPU 배치 처리: 자동 배치 크기 결정
+  - 프레임 조작: 역순, 요요 이펙트, 프레임 감소
+  - 고성능:
+    reduce_frames() — 매 N번째 프레임 제거 O(n)
+    remove_duplicates() — 인접 프레임 비교 O(n)
+  - pyvips 통합: 가용 시 빠른 이미지 처리
+  - 메모리 관리: 메모리 통계, 비선택 프레임 언로드, 범위 프리로드
+  - 스레드 안전: RLock
+
+
+4.3 Undo/Redo 시스템
+────────────────────────────────────────
+
+[UndoManager (core/undo_manager.py)]
+
+구조:
+  _undo_stack: List[UndoableAction]
+  _redo_stack: List[UndoableAction]
+  _group_depth: int (중첩 그룹용)
+  _group_actions: List[UndoableAction]
+
+액션 타입:
+  UndoableAction (ABC): execute(), undo(), redo(), description, memory_usage
+  LambdaAction: 콜백 기반 함수형 액션
+  GroupAction: 원자적 다단계 작업
+
+설정 가능 제한:
+  max_history: 기본 50 액션
+  max_memory_mb: 기본 500 MB
+
+자동 트리밍: 한도 초과 시 가장 오래된 액션 제거
+그룹 모드: begin_group() / end_group() (원자적 연산)
+상태 변경 콜백: UI에 undo/redo 상태 알림
+
+
+4.4 GIF I/O 시스템
+────────────────────────────────────────
+
+[GifDecoder (core/gif_decoder.py)]
+지원 포맷:
+  GIF (.gif) — 프레임 딜레이 완전 지원
+  이미지 (.png, .jpg, .bmp, .webp, .tiff)
+  비디오 (.mp4, .avi, .webm, .mov, .mkv, .wmv, .flv, .m4v) via VideoDecoder
+
+로드 프로세스:
+  1. 파일 확장자 감지
+  2. 포맷별 로더 위임
+  3. LoadResult 데이터클래스 반환 (프레임 또는 에러 메시지)
+  4. 비디오 처리용 진행률 콜백
+
+[GifEncoder (core/editor_gif_encoder.py)]
+인코딩 옵션:
+  양자화: ADAPTIVE, MEDIANCUT, MAXCOVERAGE, FASTOCTREE, LIBIMAGEQUANT
+  색상 수: 2-256
+  디더링: 활성화/비활성화
+  최적화 레벨: 1(빠름) - 3(최대)
+  품질: 1-100
+  손실 압축: gifsicle 옵션 (30-200 레벨)
+  출력 포맷: GIF, WebP, APNG, PNG, JPEG, BMP
+
+[VideoDecoder (core/video_decoder.py)]
+  FFmpeg 기반 추출
+  타겟 FPS 설정 (기본 10)
+  최대 프레임 제한 (기본 500)
+  진행률 콜백
+
+
+4.5 이펙트 시스템
+────────────────────────────────────────
+
+[ImageEffects (core/image_effects.py)]
+
+색상 조정:
+  adjust_brightness(), contrast(), saturation(), sharpness(), gamma()
+  apply_grayscale(), invert()
+
+필터 & 변환:
+  apply_blur(), sharpen(), edge_enhance(), emboss(), contour()
+  posterize(), solarize(), sepia(), vignette(), adjust_hue()
+
+영역 기반 이펙트:
+  apply_mosaic() — 영역 픽셀화 (검열용)
+  apply_mosaic_full() — 전체 이미지 픽셀화
+  apply_blur_region() — 선택적 블러 (검열)
+  apply_black_bar() — 단색 바 (검열)
+
+가속 백엔드:
+  Primary: GPU via CuPy
+  Secondary: OpenCV (Pillow 대비 2-5x 빠름)
+  Fallback: Pure Pillow
+
+[Transitions (core/transitions.py)]
+  FADE, DISSOLVE, SLIDE (4방향), WIPE (4방향)
+  ZOOM (in/out), IRIS (in/out - 원형 조리개)
+  N개 중간 프레임 생성, 크기 불일치 처리
+
+[AnimationEffects (core/animation_effects.py)]
+  NONE, FADE_IN, FADE_OUT, FADE_IN_OUT
+  SLIDE (4방향), BOUNCE_IN, ZOOM (in/out)
+  ROTATE, TYPING, SHAKE, PULSE
+  키프레임 시스템: progress, offset, scale, rotation, opacity
+
+[Overlays (core/overlays.py)]
+  말풍선 스타일: ROUNDED, CLOUD, SHOUT, THOUGHT, RECTANGLE, OVAL
+  꼬리 방향: 8방위 + NONE
+  폰트, 색상, 테두리, 패딩, 반경 설정
+
+
+4.6 UI 아키텍처
+────────────────────────────────────────
+
+[메인 윈도우 레이아웃]
+  MainWindow (wx.Frame)
+  ├── IconToolbar (상단 툴바)
+  ├── Canvas (중앙 - 메인 편집 영역)
+  ├── FrameListWidget (좌측 사이드바 - 프레임 리스트)
+  ├── PropertiesPanel (우측 사이드바 - 속성)
+  ├── TimelineWidget (하단 - 타임라인)
+  ├── PropertyBar (플로팅/인라인 속성)
+  └── Various Inline Toolbars (필요시 표시)
+
+[CanvasWidget (ui/canvas_widget_wx.py)]
+  줌/팬: 마우스 휠 줌 + 중간 버튼 팬
+  wx.BufferedPaintDC: 깜빡임 없는 렌더링
+  6개 편집 모드:
+    1. 텍스트 이동
+    2. 텍스트 리사이즈
+    3. 선 그리기 (펜슬)
+    4. 크롭 영역 선택
+    5. 스티커 배치
+    6. 모자이크 영역
+  체커보드: 투명도 시각화
+
+[FrameListWidget (ui/frame_list_widget_wx.py)]
+  wx.grid.Grid 기반
+  멀티 셀렉트 (Ctrl/Shift)
+  프레임 딜레이 인라인 편집
+  우클릭 컨텍스트 메뉴
+
+[TimelineWidget (ui/timeline_widget_wx.py)]
+  수평 스크롤 썸네일 스트립
+  드래그 & 드롭 프레임 재정렬
+  지연 썸네일 생성 (온디맨드)
+  썸네일 크기: 80x60 + 텍스트 라벨
+
+[인라인 툴바 (15개)]
+  SpeedToolbar, ResizeToolbar, EffectsToolbar, TextToolbar
+  StickerToolbar, CropToolbar, MosaicToolbar, SpeechBubbleToolbar
+  WatermarkToolbar, RotateToolbar, ReduceToolbar, PencilToolbar
+  모두 BaseToolbar 상속, 캔버스 상단에 표시
+
+
+4.7 스레딩 & 동시성
+────────────────────────────────────────
+
+[Worker 시스템 (core/worker_wx.py)]
+
+BaseWorker 구조:
+  _cancel_event (threading.Event — 스레드 안전)
+  _future (concurrent.futures.Future)
+  signals (WorkerSignals)
+
+WorkerSignals (wx.CallAfter로 emit):
+  started, finished, error, progress, progress_message, cancelled
+
+Worker 타입:
+  FunctionWorker — 임의 함수 실행
+  BatchEffectWorker — 이미지 시퀀스에 이펙트 적용
+  FrameEffectWorker — 단일 프레임에 이펙트 적용
+  SaveWorker — 비블로킹 GIF 저장
+  VideoLoadWorker — 비블로킹 비디오 임포트
+
+WorkerManager: 백그라운드 작업 중앙 오케스트레이터 (싱글톤)
+
+
+4.8 GPU 가속
+────────────────────────────────────────
+
+[GPU Utils (core/editor_gpu_utils.py)]
+
+초기화: CuPy로 CUDA 가용성 체크, GPU 디바이스 & 메모리 감지
+
+제공 함수:
+  is_gpu_available()            GPU 준비 체크
+  get_gpu_info()               GPU 스펙
+  gpu_sepia(array)             세피아 톤
+  gpu_vignette(array, strength) 비네트 이펙트
+  gpu_hue_shift(array, shift)   색조 회전
+  gpu_batch_process()           배치 처리
+  gpu_calculate_similarity()    프레임 유사도 (0.0-1.0)
+
+메모리 관리:
+  작업 후 모든 블록 해제: cp.get_default_memory_pool().free_all_blocks()
+  배치 단위 디바이스 메모리 할당
+
+
+4.9 FastImage 처리
+────────────────────────────────────────
+
+[FastImage (core/fast_image.py)]
+
+듀얼 백엔드:
+  Primary: pyvips (Pillow 대비 2x 빠름, 90% 적은 메모리)
+  Fallback: Pure Pillow
+
+연산: resize, gaussian_blur, sharpen, flip, rotate, crop, batch_resize
+스트리밍 모드: 대규모 배치에서 일정 메모리 사용
+
+
+4.10 커스텀 이벤트 시스템
+────────────────────────────────────────
+
+[wx_events.py — 커스텀 wx.PyEvent]
+  FrameSelectedEvent      프레임 선택 변경
+  FrameDeletedEvent       프레임 삭제
+  FrameDelayChangedEvent  프레임 딜레이 수정
+  FramesReorderedEvent    프레임 이동/재정렬
+  DrawingFinishedEvent    펜슬 드로잉 완료
+  DrawingStartedEvent     펜슬 드로잉 시작
+  TextMovedEvent          텍스트 오버레이 이동
+  TextResizedEvent        텍스트 오버레이 리사이즈
+  CropChangedEvent        크롭 영역 변경
+  StickerChangedEvent     스티커 배치/이동
+  MosaicRegionChangedEvent 모자이크 영역 변경
+  SpeechBubbleChangedEvent 말풍선 수정
+  ZoomChangedEvent        캔버스 줌 레벨 변경
+
+패턴: wx.PostEvent()로 전송, self.Bind()로 수신 -> 컴포넌트 분리
+
+
+4.11 에디터 코드 품질 관찰
+────────────────────────────────────────
+
+[강점]
+  + 잘 조직된 core vs UI 분리
+  + 메모리 최적화 (지연 로딩, 압축 저장, 썸네일 캐싱)
+  + Non-blocking UI (모든 긴 작업 백그라운드 스레드)
+  + GPU 가속 (옵션, CPU 폴백)
+  + 다중 백엔드 (pyvips, OpenCV, Pillow — 우아한 성능 저하)
+  + 적절한 Lock, Event, wx.CallAfter()
+  + 포괄적 로깅
+  + 독스트링 풍부
+
+[약점 & 이슈]
+  - 에러 복구: 일부 메서드가 로드 실패 시 빈 이미지 반환 (에러 전파 대신)
+  - GPU 초기화: 초기 체크 후 재확인 없음 (런타임 변경 가능)
+  - 파일 핸들 누수: 일부 Image.open()이 적절히 닫히지 않을 수 있음
+  - 트랜잭션/롤백 없음: 배치 작업 중간 실패 시 일부 프레임 수정, undo 불확실
+  - 디스크 스왑 미구현: get_swap_path()은 있으나 실제 스왑 없음
+  - 썸네일 캐시: 대규모 GIF에서 축적, 보다 공격적 캐시 무효화 필요
+  - 동시 작업 불가: ThreadPoolExecutor에 1스레드만 사용
+  - async/await 없음: threading + 콜백 사용 (wxPython에는 적절)
+
+
+4.12 편집 작업 흐름
+────────────────────────────────────────
+
+일반적 편집 순서:
+  1. GIF/비디오 로드 -> GifDecoder/VideoDecoder -> FrameCollection 생성
+  2. 사용자 프레임 선택 -> Canvas 표시 -> PropertiesPanel 업데이트
+  3. 사용자 이펙트 적용 -> Worker 스레드 실행 -> UndoManager에 기록
+  4. 사용자 저장 -> SaveWorker -> GifEncoder -> 디스크 기록
+  5. Undo -> UndoManager.undo() -> 프레임 복원 -> Canvas 갱신
+
+
+================================================================================
+  5. CLI & 설정 시스템 분석
+================================================================================
+
+5.1 진입점 & 모드 감지
+────────────────────────────────────────
+
+[main.py]
+
+모드 감지:
+  def _is_cli_mode() -> bool:
+      cli_commands = {'record', 'convert', 'config', 'doctor'}
+      return len(sys.argv) >= 2 and sys.argv[1] in cli_commands
+
+  CLI 모드 -> cli.main
+  GUI 모드 -> wx.App 생성
+
+GUI 초기화:
+  DPI Awareness: SetProcessDpiAwareness(1) (SYSTEM_AWARE만)
+  단일 인스턴스: SingleInstanceChecker
+  크래시 핸들러: core.crash_handler
+  로깅: 5MB 로테이션, 3 백업
+
+
+5.2 CLI 커맨드
+────────────────────────────────────────
+
+[record 커맨드]
+  output         출력 파일 (.gif/.mp4)
+  --region, -r   캡처 영역 (X,Y,WxH)
+  --monitor, -m  모니터 번호 (0=primary)
+  --fps, -f      프레임레이트 (1-120)
+  --duration, -d 녹화 시간 (초)
+  --format, -F   출력 포맷 (gif/mp4)
+  --quality, -q  인코딩 품질 (high/medium/low)
+  --backend, -b  캡처 백엔드 (auto/dxcam/gdi)
+  --encoder, -e  비디오 인코더 (auto/nvenc/qsv/amf/cpu)
+  --codec        비디오 코덱 (h264/h265)
+  --cursor       마우스 커서 포함 (기본 True)
+  --no-cursor    커서 제외
+  --click-highlight  클릭 이펙트
+  --watermark    워터마크 추가
+  --keyboard-display 키보드 입력 표시
+  --hdr-correction   HDR 톤 매핑
+  --mic          마이크 녹음 (MP4)
+  --delay        카운트다운 (초)
+  --overwrite, -y    기존 파일 덮어쓰기
+
+  녹화 중 대화형 컨트롤:
+    Enter/q  — 녹화 정지
+    Space    — 일시정지/재개
+    Ctrl+C   — 취소 (종료 코드 130)
+
+[config 커맨드]
+  list (기본)   모든 설정 표시 (기본값 변경 표시)
+  get KEY       단일 설정값 조회
+  set KEY VALUE 단일 설정값 변경
+  reset         기본값 복원
+  path          설정 파일 경로 출력
+
+[convert 커맨드]
+  input output [--format] [--fps] [--quality] [--resize WxH] [--encoder] [--codec]
+  FFmpeg 필수, FPS: 1-120, Resize: WxH 정규식
+
+[doctor 커맨드]
+  진단: Python, wxPython, FFmpeg, Pillow, NumPy, 캡처 백엔드, GPU, CuPy
+  설치: --install-ffmpeg, --install-dxcam, --install-cupy
+  상세: --verbose, -v
+
+
+5.3 설정 시스템
+────────────────────────────────────────
+
+[설정 파일]
+  경로: %APPDATA%\XGif\config.ini
+  형식: INI ([General] 섹션)
+
+[기본값 (core/defaults.py)]
+  language          "ko"       한국어
+  capture_backend   "gdi"      GDI 백엔드
+  encoder           "auto"     자동 선택
+  codec             "h264"     H.264 코덱
+  memory_limit_mb   "1024"     1GB 메모리 한도
+  hdr_correction    "false"    HDR 톤 매핑 비활성
+  mic_audio         "false"    마이크 꺼짐
+  watermark         "false"    워터마크 꺼짐
+  click_highlight   "false"    클릭 하이라이트 꺼짐
+  keyboard_display  "false"    키보드 표시 꺼짐
+
+[UI 전용 기본값]
+  preview_enabled      "false"
+  skip_ffmpeg_check    "false"
+  skip_cupy_check      "false"
+  skip_dxcam_check     "false"
+  startup_dep_checked  "false"
+
+[설정 공유 구조]
+  CLI: cli/config.py -> load_config(), save_config(), get/set_config_value()
+  GUI: ui/settings_dialog.py -> load_settings(), save_settings()
+  공통: core/defaults.py -> COMMON_DEFAULTS (Single Source of Truth)
+
+
+5.4 종료 코드
+────────────────────────────────────────
+
+  EXIT_SUCCESS = 0          정상 완료
+  EXIT_USER_ERROR = 1       잘못된 인자, 파일 없음
+  EXIT_DEPENDENCY = 2       의존성 누락 (FFmpeg, dxcam 등)
+  EXIT_RUNTIME_ERROR = 3    인코딩/녹화 실패
+  130                       사용자 취소 (Ctrl+C)
+
+
+5.5 빌드 & 배포 시스템
+────────────────────────────────────────
+
+[빌드 전략 (build_optimized.py)]
+  1. 가상 환경 설정 (build_venv)
+  2. 의존성 체크 (requirements_minimal.txt)
+  3. 아이콘 생성 (PNG -> ICO)
+  4. 버전 파일 생성 (Windows EXE 메타데이터)
+  5. PyInstaller 빌드 (바이너리 필터링)
+  6. 코드 서명 (옵션, PFX 인증서)
+  7. 인스톨러 (옵션, Inno Setup)
+
+[배포 아티팩트]
+  dist/
+  ├── XGif_1.0.3.exe              (onefile)
+  ├── XGif_Setup_1.0.3.bat        (의존성 설치)
+  └── XGif_Debug_1.0.3.bat        (진단 런처)
+
+[PyInstaller 설정]
+  제외 wx: wx.html, wx.html2, wx.stc 등
+  제외 패키지: cupy, scipy, matplotlib, pytest, tkinter
+  숨김 import: comtypes, pynput, sounddevice, soundfile
+  VC++ 런타임: vcruntime140.dll, msvcp140.dll 번들
+
+[의존성]
+  wxPython >=4.2.0,<5.0.0       GUI 프레임워크
+  dxcam >=0.0.5,<1.0.0          DXGI 화면 캡처 (옵션)
+  numpy >=2.0.0,<3.0.0          수치 연산
+  Pillow >=10.0.0,<11.0.0       이미지 처리
+  imageio >=2.33.0,<3.0.0       이미지 I/O
+  nvidia-ml-py >=12.0.0,<13.0.0 GPU 모니터링
+  psutil >=5.9.0,<6.0.0         시스템 모니터링
+  sounddevice >=0.4.6,<1.0.0    오디오 녹음
+  soundfile >=0.12.0,<1.0.0     오디오 파일 I/O
+  pynput >=1.7.6,<2.0.0         키보드/마우스 감지
+  cupy-cuda12x (옵션)            GPU 가속
+
+
+================================================================================
+  6. 종합 설계 리뷰 & 재설계 계획
+================================================================================
+
+6.1 현재 아키텍처 요약
+────────────────────────────────────────
+
+  +-----------------------------------------------------+
+  |                    main.py (진입점)                   |
+  |         CLI 감지 -> cli/main.py 또는 wx.App          |
+  +----------+----------+--------------+----------------+
+  |  core/   |   cli/   |    ui/       |    editor/     |
+  | 18 files | 9 files  |  10 files    |   68 files     |
+  | 6,484L   | 1,413L   |  15,273L     |  15,563L       |
+  | (wx 무)  | (wx 무)  |  (wxPython)  |  (wxPython)    |
+  +----------+----------+--------------+----------------+
+  |              BootStrapper/ (BAT 기반 설치)            |
+  +-----------------------------------------------------+
+
+핵심 수치:
+  소스 파일: 125개 (.py)
+  총 LOC: ~39,000줄
+  외부 의존성: 10+ (wxPython, dxcam, numpy, Pillow, imageio 등)
+  지원 포맷: GIF, MP4 (H.264/H.265)
+  캡처 백엔드: DXCam (DXGI), FastGDI (BitBlt), GDI (PIL)
+  GPU 가속: CuPy (CUDA), NVENC/QSV/AMF 인코더
+
+
+6.2 아키텍처 평가
+────────────────────────────────────────
+
+[잘 된 점]
+
+  영역             | 평가
+  -----------------+---------------------------------------------------
+  모듈 분리        | core/가 wx-free로 CLI 재사용 가능 (교과서적)
+  폴백 전략        | DXCam->FastGDI->GDI->PIL, NVENC->QSV->AMF->CPU
+  스레드 안전      | wx.CallAfter() 일관 적용, Lock/Event 적절 사용
+  리소스 정리      | FFmpeg process.kill() try-finally, 타이머 정리
+  메모리 관리      | Frame 압축 저장, 지연 로딩, 썸네일 캐시
+  에러 핸들링      | bare except 금지, crash_handler, 로그 로테이션
+  i18n             | 콜백 기반 TranslationManager, 1,400+ 키
+  설정 공유        | core/defaults.py -> CLI/GUI 단일 진실 소스
+
+
+[구조적 문제점]
+
+A. God Object — main_window.py (1,983줄)
+   MainWindow 클래스 책임: 녹화 시작/정지/일시정지, 인코딩 관리,
+   프리뷰 렌더링, 설정 로드/저장, 시스템 능력 탐지, HDR 타이머,
+   단축키, 오버레이, UI 레이아웃 + 이벤트 핸들링
+   -> SRP 위반 (9+ 책임)
+
+B. 콜백 스파게티 — capture_control_bar.py
+   13개 setter 콜백 메서드 수동 관리
+   -> wxPython 이벤트 대신 수동 콜백, 높은 결합도
+
+C. 설정 이중화
+   core/defaults.py, ui/settings_dialog.py, cli/config.py, ui/constants.py
+   -> 4곳 분산, 새 설정 추가 시 누락 위험
+
+D. GIF Encoder 중복
+   core/gif_encoder.py (1,329줄, 레코더용)
+   editor/core/editor_gif_encoder.py (에디터용)
+   -> 두 인코더가 FFmpeg 호출, 팔레트 생성, 프리셋 각각 구현
+
+E. i18n.py — 1,434줄의 하드코딩 딕셔너리
+   번역을 Python 코드에 직접 하드코딩
+   -> 번역가 협업 불가, 새 언어 추가 시 코드 수정 필요
+
+F. 에디터 파일 수 폭발 (68개 파일)
+   인라인 툴바 15개 각각 별도 파일 (50-100줄 소형)
+   -> 합칠 여지 큼
+
+G. 테스트 커버리지 극빈
+   6개 테스트 파일, 단위 테스트 없음, core/ mock 테스트 전무
+
+
+6.3 재설계 계획
+────────────────────────────────────────
+
+----- Phase 1: 기반 정비 (Foundation) -----
+
+[1-1. 설정 시스템 통합]
+
+현재: 4곳 분산
+목표: 단일 core/settings.py
+
+  @dataclass
+  class AppSettings:
+      language: str = "ko"
+      capture_backend: CaptureBackend = CaptureBackend.GDI
+      encoder: Encoder = Encoder.AUTO
+      codec: str = "h264"
+      memory_limit_mb: int = 1024
+      hdr_correction: bool = False
+      mic_audio: bool = False
+      watermark: bool = False
+      click_highlight: bool = False
+      keyboard_display: bool = False
+      preview_enabled: bool = False
+      skip_ffmpeg_check: bool = False
+      skip_cupy_check: bool = False
+      skip_dxcam_check: bool = False
+
+      def save(self, path: Path): ...
+      def load(cls, path: Path) -> 'AppSettings': ...
+
+이점: 타입 안전, 자동 직렬화, IDE 자동완성, 검증 집중
+
+[1-2. 이벤트 버스 도입]
+
+현재: 수동 콜백 setter 13개+
+목표: core/events.py
+
+  class AppEvent(Enum):
+      RECORDING_START = auto()
+      RECORDING_STOP = auto()
+      RECORDING_PAUSE = auto()
+      ENCODING_PROGRESS = auto()
+      ENCODING_COMPLETE = auto()
+      SETTINGS_CHANGED = auto()
+      LANGUAGE_CHANGED = auto()
+      REGION_CHANGED = auto()
+      GPU_STATUS_CHANGED = auto()
+
+  class EventBus:
+      def subscribe(self, event, callback): ...
+      def unsubscribe(self, event, callback): ...
+      def emit(self, event, **data): ...
+      def emit_on_main_thread(self, event, **data):
+          wx.CallAfter(self.emit, event, **data)
+
+이점: 컴포넌트 분리, 콜백 setter 제거, 테스트 용이
+
+[1-3. i18n 외부화]
+
+현재: Python dict 하드코딩
+목표: JSON 파일 분리
+
+  resources/i18n/ko.json
+  resources/i18n/en.json
+  resources/i18n/zh.json (향후)
+
+  class TranslationManager:
+      def load_language(self, lang_code: str):
+          path = get_resource_path(f"i18n/{lang_code}.json")
+          with open(path, 'r', encoding='utf-8') as f:
+              self._translations = json.load(f)
+
+이점: 번역가 JSON만 편집, 코드 변경 없이 새 언어 추가
+
+
+----- Phase 2: 핵심 모듈 리팩터링 -----
+
+[2-1. MainWindow 분해]
+
+현재: MainWindow (1,983줄, 9+ 책임)
+목표:
+  RecordingController    녹화 상태 머신 (start/stop/pause)
+  EncodingController     인코딩 스레드 관리
+  SystemDetector         GPU/FFmpeg/CuPy 탐지
+  PreviewManager         프리뷰 렌더링 + 타이머
+  ShortcutManager        단축키 등록/해제
+  OverlayManager         CaptureOverlay 라이프사이클
+  MainWindow             UI 레이아웃 + 컨트롤러 조합 (~500줄)
+
+[2-2. GIF Encoder 통합]
+
+현재:
+  core/gif_encoder.py (레코더용 1,329줄)
+  editor/core/editor_gif_encoder.py (에디터용)
+목표:
+  core/encoder/
+    __init__.py
+    base.py         EncoderBase ABC
+    gif_encoder.py  GIF 인코딩 (palettegen + paletteuse)
+    mp4_encoder.py  MP4 인코딩 (H.264/H.265)
+    presets.py      품질/인코더 프리셋
+    ffmpeg.py       FFmpeg 프로세스 관리 공통
+
+[2-3. CaptureThread 오버레이 파이프라인]
+
+현재: 250줄 단일 메서드
+목표:
+  class OverlayPipeline:
+      def add(self, stage: OverlayStage): ...
+      def apply(self, frame: np.ndarray) -> np.ndarray:
+          for stage in self._stages:
+              if stage.enabled:
+                  frame = stage.apply(frame)
+          return frame
+
+
+----- Phase 3: 에디터 구조 개선 -----
+
+[3-1. 인라인 툴바 통합]
+
+현재: 15개 파일 (각 50-150줄)
+목표: 5개 파일
+  base_toolbar.py        BaseToolbar ABC
+  geometry_toolbars.py   Crop, Resize, Rotate (3->1)
+  effect_toolbars.py     Effects, Mosaic, Speed, Reduce (4->1)
+  drawing_toolbars.py    Text, Pencil, Sticker, SpeechBubble (4->1)
+  overlay_toolbars.py    Watermark (1)
+
+[3-2. Undo 시스템 강화]
+
+현재: 배치 작업 중간 실패 시 롤백 불확실
+목표: Command 패턴 + 트랜잭션
+
+  class UndoTransaction:
+      def __enter__(self):
+          self._undo_manager.begin_group()
+      def __exit__(self, exc_type, exc_val, exc_tb):
+          if exc_type:
+              self._undo_manager.rollback_group()  # 실패 시 전부 취소
+          else:
+              self._undo_manager.end_group()
+
+[3-3. Frame 디스크 스왑 구현]
+
+현재: 빈 구현
+목표:
+  class FrameStore:
+      """메모리 + 디스크 하이브리드 프레임 저장소"""
+      def __init__(self, memory_limit_mb=512):
+          self._memory_cache: OrderedDict[int, bytes] = OrderedDict()
+          self._swap_dir = Path(tempfile.mkdtemp(prefix="xgif_swap_"))
+      def get(self, frame_id): ...
+      def _evict_if_needed(self): ...
+
+
+----- Phase 4: 테스트 & 품질 -----
+
+[4-1. 테스트 아키텍처]
+
+  tests/
+  ├── unit/
+  │   ├── core/
+  │   │   ├── test_settings.py
+  │   │   ├── test_capture_backend.py
+  │   │   ├── test_overlay_pipeline.py
+  │   │   ├── test_hdr_utils.py
+  │   │   ├── test_gpu_utils.py
+  │   │   └── test_encoder_presets.py
+  │   ├── editor/
+  │   │   ├── test_frame.py
+  │   │   ├── test_frame_collection.py
+  │   │   ├── test_undo_manager.py
+  │   │   ├── test_image_effects.py
+  │   │   └── test_transitions.py
+  │   └── cli/
+  │       ├── test_arg_parsing.py
+  │       └── test_config_commands.py
+  ├── integration/
+  │   ├── test_recording_flow.py
+  │   └── test_editor_load_save.py
+  └── conftest.py
+
+목표 커버리지: core/ 80%+, CLI 90%+, 에디터 core/ 70%+
+
+[4-2. 타입 힌트 완성]
+
+현재: 부분적
+목표: mypy --strict 또는 pyright CI 통합
+
+[4-3. 매직 넘버 상수화]
+
+  MAX_FRAME_SIZE_BYTES = 100 * 1024 * 1024   # 100MB
+  TIMING_SAMPLE_WINDOW = 200
+  CLICK_HIGHLIGHT_DURATION_SEC = 0.3
+
+
+----- Phase 5: 성능 & 안정성 -----
+
+[5-1. 링 버퍼 최적화]
+
+현재: 매 프레임 np.copy()
+목표:
+  class RingFrameBuffer:
+      def __init__(self, capacity, frame_shape):
+          self._buffer = np.zeros((capacity, *frame_shape), dtype=np.uint8)
+      def write(self, frame): ...  # np.copyto
+      def read(self) -> np.ndarray: ...  # 무복사 참조
+
+[5-2. DXCam 인스턴스 풀링]
+
+  class DXCamPool:
+      _camera = None
+      _ref_count = 0
+      _lock = threading.Lock()
+
+      @classmethod
+      def acquire(cls): ...  # ref_count++
+      @classmethod
+      def release(cls): ...  # ref_count--, 0이면 해제
+
+
+6.4 우선순위 매트릭스
+────────────────────────────────────────
+
+순위 | 작업                              | 영향도 | 난이도 | Phase
+-----+-----------------------------------+--------+--------+------
+  1  | 설정 시스템 통합 (AppSettings)     | 높음   | 중     |  1
+  2  | MainWindow 분해 (Controller)      | 높음   | 높     |  2
+  3  | 이벤트 버스 도입                   | 높음   | 중     |  1
+  4  | 단위 테스트 추가 (core/)           | 높음   | 중     |  4
+  5  | GIF Encoder 통합                  | 중     | 중     |  2
+  6  | i18n JSON 외부화                  | 중     | 낮     |  1
+  7  | 타입 힌트 완성                    | 중     | 낮     |  4
+  8  | 매직 넘버 상수화                  | 중     | 낮     |  4
+  9  | CaptureThread 오버레이 파이프라인  | 중     | 중     |  2
+ 10  | 인라인 툴바 통합 (15->5 파일)      | 낮     | 낮     |  3
+ 11  | Frame 디스크 스왑 구현             | 낮     | 높     |  3
+ 12  | 링 버퍼 최적화                    | 낮     | 중     |  5
+
+
+6.5 목표 아키텍처 (To-Be)
+────────────────────────────────────────
+
+  +-------------------------------------------------------------+
+  |                         main.py                              |
+  |              CLI 분기 or wx.App + EventBus                   |
+  +-------------+----------+----------------+-------------------+
+  |  core/      |  cli/    |     ui/        |    editor/        |
+  |  settings   |  args    |  controllers/  |  core/ (통합)     |
+  |  events     |  cmds    |    recording   |  ui/ (통합)       |
+  |  encoder/   |          |    encoding    |                   |
+  |  capture/   |          |    preview     |                   |
+  |  overlay/   |          |  widgets/      |                   |
+  |  i18n       |          |  dialogs/      |                   |
+  +-------------+----------+----------------+-------------------+
+  |  resources/i18n/ko.json, en.json                             |
+  +--------------------------------------------------------------+
+  |  tests/unit/  tests/integration/                             |
+  +--------------------------------------------------------------+
+
+
+6.6 결론
+────────────────────────────────────────
+
+[현재 코드 성숙도]: 프로토타입 -> 제품 전환기 (v1.x)
+
+[가장 큰 기술 부채 3가지]:
+
+  1. MainWindow God Object
+     — 유지보수의 최대 병목. 기능 추가마다 이 파일이 커짐
+
+  2. 테스트 부재
+     — 리팩터링 시 회귀 버그 감지 불가. 테스트 선행 작성 필요
+
+  3. 설정 분산
+     — 새 설정 추가 시 4곳 동시 수정 필요, 누락 버그 잦음
+
+[권장 실행 순서]:
+  Phase 1 (기반) -> Phase 4 (테스트) -> Phase 2 (리팩터링) -> Phase 3 (에디터) -> Phase 5 (성능)
+
+  테스트를 먼저 작성한 뒤 리팩터링하는 것이 안전합니다.
+  Phase 1의 설정/이벤트 통합은 테스트 없이도 비교적 안전한 독립 작업입니다.
+
+
+================================================================================
+  끝
+================================================================================

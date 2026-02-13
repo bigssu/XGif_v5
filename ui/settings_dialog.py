@@ -17,29 +17,22 @@ from ui.constants import (
 from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr, get_trans_manager
 from ui.capture_control_bar import FlatButton
-from core.defaults import COMMON_DEFAULTS
+from core.settings import AppSettings
 
 logger = logging.getLogger(__name__)
-
-# UI 전용 설정 키
-_UI_ONLY_DEFAULTS = {
-    "preview_enabled": "false",
-    "skip_ffmpeg_check": "false",
-    "skip_cupy_check": "false",
-    "skip_dxcam_check": "false",
-    "startup_dep_checked": "false",
-}
 
 
 class SettingsDialog(ThemedDialog):
     """설정 다이얼로그 - Windows 11 Dark Theme"""
 
-    DEFAULT_SETTINGS = {**COMMON_DEFAULTS, **_UI_ONLY_DEFAULTS}
+    DEFAULT_SETTINGS = AppSettings().to_dict()
 
     def __init__(self, parent=None, settings=None):
         ThemedDialog.__init__(self, parent, title=tr('settings'), size=(520, 580),
                               style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        # settings는 AppSettings 인스턴스 또는 configparser.ConfigParser
         self.settings = settings
+        self._is_app_settings = isinstance(settings, AppSettings)
         self.trans = get_trans_manager()
         self.trans.register_callback(self.retranslateUi)
 
@@ -334,9 +327,12 @@ class SettingsDialog(ThemedDialog):
         dlg.Destroy()
 
         if dont_ask and self.settings:
-            if not self.settings.has_section('General'):
-                self.settings.add_section('General')
-            self.settings.set('General', 'skip_dxcam_check', 'true')
+            if self._is_app_settings:
+                self.settings.set('skip_dxcam_check', 'true')
+            else:
+                if not self.settings.has_section('General'):
+                    self.settings.add_section('General')
+                self.settings.set('General', 'skip_dxcam_check', 'true')
 
         if ret == ID_INSTALL.GetId():
             success = show_install_flow(self, "dxcam", status)
@@ -352,57 +348,60 @@ class SettingsDialog(ThemedDialog):
                 self.backend_combo.SetSelection(i)
                 break
 
+    def _cfg(self, key: str, fallback: str = "") -> str:
+        """설정 값 읽기 — AppSettings / configparser 양쪽 호환."""
+        if self._is_app_settings:
+            return self.settings.get(key, fallback)
+        # configparser 경로
+        return self.settings.get("General", key, fallback=fallback)
+
+    def _cfg_set(self, key: str, value: str) -> None:
+        """설정 값 쓰기 — AppSettings / configparser 양쪽 호환."""
+        if self._is_app_settings:
+            self.settings.set(key, value)
+        else:
+            if not self.settings.has_section('General'):
+                self.settings.add_section('General')
+            self.settings.set('General', key, value)
+
     def load_settings(self):
         """설정 값 불러오기"""
         if not self.settings:
             return
 
         try:
-            self.mic_audio_cb.SetValue(
-                self.settings.get("General", "mic_audio", fallback="false").lower() == "true"
-            )
-            self.watermark_cb.SetValue(
-                self.settings.get("General", "watermark", fallback="false").lower() == "true"
-            )
-            self.click_highlight_cb.SetValue(
-                self.settings.get("General", "click_highlight", fallback="false").lower() == "true"
-            )
-            self.keyboard_display_cb.SetValue(
-                self.settings.get("General", "keyboard_display", fallback="false").lower() == "true"
-            )
-            self.preview_cb.SetValue(
-                self.settings.get("General", "preview_enabled", fallback="false").lower() == "true"
-            )
+            self.mic_audio_cb.SetValue(self._cfg("mic_audio", "false").lower() == "true")
+            self.watermark_cb.SetValue(self._cfg("watermark", "false").lower() == "true")
+            self.click_highlight_cb.SetValue(self._cfg("click_highlight", "false").lower() == "true")
+            self.keyboard_display_cb.SetValue(self._cfg("keyboard_display", "false").lower() == "true")
+            self.preview_cb.SetValue(self._cfg("preview_enabled", "false").lower() == "true")
+            self.hdr_correction_cb.SetValue(self._cfg("hdr_correction", "false").lower() == "true")
 
-            hdr_saved = self.settings.get("General", "hdr_correction", fallback="false").lower() == "true"
-            self.hdr_correction_cb.SetValue(hdr_saved)
+            lang = self._cfg("language", "ko")
+            self.lang_combo.SetSelection(0 if lang == 'ko' else 1)
 
-            lang = self.settings.get("General", "language", fallback="ko")
-            lang_idx = 0 if lang == 'ko' else 1
-            self.lang_combo.SetSelection(lang_idx)
-
-            backend = self.settings.get('General', 'capture_backend', fallback='gdi')
+            backend = self._cfg('capture_backend', 'gdi')
             backend_idx = self._find_combo_index(CAPTURE_BACKEND_OPTIONS_MAP, backend)
             if 0 <= backend_idx < self.backend_combo.GetCount():
                 self.backend_combo.SetSelection(backend_idx)
             else:
                 self.backend_combo.SetSelection(0)
 
-            encoder = self.settings.get('General', 'encoder', fallback='auto')
+            encoder = self._cfg('encoder', 'auto')
             encoder_idx = self._find_combo_index(ENCODER_OPTIONS_MAP, encoder)
             if 0 <= encoder_idx < self.encoder_combo.GetCount():
                 self.encoder_combo.SetSelection(encoder_idx)
             else:
                 self.encoder_combo.SetSelection(0)
 
-            codec = self.settings.get('General', 'codec', fallback='h264')
+            codec = self._cfg('codec', 'h264')
             codec_idx = self._find_combo_index(CODEC_OPTIONS_MAP, codec)
             if 0 <= codec_idx < self.codec_combo.GetCount():
                 self.codec_combo.SetSelection(codec_idx)
             else:
                 self.codec_combo.SetSelection(0)
 
-            memory_limit = self.settings.get('General', 'memory_limit_mb', fallback='1024')
+            memory_limit = self._cfg('memory_limit_mb', '1024')
             memory_map = {"1024": 0, "2048": 1, "3072": 2, "4096": 3}
             self.memory_limit_combo.SetSelection(memory_map.get(memory_limit, 0))
         except Exception as e:
@@ -425,62 +424,63 @@ class SettingsDialog(ThemedDialog):
             return False
 
         try:
-            if not self.settings.has_section('General'):
-                self.settings.add_section('General')
-
-            self.settings.set('General', 'mic_audio', "true" if self.mic_audio_cb.GetValue() else "false")
-            self.settings.set('General', 'watermark', "true" if self.watermark_cb.GetValue() else "false")
-            self.settings.set('General', 'click_highlight', "true" if self.click_highlight_cb.GetValue() else "false")
-            self.settings.set('General', 'keyboard_display', "true" if self.keyboard_display_cb.GetValue() else "false")
-            self.settings.set('General', 'preview_enabled', "true" if self.preview_cb.GetValue() else "false")
-            self.settings.set('General', 'hdr_correction', "true" if self.hdr_correction_cb.GetValue() else "false")
+            self._cfg_set('mic_audio', "true" if self.mic_audio_cb.GetValue() else "false")
+            self._cfg_set('watermark', "true" if self.watermark_cb.GetValue() else "false")
+            self._cfg_set('click_highlight', "true" if self.click_highlight_cb.GetValue() else "false")
+            self._cfg_set('keyboard_display', "true" if self.keyboard_display_cb.GetValue() else "false")
+            self._cfg_set('preview_enabled', "true" if self.preview_cb.GetValue() else "false")
+            self._cfg_set('hdr_correction', "true" if self.hdr_correction_cb.GetValue() else "false")
 
             try:
                 backend_idx = self.backend_combo.GetSelection()
                 if 0 <= backend_idx < len(CAPTURE_BACKEND_OPTIONS):
                     backend_key = CAPTURE_BACKEND_OPTIONS[backend_idx]
-                    self.settings.set('General', 'capture_backend', CAPTURE_BACKEND_OPTIONS_MAP.get(backend_key, "auto"))
+                    self._cfg_set('capture_backend', CAPTURE_BACKEND_OPTIONS_MAP.get(backend_key, "auto"))
                 else:
-                    self.settings.set('General', 'capture_backend', "auto")
+                    self._cfg_set('capture_backend', "auto")
             except (AttributeError, IndexError, KeyError):
-                self.settings.set('General', 'capture_backend', "auto")
+                self._cfg_set('capture_backend', "auto")
 
             try:
                 encoder_idx = self.encoder_combo.GetSelection()
                 if 0 <= encoder_idx < len(ENCODER_OPTIONS):
                     encoder_key = ENCODER_OPTIONS[encoder_idx]
-                    self.settings.set('General', 'encoder', ENCODER_OPTIONS_MAP.get(encoder_key, "auto"))
+                    self._cfg_set('encoder', ENCODER_OPTIONS_MAP.get(encoder_key, "auto"))
                 else:
-                    self.settings.set('General', 'encoder', "auto")
+                    self._cfg_set('encoder', "auto")
             except (AttributeError, IndexError, KeyError):
-                self.settings.set('General', 'encoder', "auto")
+                self._cfg_set('encoder', "auto")
 
             try:
                 codec_idx = self.codec_combo.GetSelection()
                 if 0 <= codec_idx < len(CODEC_OPTIONS):
                     codec_key = CODEC_OPTIONS[codec_idx]
-                    self.settings.set('General', 'codec', CODEC_OPTIONS_MAP.get(codec_key, "h264"))
+                    self._cfg_set('codec', CODEC_OPTIONS_MAP.get(codec_key, "h264"))
                 else:
-                    self.settings.set('General', 'codec', "h264")
+                    self._cfg_set('codec', "h264")
             except (AttributeError, IndexError, KeyError):
-                self.settings.set('General', 'codec', "h264")
+                self._cfg_set('codec', "h264")
 
             memory_limit_map = {0: "1024", 1: "2048", 2: "3072", 3: "4096"}
-            self.settings.set('General', 'memory_limit_mb', memory_limit_map.get(self.memory_limit_combo.GetSelection(), "1024"))
+            self._cfg_set('memory_limit_mb', memory_limit_map.get(self.memory_limit_combo.GetSelection(), "1024"))
 
             lang_idx = self.lang_combo.GetSelection()
             lang_data = 'ko' if lang_idx == 0 else 'en'
-            self.settings.set('General', 'language', lang_data)
+            self._cfg_set('language', lang_data)
             self.trans.set_language(lang_data)
 
-            import os
-            from core.utils import APP_SETTINGS_NAME
-            appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
-            config_dir = os.path.join(appdata, APP_SETTINGS_NAME)
-            os.makedirs(config_dir, exist_ok=True)
-            config_path = os.path.join(config_dir, 'config.ini')
-            with open(config_path, 'w', encoding='utf-8') as f:
-                self.settings.write(f)
+            # 저장
+            if self._is_app_settings:
+                self.settings.save()
+            else:
+                import os
+                from core.utils import APP_SETTINGS_NAME
+                appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+                config_dir = os.path.join(appdata, APP_SETTINGS_NAME)
+                os.makedirs(config_dir, exist_ok=True)
+                config_path = os.path.join(config_dir, 'config.ini')
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    self.settings.write(f)
             return True
         except Exception as e:
             logger.warning("설정 저장 오류: %s", e)
@@ -525,12 +525,10 @@ class SettingsDialog(ThemedDialog):
     def _on_reset_dep_flags(self, event):
         """의존성 확인 skip 플래그 초기화"""
         if self.settings:
-            if not self.settings.has_section('General'):
-                self.settings.add_section('General')
-            self.settings.set('General', 'skip_ffmpeg_check', 'false')
-            self.settings.set('General', 'skip_cupy_check', 'false')
-            self.settings.set('General', 'skip_dxcam_check', 'false')
-            self.settings.set('General', 'startup_dep_checked', 'false')
+            self._cfg_set('skip_ffmpeg_check', 'false')
+            self._cfg_set('skip_cupy_check', 'false')
+            self._cfg_set('skip_dxcam_check', 'false')
+            self._cfg_set('startup_dep_checked', 'false')
         self._show_status(tr('dep_skip_flags_reset'), success=True)
 
     def _show_status(self, message: str, success: bool = True, duration_ms: int = 2000):

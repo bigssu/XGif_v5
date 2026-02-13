@@ -211,8 +211,25 @@ class BootstrapperFrame(wx.Frame):
     """XGif 부트스트래퍼 — startup_check_dialog 디자인"""
 
     def __init__(self, logger, paths_module):
+        # 버전 정보 가져오기
+        try:
+            import importlib, sys, os
+            # core/version.py를 직접 로드 (부트스트래퍼는 core 패키지 밖에 있음)
+            _target = paths_module.get_target_dir()
+            _ver_path = os.path.join(str(_target), "core", "version.py")
+            if os.path.isfile(_ver_path):
+                spec = importlib.util.spec_from_file_location("_ver", _ver_path)
+                _mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(_mod)
+                _app_ver = getattr(_mod, "APP_VERSION", "")
+            else:
+                _app_ver = ""
+        except Exception:
+            _app_ver = ""
+        _title = f"XGif Bootstrapper v{_app_ver}" if _app_ver else "XGif Bootstrapper"
+
         super().__init__(
-            parent=None, title="XGif Bootstrapper",
+            parent=None, title=_title,
             size=(740, 560),
             style=wx.DEFAULT_FRAME_STYLE | wx.RESIZE_BORDER,
         )
@@ -225,6 +242,8 @@ class BootstrapperFrame(wx.Frame):
         self._is_running = False
         self._log_visible = False
         self._all_required_ok = False
+        self._auto_close_timer: Optional[wx.Timer] = None
+        self._auto_close_remaining = 0
 
         # deps 로드
         import deps_specs
@@ -389,7 +408,11 @@ class BootstrapperFrame(wx.Frame):
     # ──────────────────────────────────────────────
 
     def _on_log_cb(self, msg: str):
-        wx.PostEvent(self, LogEvent(message=msg))
+        try:
+            if self and not self.IsBeingDeleted():
+                wx.PostEvent(self, LogEvent(message=msg))
+        except RuntimeError:
+            pass  # window already destroyed
 
     def _on_log_evt(self, event):
         self._log_text.AppendText(event.message + "\n")
@@ -419,6 +442,11 @@ class BootstrapperFrame(wx.Frame):
         self._btn_recheck.Enable(True)
         self._btn_close.Enable(True)
 
+        # 자동 닫기 타이머 초기화
+        if hasattr(self, "_auto_close_timer") and self._auto_close_timer:
+            self._auto_close_timer.Stop()
+            self._auto_close_timer = None
+
         if event.success:
             # 필수 항목 중 미설치가 있는지 확인
             has_missing = False
@@ -436,10 +464,49 @@ class BootstrapperFrame(wx.Frame):
             else:
                 self._btn_install.SetLabel("모두 충족")
                 self._btn_install.Enable(False)
+                # 자동 닫기 카운트다운 시작 (#12)
+                self._start_auto_close_countdown()
         else:
             self._all_required_ok = False
             self._btn_install.SetLabel("설치 시작")
             self._btn_install.Enable(True)
+
+            # 실패 메시지를 UI에 표시 (#13)
+            if event.error:
+                self.logger.error(f"설치 실패: {event.error}")
+                wx.MessageBox(
+                    event.error,
+                    "설치 실패",
+                    wx.OK | wx.ICON_ERROR,
+                )
+
+    # ──────────────────────────────────────────────
+    # 자동 닫기 (#12)
+    # ──────────────────────────────────────────────
+
+    def _start_auto_close_countdown(self, seconds: int = 5):
+        """모든 필수 항목이 충족되면 카운트다운 후 자동 종료"""
+        self._auto_close_remaining = seconds
+        self._auto_close_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._on_auto_close_tick, self._auto_close_timer)
+        self._auto_close_timer.Start(1000)
+        self._btn_close.SetLabel(f"닫기 ({seconds}s)")
+
+    def _on_auto_close_tick(self, event):
+        self._auto_close_remaining -= 1
+        if self._auto_close_remaining <= 0:
+            self._auto_close_timer.Stop()
+            self._auto_close_timer = None
+            self.Close()
+        else:
+            self._btn_close.SetLabel(f"닫기 ({self._auto_close_remaining}s)")
+
+    def _cancel_auto_close(self):
+        """자동 닫기 취소 (사용자가 버튼 클릭 시)"""
+        if self._auto_close_timer:
+            self._auto_close_timer.Stop()
+            self._auto_close_timer = None
+            self._btn_close.SetLabel("닫기")
 
     # ──────────────────────────────────────────────
     # 버튼 액션
@@ -453,6 +520,7 @@ class BootstrapperFrame(wx.Frame):
 
     def _on_install(self, event):
         """누락 항목 검사 + 설치"""
+        self._cancel_auto_close()
         if self._is_running:
             return
         self._reset_rows()
@@ -466,6 +534,7 @@ class BootstrapperFrame(wx.Frame):
 
     def _on_recheck(self, event):
         """검사만 다시 실행"""
+        self._cancel_auto_close()
         if self._is_running:
             return
         self._start_check_only()
@@ -499,6 +568,7 @@ class BootstrapperFrame(wx.Frame):
         self.Close()
 
     def _on_window_close(self, event):
+        self._cancel_auto_close()
         if self._is_running:
             if wx.MessageBox(
                 "작업이 진행 중입니다. 종료하시겠습니까?",
@@ -519,6 +589,24 @@ class BootstrapperFrame(wx.Frame):
 
     def _post_row(self, row, status, detail=""):
         wx.PostEvent(self, UpdateRowEvent(row=row, status=status, detail=detail))
+
+    def _make_progress_cb(self, row_idx: int):
+        """install 함수에 전달할 progress_cb 생성 (다운로드/압축 진행률 → UI 로그)"""
+        _last_pct = [-1]
+
+        def _cb(downloaded, total):
+            if total and total > 0:
+                pct = int(downloaded * 100 / total)
+                # 5% 단위로만 업데이트하여 이벤트 폭주 방지
+                if pct >= _last_pct[0] + 5 or pct >= 100:
+                    _last_pct[0] = pct
+                    mb = downloaded / (1024 * 1024)
+                    total_mb = total / (1024 * 1024)
+                    self._post_row(
+                        row_idx, ST_INSTALLING,
+                        f"{mb:.1f} / {total_mb:.1f} MB ({pct}%)",
+                    )
+        return _cb
 
     # ──────────────────────────────────────────────
     # 워커: 검사만
@@ -556,6 +644,17 @@ class BootstrapperFrame(wx.Frame):
         try:
             import deps_checker
             import deps_installer
+            from download_utils import check_connectivity
+
+            # 인터넷 연결 확인 (#6)
+            self.logger.info("인터넷 연결 확인 중…")
+            if not check_connectivity():
+                self.logger.warning("인터넷 연결 없음")
+                wx.PostEvent(self, TaskCompleteEvent(
+                    success=False,
+                    error="인터넷에 연결되어 있지 않습니다. 네트워크를 확인한 후 다시 시도하세요.",
+                ))
+                return
 
             failed_items = []
 
@@ -597,9 +696,10 @@ class BootstrapperFrame(wx.Frame):
                     wx.PostEvent(self, ProgressEvent(value=idx + 1))
                     continue
 
-                # ── 설치 실행 ──
+                # ── 설치 실행 (progress_cb 전달) ──
                 self._post_row(idx, ST_INSTALLING)
-                success = install_fn()
+                progress_cb = self._make_progress_cb(idx)
+                success = install_fn(progress_cb=progress_cb)
 
                 if not success:
                     self._post_row(idx, ST_FAIL, "설치 실패")

@@ -2,6 +2,7 @@
 logging_setup.py - XGif Bootstrapper 로깅 설정
 """
 import logging
+import logging.handlers
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -42,8 +43,10 @@ def setup_logging(log_file: Path, level: int = logging.INFO) -> logging.Logger:
     _logger.setLevel(level)
     _logger.handlers.clear()
     
-    # 파일 핸들러
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    # 파일 핸들러 (RotatingFileHandler: 2MB × 2 백업)
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=2 * 1024 * 1024, backupCount=2, encoding="utf-8"
+    )
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)
     _logger.addHandler(file_handler)

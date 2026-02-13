@@ -78,8 +78,8 @@ def extract_zip(
     except (zipfile.BadZipFile, OSError) as e:
         logger.error("Extraction failed: %s", e)
         log_and_ui(f"압축 해제 실패: {e}")
-        # Cleanup
-        for d in (temp_extract,):
+        # Cleanup: temp_extract와 불완전한 final_dir 모두 정리
+        for d in (temp_extract, final_dir):
             if os.path.exists(d):
                 shutil.rmtree(d, ignore_errors=True)
         return False

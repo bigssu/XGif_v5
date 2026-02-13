@@ -68,6 +68,12 @@ PYTHON_EMBED_URL = (
     "python-3.11.9-embed-amd64.zip"
 )
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
+
+# FFmpeg: primary (BtbN GitHub) + fallback (gyan.dev) — core/ffmpeg_installer.py와 동일 전략
 FFMPEG_ZIP_URL = (
+    "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
+    "ffmpeg-master-latest-win64-gpl.zip"
+)
+FFMPEG_ZIP_URL_FALLBACK = (
     "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 )

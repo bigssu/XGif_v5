@@ -217,6 +217,50 @@ class DXCamBackend(CaptureBackend):
 atexit.register(DXCamBackend.cleanup_shared_camera)
 
 
+class DXCamPool:
+    """DXCam 인스턴스 풀 — 레퍼런스 카운팅 기반.
+
+    DXCamBackend의 기존 _shared_camera 로직을 정리한 래퍼.
+    """
+
+    _ref_count: int = 0
+    _lock = threading.Lock()
+
+    @classmethod
+    def acquire(cls) -> Optional["dxcam.DXCamera"]:
+        """DXCam 카메라 인스턴스를 획득. 없으면 생성."""
+        if not HAS_DXCAM:
+            return None
+        with cls._lock:
+            cls._ref_count += 1
+            if DXCamBackend._shared_camera is None:
+                try:
+                    DXCamBackend._shared_camera = dxcam.create(output_color="BGR")
+                    logger.info("[DXCamPool] Created new camera (refcount=%d)", cls._ref_count)
+                except Exception as e:
+                    logger.error("[DXCamPool] Failed to create camera: %s", e)
+                    cls._ref_count -= 1
+                    return None
+            else:
+                logger.debug("[DXCamPool] Reusing camera (refcount=%d)", cls._ref_count)
+            return DXCamBackend._shared_camera
+
+    @classmethod
+    def release(cls) -> None:
+        """레퍼런스 카운트 감소. 0이 되면 카메라 해제."""
+        with cls._lock:
+            cls._ref_count = max(0, cls._ref_count - 1)
+            if cls._ref_count == 0:
+                DXCamBackend.cleanup_shared_camera()
+                logger.info("[DXCamPool] Camera released (refcount=0)")
+            else:
+                logger.debug("[DXCamPool] Release (refcount=%d)", cls._ref_count)
+
+    @classmethod
+    def ref_count(cls) -> int:
+        return cls._ref_count
+
+
 class FastGdiBackend(CaptureBackend):
     """고속 GDI 캡처 (ctypes 직접 사용, DC 재사용).
     DC와 비트맵을 재사용하여 30fps 달성.

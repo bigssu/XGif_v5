@@ -315,6 +315,33 @@ class UndoManager:
         if self._state_changed_callback:
             self._state_changed_callback()
     
+    # === 트랜잭션 ===
+    def transaction(self, description: str) -> "UndoTransaction":
+        """배치 작업을 원자적으로 묶는 컨텍스트 매니저.
+
+        Usage:
+            with undo_manager.transaction("전체 프레임 이펙트"):
+                undo_manager.execute(action1)
+                undo_manager.execute(action2)
+            # → Ctrl+Z 한 번에 모두 복원
+
+        예외 발생 시 그룹 내 모든 액션을 자동 rollback.
+        """
+        return UndoTransaction(self, description)
+
+    def rollback_group(self) -> None:
+        """현재 그룹 내 모든 액션을 역순으로 undo 실행 후 그룹 해제."""
+        if self._group_depth <= 0:
+            return
+        # 그룹 내 축적된 액션을 역순 undo
+        for action in reversed(self._group_actions):
+            try:
+                action.undo()
+            except Exception as e:
+                _logger.error("Rollback action failed: %s", e)
+        self._group_actions.clear()
+        self._group_depth = 0
+
     # === 내부 ===
     def _trim_history(self) -> None:
         """히스토리 크기 제한"""
@@ -333,3 +360,29 @@ class UndoManager:
             trim_count += 1
         if trim_count > 0:
             del self._undo_stack[:trim_count]
+
+
+class UndoTransaction:
+    """배치 작업 원자성을 보장하는 컨텍스트 매니저.
+
+    ``with undo_manager.transaction("desc"):`` 블록 내에서
+    실행된 모든 액션은 하나의 그룹으로 묶인다.
+    예외 발생 시 그룹 내 모든 액션을 자동 rollback한다.
+    """
+
+    def __init__(self, manager: UndoManager, description: str) -> None:
+        self._manager = manager
+        self._description = description
+
+    def __enter__(self) -> "UndoTransaction":
+        self._manager.begin_group(self._description)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is not None:
+            # 예외 발생 → rollback
+            _logger.warning(f"UndoTransaction rollback: {self._description} ({exc_val})")
+            self._manager.rollback_group()
+            return False  # 예외 전파
+        self._manager.end_group()
+        return False

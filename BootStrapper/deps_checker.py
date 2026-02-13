@@ -15,6 +15,9 @@ from logging_setup import log_and_ui, get_logger
 
 SUBPROCESS_TIMEOUT = 30  # seconds
 
+# NVIDIA 드라이버 체크 결과 캐시 (check_cupy에서 중복 호출 방지)
+_nvidia_cache: tuple[bool, str] | None = None
+
 
 def _run(cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT, cwd=None):
     """Run a subprocess, return (returncode, stdout, stderr)."""
@@ -45,6 +48,7 @@ def _run(cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT, cwd=None):
 #  NVIDIA Driver
 # ──────────────────────────────────────────────────────────────────
 def check_nvidia_driver() -> tuple[bool, str]:
+    global _nvidia_cache
     log_and_ui("NVIDIA 드라이버 확인 중…")
     rc, out, err = _run(["nvidia-smi"])
     if rc == 0:
@@ -52,10 +56,12 @@ def check_nvidia_driver() -> tuple[bool, str]:
         m = re.search(r"Driver Version:\s*([\d.]+)", out)
         ver = m.group(1) if m else "unknown"
         log_and_ui(f"NVIDIA 드라이버 감지: {ver}")
-        return True, f"v{ver}"
+        _nvidia_cache = (True, f"v{ver}")
+        return _nvidia_cache
     else:
         log_and_ui("GPU 드라이버가 없거나 CUDA 사용이 불가능할 수 있습니다.")
-        return False, "nvidia-smi 실행 불가"
+        _nvidia_cache = (False, "nvidia-smi 실행 불가")
+        return _nvidia_cache
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -117,8 +123,21 @@ def check_venv() -> tuple[bool, str]:
 # ──────────────────────────────────────────────────────────────────
 def check_cupy() -> tuple[bool, str]:
     log_and_ui("CuPy 확인 중…")
+
+    # 1. GPU 드라이버 확인 (캐시된 결과 사용)
+    if _nvidia_cache is not None:
+        has_gpu, gpu_detail = _nvidia_cache
+    else:
+        has_gpu, gpu_detail = check_nvidia_driver()
+    if not has_gpu:
+        log_and_ui("NVIDIA GPU가 감지되지 않아 CuPy를 건너뜁니다.")
+        return True, "GPU 미사용 (Skip)"
+
+    # 2. venv 확인
     if not os.path.isfile(paths.VENV_PYTHON):
         return False, "venv 먼저 설치 필요"
+
+    # 3. CuPy import 확인
     rc, out, err = _run(
         [
             paths.VENV_PYTHON, "-c",
@@ -131,6 +150,7 @@ def check_cupy() -> tuple[bool, str]:
         devices = lines[-1] if len(lines) > 1 else "?"
         log_and_ui(f"CuPy 정상 – GPU 장치 수: {devices}")
         return True, f"GPU {devices}개"
+    
     detail = (err or out or "import 실패").strip()[:120]
     log_and_ui(f"CuPy 검증 실패: {detail}")
     return False, "import 실패"

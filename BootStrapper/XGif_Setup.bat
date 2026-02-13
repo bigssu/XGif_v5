@@ -16,13 +16,13 @@ cd /d "%~dp0"
 echo [1/3] Windows Defender SmartScreen 우회 준비...
 echo ----------------------------------------
 
-:: 모든 exe 파일의 Zone.Identifier 제거
+:: 모든 exe/dll 파일의 Zone.Identifier 제거 (하위 폴더 포함 — _internal 등)
 set "UNBLOCK_COUNT=0"
-for %%F in ("%~dp0*.exe") do (
+for /R "%~dp0" %%F in (*.exe *.dll *.pyd) do (
     powershell.exe -Command "Remove-Item -LiteralPath '%%F' -Stream Zone.Identifier -ErrorAction SilentlyContinue" 2>nul
     set /a UNBLOCK_COUNT+=1
 )
-echo   [OK] !UNBLOCK_COUNT!개 exe 차단 해제 완료
+echo   [OK] !UNBLOCK_COUNT!개 파일 차단 해제 완료 (exe/dll/pyd, 하위 폴더 포함)
 echo.
 
 :: ================================================================
@@ -114,6 +114,9 @@ if "!EXIT_CODE!"=="-1073741701" (
 )
 if "!EXIT_CODE!"=="-1073741819" (
     echo   원인: 액세스 위반 [0xC0000005]
+)
+if "!EXIT_CODE!"=="1" (
+    echo   원인: 일반 오류 (로그를 확인하세요)
 )
 
 :: stderr 출력
