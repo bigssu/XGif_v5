@@ -42,8 +42,9 @@ build_venv/
 # Cursor
 .cursor/
 
-# Claude Code
-.claude/
+# Claude Code — only personal overrides are ignored; settings.json + rules/ are committed
+.claude/settings.local.json
+CLAUDE.local.md
 
 # PyQt
 *.qmlc

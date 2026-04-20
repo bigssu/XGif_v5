@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe main.py*)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/*)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -v*)",
+      "Bash(.venv/Scripts/python.exe -m ruff check*)",
+      "Bash(.venv/Scripts/python.exe -m ruff format*)",
+      "Bash(.venv/Scripts/python.exe build_optimized.py*)",
+      "Bash(.venv/Scripts/python.exe -c *)",
+      "Bash(.venv/Scripts/pip install*)",
+      "Bash(.venv/Scripts/pip list*)",
+      "Bash(.venv/Scripts/pip show*)",
+      "Bash(python --version)",
+      "Bash(.venv/Scripts/python.exe --version)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit*)",
+      "Bash(git branch*)",
+      "Bash(git checkout *)",
+      "Bash(git stash*)",
+      "Bash(git fetch*)",
+      "Bash(git pull*)",
+      "Bash(git tag*)",
+      "Bash(git show*)",
+      "Bash(ls*)",
+      "Bash(dir*)",
+      "Bash(find . *)",
+      "Bash(cat *)",
+      "Bash(type *)",
+      "Bash(echo *)",
+      "Read(*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(sudo rm *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard *)",
+      "Bash(rmdir /s *)",
+      "Bash(del /f /s *)",
+      "Bash(.venv/Scripts/python.exe BootStrapper/*)",
+      "Bash(* > /dev/null 2>&1 &)"
+    ]
+  }
+}
