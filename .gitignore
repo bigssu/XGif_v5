@@ -90,6 +90,10 @@ desktop.ini
 *.mp4
 crash_reports/
 
+# Harness workspace (transient agent output — never commit)
+_workspace/
+_workspace.prev-*/
+
 # FFmpeg binaries (too large for GitHub, include in build only)
 ffmpeg/
 
