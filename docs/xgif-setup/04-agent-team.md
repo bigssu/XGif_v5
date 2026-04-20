@@ -496,3 +496,70 @@ Phase 6(skill-forge)이 **반드시 제작해야 할 신규 산출물**:
 ## Next Steps
 
 Phase 6: skill-forge 소환 — `.claude/rules/workflow-orchestrator.md` 규칙 파일 1개를 제작한다. 본 산출물의 Summon Contracts / Cross-Cutting Contracts / Agent Prelude Index / Phase 6 Handoff 섹션을 입력으로 사용하고, `03-pipeline-design.md` 의 프리루드 본문을 메타 용어 필터 적용 후 복사한다. 신규 에이전트·스킬·플레이북 생성 없음.
+
+---
+
+## Phase 5 Advisor Resolutions (2026-04-20, 자율 모드)
+
+Advisor verdict: **PASS-WITH-NOTES** (BLOCK 0 / ASK 2 / NOTE 6). 자율 모드로 ASK 2건을
+확정 결정, NOTE 중 Phase 6 실행 영향 항목은 본 섹션에 재기술한다.
+
+### RESOLVED-ASK-1: 프리루드 주입 메커니즘 — **orchestrator rule file이 skill.md orchestration을 대체**
+
+Advisor 지적이 정확하다: harness-100 skill.md는 내부에서 Task/SendMessage 호출을 하지만,
+main session이 그 호출 경로에 개입해 에이전트별 프리루드를 주입할 표준 메커니즘이 없다.
+`.md` 파일 수정 금지 원칙을 지키려면 다음 세 가지 옵션이 있다:
+
+1. **OPT-A: 최상위 prelude 단일 번들** — `/code-reviewer` 호출 시 모든 프리루드를 한 번에
+   붙여 skill.md에 전달, 에이전트가 자기 관련 섹션을 self-select.
+   - 문제: Task는 새 컨텍스트 생성 — skill에 번들된 프리루드는 skill이 Task 호출 시 재-전송
+     해주지 않으면 에이전트까지 도달 안 함.
+2. **OPT-B: XGif-wrapper skill 신규 생성** — `/xgif-review` 같은 래퍼 스킬이 프리루드 주입 후
+     harness 스킬을 호출.
+   - 문제: 신규 스킬 4개 추가 필요, Phase 5 "0 신규 스킬" 원칙 위반.
+3. **OPT-C: orchestrator rule file이 harness skill.md의 orchestration을 대체**
+   — `workflow-orchestrator.md` 규칙에 각 트리거(`/code-reviewer` 등) 호출 시 main session이
+     수행할 **완전한 Task 호출 시퀀스**를 기록. harness skill.md는 참조 문서로 유지하되
+     실질 orchestration은 rule file이 담당.
+   - 각 Task 호출 시 해당 agent의 프리루드를 main session이 직접 prepend.
+   - 에이전트 `.md` 미수정 / 신규 스킬 0 원칙 모두 준수.
+   - Task 모델 오버라이드(`architecture-reviewer` opus) 자연스럽게 처리 가능.
+
+**자율 모드 확정 결정**: **OPT-C 채택**.
+
+- `.claude/rules/workflow-orchestrator.md` 가 4개 트리거의 **invocation sequence SSoT**가 된다.
+- harness-100 `.claude/skills/*/skill.md` 는 **참조 문서**로 유지, 그러나 main session은 이를
+  읽기만 하고 orchestration은 rule file을 따른다.
+- 결과: 프리루드는 main session이 각 Task 호출에 직접 삽입 — 도달 보장.
+- Trade-off: rule file이 200줄을 초과할 가능성 증가 → NOTE Dim 5 반영하여 **파일 분할을 Phase
+  6에 사전 인가**한다.
+
+### RESOLVED-ASK-2: 모델 티어 정당화 수정 — **"비용 우선" 명시**
+
+- `04-agent-team.md` Agent Model Table 및 관련 Rejected Alternatives의 근거 문구 "에이전트
+  `.md` 미수정 원칙"은 **기술적 틀림**. Task 호출 시 `model:` 파라미터로 override 가능.
+- **수정**: Phase 6 규칙 파일 및 본 산출물의 모델 티어 설명 문구를 **"비용 우선 — 사용자
+  고성능형 선택은 architecture-reviewer L-grade opus 자동 + `--opus` 수동 플래그 조합으로
+  존중"** 으로 통일.
+- `--opus` 수동 플래그는 `workflow-orchestrator.md` `## Review Mode Flags` 섹션에 명시. 사용자가
+  특정 실행에서 opus로 승격 원할 때 사용.
+
+### NOTE 반영 (Phase 6 실행 영향 항목)
+
+| NOTE | Phase 6 처리 |
+|------|--------------|
+| Dim 2 — M-grade plan.md 리뷰어 부재 | `workflow-orchestrator.md` `## Grade-Step Selection` 섹션에 "M-grade: plan.md = solo 자가 리뷰, 자동 에이전트 리뷰 없음 (L-grade 승격 시 architecture-reviewer 프리-구현 리뷰)" 명시. 침묵 아닌 명시적 문서화. |
+| Dim 4 — optimization-engineer 쓰기 강제 | `## Optimization-engineer Write Policy` 섹션에 **강제 imperative 문체** 사용: "MUST NOT write directly to `core/` source files. MUST write suggestions to `_workspace/03_optimization_plan.md`. Direct source edits require main-session confirmation." |
+| Dim 5 — 200줄 초과 우려 | **파일 분할 사전 인가**. Phase 6 판단으로 다음 분할 허용: `.claude/rules/workflow-orchestrator.md` (메인, 라우팅) + `.claude/rules/harness-invocation.md` (4개 트리거 세부 Task 시퀀스 + 프리루드) + 필요 시 `.claude/rules/complexity-gate.md` (grade 판정 상세). 각 파일 ≤ 200줄. |
+| Dim 8 — `_workspace/` 경로 컨벤션 | **Phase 5 flat root가 authoritative**. Phase 3/4의 `_workspace/{alias}/` 서브경로 표기는 superseded. 규칙 파일은 flat root 기준으로 작성 (`_workspace/00_input.md` 형식). |
+| Dim 12 — 0 신규 redteam 에이전트 | 유지. qa-reviewer / review-synthesizer / perf-reviewer가 도메인 리뷰어 역할. 규칙 파일에 "도메인-specific external redteam 미채택, 하네스 내재 리뷰어 사용" 명시. |
+
+### Phase 6 지시 변경점 요약
+
+- **산출물**: `.claude/rules/workflow-orchestrator.md` (메인) + **조건부 분할 허용** (≤200줄 기준).
+- **핵심 변경**: **rule file이 harness skill.md orchestration 대체**. 각 트리거의 완전한 Task
+  호출 시퀀스를 rule에 기록, 프리루드는 main session이 Task 호출마다 prepend.
+- **모델 티어 문구**: "비용 우선" 사유로 명시, `--opus` 수동 플래그는 선택 경로로 기록.
+- **쓰기 정책**: optimization-engineer에 강제 imperative 문체 적용.
+- **M-grade 리뷰 부재**: 침묵 아닌 명시적 문서화.
+- **경로 컨벤션**: flat `_workspace/` 루트만 사용 (서브 네임스페이스 표기 superseded).
