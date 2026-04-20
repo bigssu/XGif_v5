@@ -957,3 +957,96 @@ Phase 5: agent-team 소환 — 본 파이프라인 설계를 입력으로 사전
 문맥 프리루드 바인딩을 Phase 6에 전달하고, 신규 에이전트 프로비저닝 없음을 확정한다. Phase 6
 skill-forge는 `.claude/rules/workflow-orchestrator.md` 규칙 파일을 제작한다(본 산출물의
 "Orchestrator Rule File Spec" 섹션 준수, meta-leakage 용어 필터링 수행).
+
+---
+
+## Phase 4 Advisor Resolutions (2026-04-20, 자율 모드)
+
+Advisor verdict: **NEEDS-REVISION** (BLOCK 1건 + ASK 2건 + NOTE 4건). 자율 모드 지침에 따라
+BLOCK은 즉시 해결, ASK는 합리적 기본값 확정, NOTE 중 실행 영향 있는 항목은 반영한다. 본
+섹션은 Phase 5/6에 대한 **덮어쓰기 결정**이다.
+
+### RESOLVED-BLOCK-1: `_workspace/` 네임스페이스 구현 — **Option A+ (루트 공유 + 진입 클린업)**
+
+Advisor의 정확한 진단: 에이전트 `.md` 파일은 `_workspace/<NN>_xxx.md`를 **본문에 하드코드**하고
+있어, 오케스트레이터의 프리루드("이 경로를 `_workspace/{alias}/`로 읽으시오")는 LLM 조언 수준에
+그친다. 파일시스템 리다이렉트 메커니즘이 없다.
+
+**자율 모드 확정 결정**: **Option A+ 채택**.
+- **에이전트 `.md` 파일은 절대 수정하지 않는다** (공유 설치 원칙 유지, 업스트림 harness-100
+  업데이트 호환).
+- `_workspace/` 는 **프로젝트 루트 단일 디렉터리로 공유** 운용한다.
+- **순차 실행만 허용**: 동시에 두 개의 `/skill` 호출 금지.
+- **진입 클린업 의무**: 오케스트레이터 규칙(`workflow-orchestrator.md`)에 다음 규약을 기록.
+  > 사용자가 `/code-reviewer`, `/test-automation`, `/performance-optimizer`, `/cli-tool-builder`
+  > 중 하나를 호출하면, 메인 세션은 해당 스킬 실행 **직전에** 다음을 수행한다:
+  > 1. `_workspace/` 디렉터리가 존재하면 `mv _workspace _workspace.prev-{timestamp}` 로 리네임
+  >    (사용자가 직전 산출물을 재참조할 수 있도록 보존, 삭제 아님).
+  > 2. 새 `_workspace/` 빈 디렉터리를 생성.
+  > 3. 스킬 진입.
+- **가비지 보존 정책**: `_workspace.prev-*` 폴더는 최대 3개까지만 유지, 초과 시 가장 오래된
+  것부터 삭제. Phase 7-8 훅에서 구현하거나, 오케스트레이터 규칙에 inline 기록.
+- **`.gitignore` 추가 필수** (Phase 7-8): `_workspace/`, `_workspace.prev-*`.
+
+**Trade-off 수용**: 재-실행 시 "앞선 하네스 결과가 `_workspace.prev-*`로 이동"을 감수. 병렬
+실행 불가는 솔로 개발자 + Opus 비용 관점에서 합리적 제약. 03-pipeline-design.md `_workspace/
+네임스페이스 라우팅` 섹션의 "옵션 a" 기술은 **본 결정으로 대체**되며, `_workspace/{test|review|
+perf|cli}/` 표기는 **지시적 메타데이터**(어느 하네스가 어느 파일을 생성하는지 문서화)로만
+사용한다.
+
+**Phase 6 책임**:
+- `workflow-orchestrator.md` 규칙 파일에 상기 진입 클린업 규약 기록.
+- "The shipped rule file MUST NOT contain phase-vocabulary" 제약은 유지 — 본 섹션의 용어는
+  `docs/xgif-setup/` 내부 전용이다.
+
+### RESOLVED-ASK-1: M-grade Review 에이전트 수 — **3-agent 확정**
+
+Phase 3 "partial (2 agents)"과 Phase 4 "3-agent" 사이의 묵시적 변경을 **명시적 결정으로
+승격**한다.
+
+- **확정**: M-grade STEP 4 = 3 agents (`style-inspector` + `architecture-reviewer` + `review-synthesizer`).
+- **제외**: `security-analyst` (보안 취약 신호 있을 때 L-grade로 승격), `performance-analyst` (STEP 5
+  `performance-optimizer`의 전문 5-agent로 커버).
+- **근거**: solo 개발자의 M-grade 리뷰 빈도(일 1-2회 예상) × Opus 비용. 2-agent은 아키텍처
+  관점 부재로 regressions 탐지력 낮음; 5-agent은 중복. 3-agent이 피드백 밀도 / 비용의 최적점.
+- **예외 래더**: `--review=full` 플래그 시 5-agent 풀 실행. Phase 6 규칙 파일에 선택 구현.
+
+### RESOLVED-ASK-2: M-grade plan.md 리뷰 부재 — **solo 자가 리뷰로 충분, 문서화**
+
+- **확정**: M-grade는 solo 개발자의 직접 plan.md 리뷰로 진행. 외부 plan-critic 에이전트 불호출.
+- **근거**: 자동화 plan 리뷰는 L-grade의 아키텍처 리스크 방지용. M-grade는 구현 방향이 이미
+  명확한 작업 크기.
+- **탈출구**: L-grade로 grade-up 시 plan.md가 `architecture-reviewer`의 프리-구현 리뷰 대상이 됨.
+  사용자가 M-grade 상태에서도 외부 리뷰를 원하면 `/code-reviewer --plan-only <path>` 형태로
+  수동 호출 가능 (Phase 6 옵션 구현).
+
+### NOTE 반영 (실행 영향 항목만)
+
+- **GOD_OBJECTS Step A 누락 보완**: 본 파이프라인의 Step A 의사코드는 3개 파일 (`ui/main_window.py`,
+  `core/screen_recorder.py`, `core/capture_backend.py`)만 나열하는 오기가 있다. **공식 GOD_OBJECTS
+  리스트는 4개**: `ui/main_window.py`, `core/screen_recorder.py`, `core/capture_backend.py`,
+  `core/gif_encoder.py`. Phase 6은 후자 4개 리스트를 SSoT로 사용한다.
+- **프리루드 세션 내 캐시 불가**: LLM이 세션 내 프리루드를 기억할 수 없다는 Advisor의 지적은
+  사실이나, Option A+ 채택으로 프리루드 경로 치환의 필요성이 사라진다. XGif 컨텍스트 주입(5종
+  프리루드)은 여전히 필요하며, 매 skill 엔트리마다 재-주입한다.
+- **Reviewer allowed_dirs enforceability**: Option A+ 채택 시 모든 에이전트가 `_workspace/`에
+  직접 쓴다. 디렉터리 분리 기반 권한 구분은 기각되며, Phase 6은 이 기능을 제거한다.
+- **모델 티어**: sonnet 기본 + `architecture-reviewer` L-grade opus 오버라이드를 유지. 16/17
+  에이전트가 sonnet이므로 사실상 Balanced 티어와 유사한 비용 프로파일이나, 사용자가 `--opus`
+  명시 플래그로 개별 에이전트 승격 가능하도록 Phase 6 규칙 파일에 선택 경로 기록.
+
+### Phase 5/6 지시 변경점 요약
+
+Phase 5 (agent-team):
+- 신규 에이전트 프로비저닝 **여전히 0명**. Option A+ 수용.
+- Phase 6으로 전달할 규약 리스트:
+  1. 진입 클린업 규약 (`_workspace/` → `_workspace.prev-{ts}/` → 빈 `_workspace/`)
+  2. 가비지 보존 정책 (최대 3개)
+  3. `_workspace/{alias}/` 표기는 **문서 레이블용**, 실제 경로 아님
+  4. GOD_OBJECTS 4-파일 리스트 (SSoT)
+  5. M-grade Review = 3-agent 고정, `--review=full` 옵션 분기
+  6. Opus 오버라이드는 `architecture-reviewer` L-grade 기본 + `--opus` 수동 플래그
+
+Phase 6 (skill-forge):
+- `workflow-orchestrator.md` 규칙 파일 작성 시 본 섹션 결정을 반영 + 메타 용어 필터링.
+- `.gitignore` 업데이트 목록: `_workspace/`, `_workspace.prev-*` (실제 커밋은 Phase 7-8).
