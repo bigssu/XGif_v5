@@ -122,8 +122,7 @@ class ScreenRecorder:
         self._recording_end_time: Optional[float] = None
         self.actual_fps: Optional[float] = None
         self.frames: List[np.ndarray] = []
-        self._cached_frame_size = None
-        
+
         # 마우스 클릭 감지
         self._click_lock = threading.Lock()
         
@@ -403,8 +402,7 @@ class ScreenRecorder:
         
         try:
             self.frames = []
-            self._cached_frame_size = None
-            
+
             # 영역 설정
             x, y, w, h = self.region
 
@@ -745,14 +743,6 @@ class ScreenRecorder:
         frame_size = self.frames[0].nbytes if self.frames else 0
         return (frame_size * len(self.frames)) / (1024 * 1024)
     
-    def is_gpu_mode(self) -> bool:
-        """GPU 모드 사용 여부 (녹화에서는 항상 CPU 사용)"""
-        return False
-    
-    def set_gpu_mode(self, enabled: bool):
-        """GPU 모드 설정 (녹화에서는 무시 - FFmpeg 인코딩에서만 GPU 사용)"""
-        pass
-
 
 
 def draw_cursor_internal(frame: np.ndarray, region_x: int, region_y: int) -> np.ndarray:
