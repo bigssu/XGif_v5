@@ -4,7 +4,6 @@ Windows HDR 감지 및 GPU 가속 톤 매핑 (SDR 변환)
 """
 
 import logging
-import os
 import sys
 from typing import Optional
 
@@ -231,7 +230,7 @@ def analyze_dxcam_output(frame: np.ndarray) -> dict:
     """DXCam 출력 형식 자동 진단 (픽셀값 통계 분석)"""
     if frame is None or frame.size == 0:
         return {'diagnosis': 'invalid'}
-    
+
     stats = {
         'mean': float(np.mean(frame)),
         'median': float(np.median(frame)),
@@ -242,7 +241,7 @@ def analyze_dxcam_output(frame: np.ndarray) -> dict:
         'dark_pixels_pct': float(np.sum(frame < 50) / frame.size * 100),
         'saturated_pct': float(np.sum(frame >= 255) / frame.size * 100),
     }
-    
+
     # 진단 로직
     if stats['mean'] > 180 and stats['bright_pixels_pct'] > 50:
         # 평균 매우 밝고 밝은 픽셀 많음 → 선형 데이터 가능성
@@ -255,7 +254,7 @@ def analyze_dxcam_output(frame: np.ndarray) -> dict:
         stats['diagnosis'] = 'likely_srgb'
     else:
         stats['diagnosis'] = 'unknown'
-    
+
     logger.info(f"[DXCam Analysis] mean={stats['mean']:.1f}, max={stats['max']}, bright_pct={stats['bright_pixels_pct']:.1f}%, diagnosis={stats['diagnosis']}")
     return stats
 
@@ -301,11 +300,11 @@ def apply_hdr_correction_adaptive(frame: np.ndarray) -> np.ndarray:
                 logger.info(f"[HDR] Auto-detected mode: {apply_hdr_correction_adaptive._mode} (diagnosis: {diagnosis})")
 
     mode = apply_hdr_correction_adaptive._mode
-    
+
     # 모드별 처리
     if mode == 'passthrough':
         return frame
-    
+
     elif mode == 'linear_to_srgb':
         # 선형 → sRGB 감마 (2.2)
         try:
@@ -315,7 +314,7 @@ def apply_hdr_correction_adaptive(frame: np.ndarray) -> np.ndarray:
         except Exception as e:
             logger.debug(f"linear_to_srgb failed: {e}")
             return frame
-    
+
     elif mode == 'gamma_down':
         # 감마 다운 (밝기 감소)
         try:
@@ -325,11 +324,11 @@ def apply_hdr_correction_adaptive(frame: np.ndarray) -> np.ndarray:
         except Exception as e:
             logger.debug(f"gamma_down failed: {e}")
             return frame
-    
+
     elif mode == 'obs':
         # 기존 OBS 방식
         return apply_hdr_correction_obs(frame)
-    
+
     else:
         # 알 수 없는 모드
         return frame
@@ -345,11 +344,11 @@ def apply_hdr_correction_obs(frame: np.ndarray) -> np.ndarray:
     """
     if frame is None or frame.size == 0 or frame.dtype != np.uint8:
         return frame
-    
+
     # 작은 프레임은 CPU 사용 (GPU 오버헤드 방지)
     h, w = frame.shape[:2]
     use_gpu = (h * w) >= 640 * 480  # 640x480 이상만 GPU 사용
-    
+
     try:
         xp = _get_array_module() if use_gpu else np
         v = xp.asarray(frame, dtype=xp.float32) / 255.0

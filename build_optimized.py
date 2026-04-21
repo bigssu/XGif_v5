@@ -551,7 +551,7 @@ def run_sign(pfx_path, pfx_password, exe_paths=None):
     sign_env = os.environ.copy()
     sign_env["XGIF_SIGN_PASSWORD"] = pfx_password
 
-    print(f"\n=== Code Signing ===")
+    print("\n=== Code Signing ===")
     subprocess.run(cmd, check=True, cwd=PROJECT_DIR, env=sign_env)
 
 
@@ -569,7 +569,7 @@ def run_installer():
         print("        Or add ISCC.exe to PATH.")
         sys.exit(1)
 
-    print(f"\n=== Building Installer ===")
+    print("\n=== Building Installer ===")
     print(f"  ISCC: {iscc}")
     print(f"  Script: {iss_path}")
     subprocess.run([iscc, iss_path], check=True, cwd=PROJECT_DIR)

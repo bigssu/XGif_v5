@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import sys
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict
 
 logger = logging.getLogger(__name__)
 

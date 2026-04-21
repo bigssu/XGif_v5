@@ -2,7 +2,7 @@
 
 import pytest
 from editor.core.undo_manager import (
-    UndoManager, LambdaAction, UndoTransaction,
+    UndoManager,
 )
 
 
@@ -87,10 +87,9 @@ class TestUndoTransaction:
 
     def test_context_manager_exception_rolls_back(self, manager):
         results = []
-        with pytest.raises(ValueError):
-            with manager.transaction("fail"):
-                manager.execute_lambda("a", lambda: results.append("a"), lambda: results.pop())
-                raise ValueError("test error")
+        with pytest.raises(ValueError), manager.transaction("fail"):
+            manager.execute_lambda("a", lambda: results.append("a"), lambda: results.pop())
+            raise ValueError("test error")
 
         assert results == []  # rolled back
         assert manager.undo_count == 0

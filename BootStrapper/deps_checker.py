@@ -150,7 +150,7 @@ def check_cupy() -> tuple[bool, str]:
         devices = lines[-1] if len(lines) > 1 else "?"
         log_and_ui(f"CuPy 정상 – GPU 장치 수: {devices}")
         return True, f"GPU {devices}개"
-    
+
     detail = (err or out or "import 실패").strip()[:120]
     log_and_ui(f"CuPy 검증 실패: {detail}")
     return False, "import 실패"

@@ -309,7 +309,7 @@ class SettingsDialog(ThemedDialog):
         """dxcam 미설치 시 3버튼 모달로 설치 제안"""
         from core.dependency_checker import check_dxcam, DependencyState
         from ui.dependency_dialogs import (
-            DependencyInstallDialog, ID_INSTALL, ID_DISABLE, show_install_flow,
+            DependencyInstallDialog, ID_INSTALL, show_install_flow,
         )
 
         status = check_dxcam()

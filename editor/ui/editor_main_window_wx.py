@@ -12,10 +12,9 @@ import os
 from .. import __version__, __last_modified__
 from ..core import FrameCollection, GifDecoder, GifEncoder, UndoManager, gpu_utils
 # wxPython 호환 Worker 사용
-from ..core.worker_wx import get_worker_manager, VideoLoadWorker, SaveWorker, FunctionWorker
+from ..core.worker_wx import get_worker_manager, VideoLoadWorker, FunctionWorker
 from ..core.frame import get_memory_manager
 from ..core.editor_gif_encoder import EncoderSettings
-from ..core.image_effects import ImageEffects
 from ..utils.translations import Translations
 from ..utils.logger import get_logger
 from core.app_shutdown import ensure_exit_if_no_primary_windows
@@ -24,16 +23,10 @@ from core.app_shutdown import ensure_exit_if_no_primary_windows
 from .canvas_widget_wx import CanvasWidget
 from .frame_list_widget_wx import FrameListWidget
 from .icon_toolbar_wx import IconToolbar
-from .icon_utils_wx import IconFactory, IconColors
+from .icon_utils_wx import IconFactory
 from .style_constants_wx import Colors, Fonts
 
 # ── 다이얼로그 (wxPython 버전) ──────────────────────────────
-from .dialogs.crop_dialog_wx import CropDialog
-from .dialogs.resize_dialog_wx import ResizeDialog
-from .dialogs.effects_dialog_wx import EffectsDialog
-from .dialogs.text_dialog_wx import TextDialog
-from .dialogs.sticker_dialog_wx import StickerDialog
-from .dialogs.speed_dialog_wx import SpeedDialog
 from .dialogs.target_frame_hint_dialog_wx import TargetFrameHintDialog
 
 from .save_dialog_wx import SaveDialog
@@ -2247,7 +2240,6 @@ class MainWindow(wx.Frame):
 
     def _maybe_show_target_frame_hint(self) -> None:
         """대상 프레임 선택 안내 팝업 표시 ("다시 보지 않기" 토글 포함)"""
-        from .dialogs.target_frame_hint_dialog_wx import TargetFrameHintDialog
 
         if not TargetFrameHintDialog.should_show(self._settings):
             return

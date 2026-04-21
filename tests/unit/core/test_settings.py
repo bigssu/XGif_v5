@@ -1,8 +1,7 @@
 """AppSettings 직렬화/검증 테스트."""
 
 import os
-import pytest
-from core.settings import AppSettings, get_config_path
+from core.settings import AppSettings
 
 
 class TestAppSettingsDefaults:

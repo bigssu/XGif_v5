@@ -1,6 +1,5 @@
 """CLI 인자 파싱 테스트."""
 
-import pytest
 from core.settings import AppSettings
 
 

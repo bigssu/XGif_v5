@@ -11,7 +11,6 @@ import glob
 import os
 import shutil
 import subprocess
-import sys
 import threading
 
 import paths
@@ -98,13 +97,13 @@ def install_python311(progress_cb=None) -> bool:
     pth_files = glob.glob(os.path.join(paths.PY311_DIR, "python*._pth"))
     for pth in pth_files:
         log_and_ui(f"._pth 파일 수정: {os.path.basename(pth)}")
-        
+
         with open(pth, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        
+
         new_lines = []
         found_import_site = False
-        
+
         for line in lines:
             stripped = line.strip()
             # Uncomment if commented
@@ -113,21 +112,21 @@ def install_python311(progress_cb=None) -> bool:
                      new_lines.append("import site\n")
                      found_import_site = True
                      continue
-            
+
             # Keep existing if already uncommented
             if stripped == "import site":
                 found_import_site = True
                 new_lines.append(line)
                 continue
-                
+
             new_lines.append(line)
-        
+
         # If not found, append it
         if not found_import_site:
             if new_lines and not new_lines[-1].endswith("\n"):
                 new_lines.append("\n")
             new_lines.append("import site\n")
-            
+
         with open(pth, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
 

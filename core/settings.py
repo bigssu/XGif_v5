@@ -9,7 +9,7 @@ INI 포맷 유지 (configparser 기반), %APPDATA%\\XGif\\config.ini 저장.
 import configparser
 import logging
 import os
-from dataclasses import dataclass, field, fields, asdict
+from dataclasses import dataclass, fields
 from typing import Optional
 
 logger = logging.getLogger(__name__)

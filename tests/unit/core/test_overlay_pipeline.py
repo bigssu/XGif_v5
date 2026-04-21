@@ -1,7 +1,6 @@
 """OverlayPipeline 적용 순서 테스트."""
 
 import numpy as np
-import pytest
 from core.overlay.pipeline import OverlayBase, OverlayPipeline
 
 

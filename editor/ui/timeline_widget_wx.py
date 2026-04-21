@@ -6,11 +6,10 @@ wx.BufferedPaintDC를 사용한 고성능 렌더링
 """
 import wx
 from typing import Optional, List, TYPE_CHECKING
-from PIL import Image
 from .style_constants_wx import Colors, Fonts
 from ..utils.image_utils import pil_to_wx_bitmap
 from ..utils.wx_events import (
-    FrameSelectedEvent, FramesReorderedEvent, FrameDelayChangedEvent
+    FramesReorderedEvent, FrameDelayChangedEvent
 )
 
 if TYPE_CHECKING:

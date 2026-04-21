@@ -286,21 +286,13 @@ def _apply_child_theme(widget: wx.Window):
     sys_bg = _is_system_bg(widget)
 
     # 입력 위젯: bg + fg
-    if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)):
-        if sys_bg:
-            widget.SetBackgroundColour(Colors.BG_TERTIARY)
-        if unstyled:
-            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-    elif isinstance(widget, (wx.ComboBox, wx.Choice)):
+    if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)) or isinstance(widget, (wx.ComboBox, wx.Choice)):
         if sys_bg:
             widget.SetBackgroundColour(Colors.BG_TERTIARY)
         if unstyled:
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
     # 텍스트/라벨: fg만
-    elif isinstance(widget, wx.StaticText):
-        if unstyled:
-            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-    elif isinstance(widget, wx.StaticBox):
+    elif isinstance(widget, wx.StaticText) or isinstance(widget, wx.StaticBox):
         if unstyled:
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
     elif isinstance(widget, (wx.CheckBox, wx.RadioButton)):

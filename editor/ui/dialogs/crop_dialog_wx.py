@@ -4,7 +4,6 @@ CropDialog - 이미지 자르기 다이얼로그 (wxPython 버전)
 간소화 버전: 스핀박스로 좌표 입력
 """
 import wx
-from PIL import Image
 from typing import TYPE_CHECKING, Tuple
 from ..style_constants_wx import Colors, ThemedDialog
 

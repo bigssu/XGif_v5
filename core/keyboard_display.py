@@ -21,7 +21,7 @@ except ImportError:
 
 # 타입 체크 시에만 import
 if TYPE_CHECKING:
-    from pynput.keyboard import Listener
+    pass
 
 
 class KeyboardDisplay:
@@ -32,7 +32,7 @@ class KeyboardDisplay:
             kbd.set_enabled(True)
             frame = kbd.apply_keyboard_display(frame)
     """
-    
+
     def __init__(self):
         self.enabled = False
         self.position = 'bottom'  # 'top', 'bottom'
@@ -53,20 +53,20 @@ class KeyboardDisplay:
         self._cached_key_text: Optional[str] = None
         self._cached_text_array: Optional[np.ndarray] = None
         self._cached_text_size: Optional[Tuple[int, int]] = None
-    
+
     def __enter__(self):
         """Context Manager 진입"""
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context Manager 종료"""
         self.stop_listening()
         return False
-    
+
     def is_available(self) -> bool:
         """키보드 입력 감지 가능 여부"""
         return HAS_KEYBOARD
-    
+
     def set_enabled(self, enabled: bool):
         """키보드 입력 표시 활성화/비활성화"""
         self.enabled = enabled
@@ -74,12 +74,12 @@ class KeyboardDisplay:
             self.start_listening()
         else:
             self.stop_listening()
-    
+
     def start_listening(self):
         """키보드 리스너 시작"""
         if not HAS_KEYBOARD or self._listener is not None:
             return
-        
+
         try:
             if not HAS_KEYBOARD:
                 return
@@ -92,7 +92,7 @@ class KeyboardDisplay:
             logger.warning("키보드 리스너 시작 실패 (의존성 문제): %s", e)
         except Exception as e:
             logger.warning("키보드 리스너 시작 실패: %s", e)
-    
+
     def stop_listening(self):
         """키보드 리스너 중지"""
         if self._listener:
@@ -101,11 +101,11 @@ class KeyboardDisplay:
             except Exception:
                 pass
             self._listener = None
-        
+
         with self._lock:
             self._key_events = []
             self._pressed_keys = set()
-    
+
     def _on_key_press(self, key):
         """키 누름 이벤트"""
         if not self.enabled:
@@ -136,7 +136,7 @@ class KeyboardDisplay:
                     self._pressed_keys.discard(key_str)
         except Exception:
             pass
-    
+
     def _key_to_string(self, key) -> Optional[str]:
         """키를 문자열로 변환"""
         try:
@@ -164,19 +164,19 @@ class KeyboardDisplay:
             return None
         except Exception:
             return None
-    
+
     def _get_current_key_text(self) -> str:
         """현재 표시할 키 텍스트"""
         with self._lock:
             current_time = time.perf_counter()
             cutoff_time = current_time - self.display_duration
-            
+
             # 최근 키 이벤트만 필터링
             recent_events = [(k, t) for k, t in self._key_events if t > cutoff_time]
-            
+
             if not recent_events:
                 return ""
-            
+
             # 키 조합 생성 (Ctrl+C 등)
             if len(recent_events) > 1:
                 # 최근 이벤트들을 조합
@@ -184,20 +184,20 @@ class KeyboardDisplay:
                 return " + ".join(keys)
             else:
                 return recent_events[-1][0]
-    
+
     def apply_keyboard_display(self, frame: np.ndarray) -> np.ndarray:
         """프레임에 키보드 입력 표시 적용"""
         # 안전 검증
         if not self.enabled:
             return frame
-        
+
         if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0:
             return frame
-        
+
         key_text = self._get_current_key_text()
         if not key_text:
             return frame
-        
+
         try:
             from PIL import Image, ImageDraw
 
@@ -242,14 +242,14 @@ class KeyboardDisplay:
                 self._cached_key_text = key_text
                 self._cached_text_array = text_array
                 self._cached_text_size = (img_width, img_height)
-            
+
             # 공통 유틸리티로 위치 계산 (중앙 정렬을 위해 position 조정)
             position = 'top' if self.position == 'top' else 'bottom'
             x, y = calculate_overlay_position(w, h, img_width, img_height, position, margin=20)
             # 가로 중앙 정렬
             x = (w - img_width) // 2
             x = max(0, min(x, w - img_width))
-            
+
             # 알파 블렌딩 적용 (RGBA 자동 처리)
             roi = frame[y:y+img_height, x:x+img_width]
             roi_h, roi_w = roi.shape[:2]
@@ -261,13 +261,13 @@ class KeyboardDisplay:
                 bgr = ta[:, :, 2::-1]  # RGB → BGR (프레임은 BGR 형식)
                 blended = (roi * (1.0 - alpha) + bgr * alpha).astype(np.uint8)
                 frame[y:y+roi_h, x:x+roi_w] = blended
-            
+
             return frame
         except (ImportError, OSError, ValueError, IndexError) as e:
             import logging
             logging.debug(f"키보드 표시 적용 실패: {e}")
             return frame
-    
+
     def __del__(self):
         """소멸자"""
         try:

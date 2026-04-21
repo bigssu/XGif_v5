@@ -6,7 +6,6 @@ PencilToolbar - 펜슬 그리기 인라인 툴바 (wxPython 버전)
 import wx
 from .base_toolbar_wx import InlineToolbarBase
 from ..style_constants_wx import Colors
-from ...utils.wx_events import ToolbarAppliedEvent, ToolbarCancelledEvent
 
 
 class PencilToolbar(InlineToolbarBase):

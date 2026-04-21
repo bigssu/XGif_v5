@@ -8,9 +8,7 @@ import wx
 from typing import TYPE_CHECKING, Optional, Callable
 from ..style_constants_wx import Colors
 from ...utils.wx_events import (
-    ToolbarAppliedEvent, EVT_TOOLBAR_APPLIED,
-    ToolbarCancelledEvent, EVT_TOOLBAR_CANCELLED,
-    ToolbarPreviewUpdatedEvent, EVT_TOOLBAR_PREVIEW_UPDATED
+    ToolbarAppliedEvent, ToolbarCancelledEvent, ToolbarPreviewUpdatedEvent
 )
 
 if TYPE_CHECKING:
@@ -145,22 +143,14 @@ class InlineToolbarBase(wx.Panel):
 
     def add_control(self, widget: wx.Window):
         """컨트롤 영역에 위젯 추가 (다크 테마 자동 적용)"""
-        if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)):
-            widget.SetBackgroundColour(Colors.BG_TERTIARY)
-            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        elif isinstance(widget, wx.ComboBox):
+        if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)) or isinstance(widget, wx.ComboBox):
             widget.SetBackgroundColour(Colors.BG_TERTIARY)
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
         elif isinstance(widget, wx.Slider):
             widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
-        elif isinstance(widget, wx.StaticText):
+        elif isinstance(widget, wx.StaticText) or isinstance(widget, wx.CheckBox):
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        elif isinstance(widget, wx.CheckBox):
-            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        elif isinstance(widget, wx.ToggleButton):
-            widget.SetBackgroundColour(Colors.BG_TERTIARY)
-            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        elif isinstance(widget, wx.Choice):
+        elif isinstance(widget, wx.ToggleButton) or isinstance(widget, wx.Choice):
             widget.SetBackgroundColour(Colors.BG_TERTIARY)
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._controls_sizer.Add(widget, 0, wx.ALL, 8)

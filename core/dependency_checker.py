@@ -8,7 +8,7 @@ import os
 import sys
 import threading
 from enum import Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 

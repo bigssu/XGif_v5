@@ -143,6 +143,6 @@ def run_convert(args) -> int:
         return EXIT_SUCCESS
     else:
         error_msg = result.stderr[:500] if result.stderr else "알 수 없는 오류"
-        print(f"xgif: 에러: 변환 실패", file=sys.stderr)
+        print("xgif: 에러: 변환 실패", file=sys.stderr)
         logger.error(f"FFmpeg error: {error_msg}")
         return EXIT_RUNTIME_ERROR

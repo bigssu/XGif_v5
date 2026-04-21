@@ -7,7 +7,7 @@ optimized for the XGif editor canvas and UI components.
 
 import wx
 from PIL import Image
-from typing import Tuple, Optional
+from typing import Optional
 
 
 def pil_to_wx_bitmap(pil_image: Image.Image) -> wx.Bitmap:

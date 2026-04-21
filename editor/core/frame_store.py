@@ -5,7 +5,6 @@
 """
 
 import atexit
-import logging
 import os
 import tempfile
 from collections import OrderedDict

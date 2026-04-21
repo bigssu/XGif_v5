@@ -2,7 +2,6 @@
 버전 정보 테스트
 """
 
-import pytest
 
 
 class TestVersion:

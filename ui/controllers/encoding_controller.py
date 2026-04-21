@@ -3,9 +3,8 @@
 import logging
 import os
 import threading
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
-import numpy as np
 import wx
 
 from ui.i18n import tr

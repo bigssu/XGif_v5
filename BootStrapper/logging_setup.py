@@ -13,7 +13,7 @@ _logger: Optional[logging.Logger] = None
 
 class UIHandler(logging.Handler):
     """UI에 로그를 전달하는 커스텀 핸들러"""
-    
+
     def emit(self, record):
         if _ui_callback:
             try:
@@ -25,24 +25,24 @@ class UIHandler(logging.Handler):
 def setup_logging(log_file: Path, level: int = logging.INFO) -> logging.Logger:
     """로깅 초기화"""
     global _logger
-    
+
     if _logger is not None:
         return _logger
-    
+
     # 로그 디렉토리 생성
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # 포맷터
     formatter = logging.Formatter(
         fmt="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
-    
+
     # 루트 로거 설정
     _logger = logging.getLogger("XGifBootstrapper")
     _logger.setLevel(level)
     _logger.handlers.clear()
-    
+
     # 파일 핸들러 (RotatingFileHandler: 2MB × 2 백업)
     file_handler = logging.handlers.RotatingFileHandler(
         log_file, maxBytes=2 * 1024 * 1024, backupCount=2, encoding="utf-8"
@@ -50,23 +50,23 @@ def setup_logging(log_file: Path, level: int = logging.INFO) -> logging.Logger:
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)
     _logger.addHandler(file_handler)
-    
+
     # 콘솔 핸들러 (개발용)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(level)
     _logger.addHandler(console_handler)
-    
+
     # UI 핸들러
     ui_handler = UIHandler()
     ui_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
     ui_handler.setLevel(level)
     _logger.addHandler(ui_handler)
-    
+
     _logger.info("=" * 50)
     _logger.info(f"XGif Bootstrapper 시작 - {datetime.now()}")
     _logger.info("=" * 50)
-    
+
     return _logger
 
 def get_logger() -> logging.Logger:
@@ -100,7 +100,7 @@ def read_recent_logs(log_file: Path, lines: int = 30) -> list[str]:
     """최근 로그 N줄 읽기"""
     if not log_file.exists():
         return []
-    
+
     try:
         with open(log_file, "r", encoding="utf-8") as f:
             all_lines = f.readlines()

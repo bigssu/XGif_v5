@@ -1,7 +1,7 @@
 """인코더 프리셋 테스트."""
 
 import pytest
-from core.encoder.presets import QualityPreset, QUALITY_PRESETS, ENCODER_TYPE_MAP
+from core.encoder.presets import QUALITY_PRESETS, ENCODER_TYPE_MAP
 
 
 class TestQualityPresets:

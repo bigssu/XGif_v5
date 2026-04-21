@@ -2,7 +2,6 @@
 유틸리티 함수 테스트
 """
 
-import pytest
 import numpy as np
 
 

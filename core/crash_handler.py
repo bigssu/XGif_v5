@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class CrashHandler:
     """전역 예외 핸들러"""
-    
+
     def __init__(self, log_dir: Optional[str] = None):
         """
         Args:
@@ -27,7 +27,7 @@ class CrashHandler:
             import os
             appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
             self.log_dir = Path(appdata) / 'XGif' / 'logs'
-        
+
         # 로그 디렉토리 생성
         try:
             self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -36,10 +36,10 @@ class CrashHandler:
             # 폴백: 현재 디렉토리
             self.log_dir = Path.cwd() / 'logs'
             self.log_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.crash_count = 0
         self.max_crashes = 10  # 최대 크래시 수 (무한 루프 방지)
-    
+
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """전역 예외 핸들러
         
@@ -52,22 +52,22 @@ class CrashHandler:
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
-        
+
         self.crash_count += 1
-        
+
         # 너무 많은 크래시 발생 시 중단
         if self.crash_count > self.max_crashes:
             logger.critical(f"Too many crashes ({self.crash_count}), terminating")
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             sys.exit(1)
-        
+
         # 에러 로깅
         error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
         logger.critical(f"Unhandled exception ({self.crash_count}):\n{error_msg}")
-        
+
         # 크래시 리포트 저장
         self._save_crash_report(exc_type, exc_value, exc_traceback)
-        
+
         # wxPython 애플리케이션 에러 다이얼로그 표시 (가능한 경우)
         try:
             import wx
@@ -88,26 +88,26 @@ class CrashHandler:
                 )
         except Exception:
             pass  # 다이얼로그 표시 실패해도 계속 진행
-    
+
     def _save_crash_report(self, exc_type, exc_value, exc_traceback):
         """크래시 리포트를 파일로 저장"""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             report_file = self.log_dir / f"crash_{timestamp}.log"
-            
+
             with open(report_file, 'w', encoding='utf-8') as f:
-                f.write(f"=== XGif Crash Report ===\n")
+                f.write("=== XGif Crash Report ===\n")
                 f.write(f"Time: {datetime.now().isoformat()}\n")
                 f.write(f"Exception Type: {exc_type.__name__}\n")
                 f.write(f"Exception Value: {str(exc_value)}\n")
-                f.write(f"\n=== Traceback ===\n")
+                f.write("\n=== Traceback ===\n")
                 f.write(''.join(traceback.format_exception(exc_type, exc_value, exc_traceback)))
-                f.write(f"\n=== System Info ===\n")
+                f.write("\n=== System Info ===\n")
                 f.write(f"Python: {sys.version}\n")
                 f.write(f"Platform: {sys.platform}\n")
-            
+
             logger.info(f"Crash report saved: {report_file}")
-            
+
         except (IOError, OSError) as e:
             logger.error(f"Cannot save crash report: {e}")
 
@@ -166,7 +166,7 @@ def retry_on_failure(max_retries=3, delay=0.1, exceptions=(Exception,)):
     def decorator(func):
         def wrapper(*args, **kwargs):
             import time
-            
+
             last_exception = None
             for attempt in range(max_retries):
                 try:
@@ -178,7 +178,7 @@ def retry_on_failure(max_retries=3, delay=0.1, exceptions=(Exception,)):
                         time.sleep(delay)
                     else:
                         logger.error(f"{func.__name__} failed after {max_retries} attempts: {e}")
-            
+
             # 모든 재시도 실패
             if last_exception:
                 raise last_exception

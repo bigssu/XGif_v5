@@ -1,6 +1,5 @@
 """XGif CLI 모드 진입점 + argparse 정의"""
 import argparse
-import sys
 import os
 import logging
 

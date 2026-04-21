@@ -6,7 +6,6 @@ FFmpeg 자동 다운로드 및 설치 모듈
 import os
 import sys
 import zipfile
-import hashlib
 import urllib.request
 import shutil
 import tempfile
@@ -36,13 +35,13 @@ def get_ffmpeg_dir() -> Path:
             bundled_ffmpeg = meipass_dir / 'ffmpeg'
             if bundled_ffmpeg.exists():
                 return bundled_ffmpeg
-        
+
         # --onedir 모드 또는 실행 파일과 같은 위치
         base_dir = Path(sys.executable).parent
         bundled_ffmpeg = base_dir / 'ffmpeg'
         if bundled_ffmpeg.exists():
             return bundled_ffmpeg
-        
+
         # 기본값: 실행 파일과 같은 위치
         return base_dir / 'ffmpeg'
     else:
@@ -93,7 +92,7 @@ def check_system_ffmpeg() -> str:
 
 class FFmpegDownloader(threading.Thread):
     """FFmpeg 다운로드 스레드"""
-    
+
     def __init__(self, progress_callback=None, status_callback=None, finished_callback=None):
         """
         Args:
@@ -106,11 +105,11 @@ class FFmpegDownloader(threading.Thread):
         self._status_callback = status_callback
         self._finished_callback = finished_callback
         self._cancelled = False
-    
+
     def cancel(self):
         """다운로드 취소"""
         self._cancelled = True
-    
+
     def _safe_callback(self, callback, *args):
         """콜백을 메인 스레드에서 안전하게 실행 (GUI: wx.CallAfter, CLI: 직접 호출)"""
         if callback:
@@ -129,7 +128,7 @@ class FFmpegDownloader(threading.Thread):
             self._download_and_install()
         except Exception as e:
             self._safe_callback(self._finished_callback, False, f"설치 실패: {str(e)}")
-    
+
     def _download_and_install(self):
         """FFmpeg 다운로드 및 설치"""
         ffmpeg_dir = get_ffmpeg_dir()
@@ -180,7 +179,7 @@ class FFmpegDownloader(threading.Thread):
                 shutil.rmtree(temp_dir)
             except Exception:
                 pass
-    
+
     def _download_file(self, url: str, dest_path: str) -> bool:
         """파일 다운로드 (진행률 표시, 전체 타임아웃 300초)"""
         try:
@@ -228,7 +227,7 @@ class FFmpegDownloader(threading.Thread):
         except (urllib.error.URLError, IOError, OSError) as e:
             logger.error(f"다운로드 에러: {e}")
             return False
-    
+
     @staticmethod
     def _verify_zip_integrity(zip_path: str) -> bool:
         """다운로드된 ZIP 파일 무결성 검증 (CRC + 최소 크기)"""
@@ -302,7 +301,7 @@ class FFmpegDownloader(threading.Thread):
 
 class FFmpegManager:
     """FFmpeg 관리 클래스"""
-    
+
     @staticmethod
     def get_ffmpeg_executable() -> str:
         """사용 가능한 FFmpeg 경로 반환 (시스템 PATH 우선, 없으면 포함된 ffmpeg 사용)"""
@@ -310,14 +309,14 @@ class FFmpegManager:
         system_path = check_system_ffmpeg()
         if system_path and os.path.exists(system_path):
             return system_path
-        
+
         # 2. 포함된 ffmpeg 확인 (빌드 시 포함된 바이너리)
         bundled_path = get_ffmpeg_path()
         if bundled_path and os.path.exists(bundled_path):
             return bundled_path
-        
+
         return None
-    
+
     @staticmethod
     def get_ffmpeg_env() -> dict:
         """FFmpeg 실행을 위한 환경 변수 딕셔너리 반환
@@ -329,34 +328,34 @@ class FFmpegManager:
             dict: 환경 변수 딕셔너리 (subprocess 실행 시 env 파라미터로 사용)
         """
         env = os.environ.copy()
-        
+
         # 시스템 PATH에 ffmpeg가 있는지 확인
         system_path = check_system_ffmpeg()
         if system_path and os.path.exists(system_path):
             # 시스템 ffmpeg 사용 중이면 환경 변수 변경 불필요
             return env
-        
+
         # 포함된 ffmpeg 사용 중인 경우
         bundled_path = get_ffmpeg_path()
         if bundled_path and os.path.exists(bundled_path):
             # ffmpeg 디렉토리를 PATH에 추가
             ffmpeg_dir = Path(bundled_path).parent
             ffmpeg_dir_str = str(ffmpeg_dir)
-            
+
             # PATH에 이미 포함되어 있지 않으면 추가
             current_path = env.get('PATH', '')
             if ffmpeg_dir_str not in current_path:
                 # Windows와 Unix 모두 지원
                 path_separator = os.pathsep
                 env['PATH'] = ffmpeg_dir_str + path_separator + current_path
-        
+
         return env
-    
+
     @staticmethod
     def is_available() -> bool:
         """FFmpeg 사용 가능 여부"""
         return FFmpegManager.get_ffmpeg_executable() is not None
-    
+
     @staticmethod
     def needs_installation() -> bool:
         """설치가 필요한지 확인"""

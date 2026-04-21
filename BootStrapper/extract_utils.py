@@ -7,7 +7,6 @@ import shutil
 import zipfile
 from logging_setup import log_and_ui, get_logger
 
-import paths
 
 
 def extract_zip(

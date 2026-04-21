@@ -11,7 +11,7 @@ import wx
 from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr
 from ui.capture_control_bar import FlatButton
-from core.dependency_checker import DependencyState, DependencyStatus
+from core.dependency_checker import DependencyState
 
 logger = logging.getLogger(__name__)
 

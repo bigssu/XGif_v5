@@ -6,7 +6,6 @@ startup_check_dialog.py 디자인 기반 – 독립 실행형 부트스트래퍼
 """
 import wx
 import wx.lib.newevent
-import subprocess
 import threading
 import os
 from typing import Optional
@@ -213,7 +212,8 @@ class BootstrapperFrame(wx.Frame):
     def __init__(self, logger, paths_module):
         # 버전 정보 가져오기
         try:
-            import importlib, sys, os
+            import importlib
+            import os
             # core/version.py를 직접 로드 (부트스트래퍼는 core 패키지 밖에 있음)
             _target = paths_module.get_target_dir()
             _ver_path = os.path.join(str(_target), "core", "version.py")

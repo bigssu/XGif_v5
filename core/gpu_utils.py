@@ -6,12 +6,11 @@ pynvml 우선, nvidia-smi 폴백
 
 import subprocess
 import shutil
-import os
 import warnings
 import threading
 import logging
-from typing import Optional, Dict, Any
-from dataclasses import dataclass, field
+from typing import Optional
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -69,16 +68,16 @@ _gpu_info: Optional[GpuInfo] = None
 def _init_pynvml() -> bool:
     """pynvml 초기화 (한 번만 실행)"""
     global _pynvml_initialized
-    
+
     if not HAS_PYNVML:
         return False
-    
+
     if _pynvml_initialized:
         return True
-    
+
     try:
         pynvml.nvmlInit()
-        
+
         # 초기화 성공 검증 (디바이스 카운트 조회 시도)
         try:
             device_count = pynvml.nvmlDeviceGetCount()
@@ -88,7 +87,7 @@ def _init_pynvml() -> bool:
         except pynvml.NVMLError as e:
             logger.warning(f"NVML device count check failed: {e}")
             return False
-        
+
         _pynvml_initialized = True
         return True
     except (pynvml.NVMLError, OSError, AttributeError) as e:
@@ -99,7 +98,7 @@ def _init_pynvml() -> bool:
 def _shutdown_pynvml():
     """pynvml 종료"""
     global _pynvml_initialized
-    
+
     if HAS_PYNVML and _pynvml_initialized:
         try:
             pynvml.nvmlShutdown()
@@ -275,10 +274,10 @@ def _check_ffmpeg_nvenc() -> bool:
             ffmpeg_path = FFmpegManager.get_ffmpeg_executable()
         except ImportError:
             pass
-    
+
     if not ffmpeg_path:
         return False
-    
+
     try:
         from .utils import run_subprocess_silent
         result = run_subprocess_silent([ffmpeg_path, '-hwaccels'], timeout=5)
@@ -315,7 +314,7 @@ def to_gpu(array: np.ndarray):
     if array is None or not isinstance(array, np.ndarray):
         logger.warning(f"Invalid array type for GPU transfer: {type(array)}")
         return array
-    
+
     if _check_cupy() and _cp is not None:
         try:
             return _cp.asarray(array)
@@ -329,7 +328,7 @@ def to_cpu(array) -> np.ndarray:
     """GPU 배열을 CPU(NumPy)로 전송 (안전)"""
     if array is None:
         return np.array([])
-    
+
     if _check_cupy() and _cp is not None and hasattr(array, 'get'):
         try:
             return array.get()
@@ -339,17 +338,17 @@ def to_cpu(array) -> np.ndarray:
             if isinstance(array, np.ndarray):
                 return array
             return np.array([])
-    
+
     return array if isinstance(array, np.ndarray) else np.array([])
 
 
 def get_gpu_info_string() -> str:
     """GPU 정보를 사람이 읽을 수 있는 문자열로 반환"""
     info = detect_gpu()
-    
+
     if not info.has_cuda:
         return "GPU 없음 (CPU 모드)"
-    
+
     parts = []
     if info.gpu_name:
         parts.append(info.gpu_name)
@@ -359,7 +358,7 @@ def get_gpu_info_string() -> str:
         parts.append("CuPy 활성")
     if info.ffmpeg_nvenc:
         parts.append("NVENC 지원")
-    
+
     return ' | '.join(parts) if parts else "GPU 감지됨"
 
 
@@ -372,7 +371,7 @@ def get_detailed_gpu_info() -> DetailedGpuInfo:
         DetailedGpuInfo: 상세 GPU 정보 데이터 클래스
     """
     info = DetailedGpuInfo()
-    
+
     if not HAS_PYNVML or not _init_pynvml():
         # pynvml 없으면 기본 정보만 반환
         basic = detect_gpu()
@@ -380,20 +379,20 @@ def get_detailed_gpu_info() -> DetailedGpuInfo:
         info.gpu_memory_total_mb = basic.gpu_memory_mb
         info.driver_version = basic.driver_version
         return info
-    
+
     try:
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        
+
         # GPU 이름
         gpu_name = pynvml.nvmlDeviceGetName(handle)
         info.gpu_name = gpu_name.decode('utf-8') if isinstance(gpu_name, bytes) else gpu_name
-        
+
         # 메모리 정보
         mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         info.gpu_memory_total_mb = mem_info.total // (1024 * 1024)
         info.gpu_memory_used_mb = mem_info.used // (1024 * 1024)
         info.gpu_memory_free_mb = mem_info.free // (1024 * 1024)
-        
+
         # 사용률
         try:
             util = pynvml.nvmlDeviceGetUtilizationRates(handle)
@@ -401,7 +400,7 @@ def get_detailed_gpu_info() -> DetailedGpuInfo:
             info.memory_utilization = util.memory
         except (pynvml.NVMLError, AttributeError):
             pass
-        
+
         # 온도
         try:
             info.temperature = pynvml.nvmlDeviceGetTemperature(
@@ -409,31 +408,31 @@ def get_detailed_gpu_info() -> DetailedGpuInfo:
             )
         except (pynvml.NVMLError, AttributeError):
             pass
-        
+
         # 전력 사용량
         try:
             power_mw = pynvml.nvmlDeviceGetPowerUsage(handle)
             info.power_usage = power_mw / 1000.0  # mW -> W
         except (pynvml.NVMLError, AttributeError):
             pass
-        
+
         # 인코더 세션 수
         try:
             encoder_sessions = pynvml.nvmlDeviceGetEncoderSessions(handle)
             info.encoder_sessions = len(encoder_sessions) if encoder_sessions else 0
         except (pynvml.NVMLError, AttributeError):
             pass
-        
+
         # 드라이버 버전
         try:
             driver_ver = pynvml.nvmlSystemGetDriverVersion()
             info.driver_version = driver_ver.decode('utf-8') if isinstance(driver_ver, bytes) else driver_ver
         except (pynvml.NVMLError, AttributeError):
             pass
-        
+
     except Exception as e:
         logger.warning("[gpu_utils] 상세 GPU 정보 조회 실패: %s", e)
-    
+
     return info
 
 
@@ -457,5 +456,5 @@ def should_use_gpu(width: int, height: int) -> bool:
     """
     if not _check_cupy():
         return False
-    
+
     return (width * height) >= MIN_GPU_FRAME_SIZE

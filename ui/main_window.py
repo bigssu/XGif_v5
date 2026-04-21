@@ -5,7 +5,6 @@ wxPython 기반 UI: 녹화 제어 버튼
 """
 
 import os
-import sys
 import logging
 import wx
 import threading
@@ -22,23 +21,22 @@ except ImportError:
     HAS_PSUTIL = False
 
 # GPU 유틸리티
-from core.gpu_utils import detect_gpu, is_gpu_available, get_gpu_info_string
+from core.gpu_utils import detect_gpu
 
 # Capability Manager (자동 최적화)
-from core.capability_manager import get_capability_manager, CapabilityManager
+from core.capability_manager import get_capability_manager
 
 # HDR 모니터 표시
 from core.hdr_utils import is_hdr_active
 
 # 오디오 녹음
-from core.audio_recorder import AudioRecorder, is_audio_available
+from core.audio_recorder import AudioRecorder
 
 # 상수 정의
 from ui.constants import (
     MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT,
     APP_NAME, VERSION, MEMORY_WARNING_RATIO, SYSTEM_MEMORY_CRITICAL_MB,
-    CAPTURE_PROCESS_TIMEOUT_SEC, CAPTURE_THREAD_TIMEOUT_SEC,
-    ENCODING_THREAD_TIMEOUT_SEC, ENCODING_STATUS_CLEAR_DELAY_MS,
+    ENCODING_STATUS_CLEAR_DELAY_MS,
 )
 from ui.theme import Colors, Fonts
 from ui.i18n import tr, get_trans_manager
@@ -46,7 +44,7 @@ from ui.i18n import tr, get_trans_manager
 
 class EncodingThread(threading.Thread):
     """GIF/MP4 인코딩을 위한 별도 스레드"""
-    
+
     def __init__(self, encoder, frames, fps, output_path, output_format='gif', audio_path=None,
                  progress_callback=None, finished_callback=None, error_callback=None):
         threading.Thread.__init__(self, daemon=True)
@@ -56,30 +54,30 @@ class EncodingThread(threading.Thread):
         self.output_path = output_path
         self.output_format = output_format.lower()  # 'gif' or 'mp4'
         self.audio_path = audio_path  # MP4용 오디오 파일 경로
-        
+
         # 콜백 함수들
         self._progress_callback = progress_callback
         self._finished_callback = finished_callback
         self._error_callback = error_callback
-        
+
         # 인코더 콜백 설정
         if self.encoder:
             self.encoder.set_progress_callback(self._on_progress)
             self.encoder.set_finished_callback(self._on_finished)
             self.encoder.set_error_callback(self._on_error)
-    
+
     def _on_progress(self, current, total):
         if self._progress_callback:
             wx.CallAfter(self._progress_callback, current, total)
-    
+
     def _on_finished(self, path):
         if self._finished_callback:
             wx.CallAfter(self._finished_callback, path)
-    
+
     def _on_error(self, msg):
         if self._error_callback:
             wx.CallAfter(self._error_callback, msg)
-    
+
     def run(self):
         try:
             if self.output_format == 'mp4':
@@ -93,12 +91,12 @@ class EncodingThread(threading.Thread):
 
 class MainWindow(wx.Frame):
     """Giffy 메인 윈도우"""
-    
+
     # 녹화 상태
     STATE_READY = 0
     STATE_RECORDING = 1
     STATE_PAUSED = 2
-    
+
     def __init__(self, parent=None):
         wx.Frame.__init__(self, parent, title=f"{APP_NAME} v{VERSION}",
                          size=(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT),
@@ -111,43 +109,43 @@ class MainWindow(wx.Frame):
         self.frames = []
         self._editor_mode = False  # 편집 모드 플래그 (오버레이 재생성 방지)
         self._is_closing = False   # 앱 종료 진행 중 플래그 (오버레이 재생성 차단)
-        
+
         # 실시간 미리보기
         self.preview_enabled = False
         self.preview_timer = None
         self.preview_widget = None
         self.preview_label = None
-        
+
         # 녹화 관련 변수 초기화
         self.record_timer = None
         self.record_elapsed = 0
         self._cached_frame_size = None
         self._memory_warned = False
         self._system_memory_warned = False
-        
+
         # 인코딩 스레드
         self.encoding_thread = None
-        
+
         # FFmpeg 다운로더
         self.ffmpeg_downloader = None
         self.ffmpeg_progress = None
-        
+
         # 오디오 관련
         self.audio_file_path = None
-        
+
         # 설정 로드 (AppSettings 단일 소스)
         from core.settings import AppSettings
         self.settings = AppSettings.load()
-        
+
         # 언어 관리자 초기화
         self.trans = get_trans_manager()
         language = self.settings.get('language', fallback='ko')
         self.trans.set_language(str(language))
         self.trans.register_callback(self.retranslateUi)
-        
+
         # Capability Manager 초기화 (비동기로 시스템 능력 감지)
         self._capability_manager = get_capability_manager()
-        
+
         # 윈도우 아이콘 설정
         from core.utils import get_resource_path
         icon_path = get_resource_path(os.path.join('resources', 'xgif_icon.ico'))
@@ -156,7 +154,7 @@ class MainWindow(wx.Frame):
         if os.path.exists(icon_path):
             icon = wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
             self.SetIcon(icon)
-        
+
         # GPU 초기화 플래그 (버튼 클릭 시 지연 초기화)
         self._gpu_initialized = False
 
@@ -183,17 +181,17 @@ class MainWindow(wx.Frame):
 
         # HDR 레이블 갱신 (설정에서 수동 켠 경우 표시)
         wx.CallLater(100, self._update_hdr_label)
-        
+
         # 미리보기 시작 (설정에서 활성화된 경우)
         saved_preview = self.settings.get('preview_enabled', fallback='false')
         if saved_preview == "true":
             self.preview_enabled = True
             self._start_preview()
-        
+
         # 이벤트 바인딩
         self.Bind(wx.EVT_MOVE, self.OnMove)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
-    
+
     def _init_ui(self):
         """UI 초기화"""
         self.SetTitle(f"{APP_NAME} v{VERSION}")
@@ -213,17 +211,17 @@ class MainWindow(wx.Frame):
         self.capture_control_bar = CaptureControlBar(main_panel)
         self._connect_capture_control_bar()
         main_sizer.Add(self.capture_control_bar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
-        
+
         # 임시 버튼 참조 (호환성을 위해 capture_control_bar의 버튼 사용)
         self.start_btn = self.capture_control_bar.rec_button
-        
+
         # 프로그레스 바 영역 (툴바 하단 중앙)
         self._create_progress_area(main_sizer, main_panel)
-        
+
         # 실시간 미리보기 영역 (선택적)
         self._create_preview_area(main_sizer)
         main_sizer.SetSizeHints(main_panel)
-        
+
         # 커스텀 상태바 (Windows 11 Dark Theme)
         status_panel = wx.Panel(self)
         status_panel.SetBackgroundColour(Colors.BG_SECONDARY)
@@ -256,15 +254,15 @@ class MainWindow(wx.Frame):
         self.hdr_label.SetMinSize((hdr_min_w, -1))
         status_sizer.Add(self.hdr_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
         self._update_hdr_label()
-        
+
         # HDR 상태 주기적 갱신 (2초)
         self._hdr_check_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, lambda e: self._update_hdr_label(), self._hdr_check_timer)
         self._hdr_check_timer.Start(2000)
-        
+
         # 초기 상태 동기화
         self._sync_capture_control_bar_state()
-        
+
         # 메인 패널 + 커스텀 상태바를 프레임에 설정 (상태바가 프로그레스 패널을 덮지 않도록 맨 아래에 추가)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(main_panel, 1, wx.EXPAND)
@@ -281,13 +279,13 @@ class MainWindow(wx.Frame):
 
         # 리사이즈 시 컨트롤 바 강제 갱신 (흔적 제거)
         self.Bind(wx.EVT_SIZE, self._on_main_size)
-    
+
     def _on_main_size(self, event):
         """메인 창 리사이즈 시 컨트롤 바(및 자식) 강제 다시 그리기"""
         event.Skip()
         if getattr(self, 'capture_control_bar', None):
             self.capture_control_bar.Refresh(True)
-    
+
     def retranslateUi(self, lang=None):
         """언어 변경 시 UI 업데이트"""
         self.SetTitle(f"{APP_NAME} v{VERSION}")
@@ -297,10 +295,10 @@ class MainWindow(wx.Frame):
             self.status_msg_label.SetLabel(tr('recording'))
         elif self.record_state == self.STATE_PAUSED:
             self.status_msg_label.SetLabel(tr('paused'))
-            
+
         self.info_label.SetToolTip(tr('fps_tooltip'))
         self.hdr_label.SetToolTip(tr('hdr_label_tooltip'))
-    
+
     def _connect_capture_control_bar(self):
         """CaptureControlBar 이벤트 연결 (wxPython 콜백 방식)"""
         # 녹화 제어
@@ -313,42 +311,42 @@ class MainWindow(wx.Frame):
         # 토글 설정
         self.capture_control_bar.set_cursor_toggled_callback(self._on_cursor_toggled)
         self.capture_control_bar.set_region_toggled_callback(self._on_region_toggled)
-        
+
         # 녹화 설정
         self.capture_control_bar.set_format_changed_callback(self._on_format_changed)
         self.capture_control_bar.set_fps_changed_callback(self._on_fps_changed)
         self.capture_control_bar.set_resolution_changed_callback(self._on_resolution_preset_changed)
         self.capture_control_bar.set_quality_changed_callback(self._on_quality_changed)
-    
+
     def _on_cursor_toggled(self, enabled: bool):
         """커서 토글 변경 처리"""
         # recorder에 즉시 반영 (녹화 중이 아닐 때)
         if self.recorder and self.record_state == self.STATE_READY:
             self.recorder.include_cursor = enabled
-    
+
     def _on_region_toggled(self, visible: bool):
         """영역 표시 토글 변경 처리"""
         # 설정에 저장
 
         self.settings.set("click_highlight", "true" if visible else "false")
-        
+
         # recorder에 즉시 반영 (녹화 중이 아닐 때)
         if self.recorder and self.record_state == self.STATE_READY:
             self.recorder.show_click_highlight = visible
-    
+
     def _sync_capture_control_bar_state(self):
         """CaptureControlBar 상태를 기존 설정과 동기화"""
         if not hasattr(self, 'capture_control_bar') or not self.capture_control_bar:
             return
-        
+
         # 커서 포함 상태 (기본값 True)
         cursor_enabled = True
         self.capture_control_bar.set_cursor_enabled(cursor_enabled)
-        
+
         # 영역 표시 상태 (클릭 하이라이트)
         region_visible = self.settings.get("click_highlight", fallback="false") == "true"
         self.capture_control_bar.set_region_visible(region_visible)
-        
+
         # 저장된 설정에서 FPS, 해상도 불러오기
         saved_fps = self.settings.get("fps", fallback="15")
         try:
@@ -356,10 +354,10 @@ class MainWindow(wx.Frame):
             self.capture_control_bar.set_fps(fps_val)
         except ValueError:
             self.capture_control_bar.set_fps(15)
-        
+
         saved_resolution = self.settings.get("resolution_preset", fallback="320 × 240")
         self.capture_control_bar.set_resolution(saved_resolution)
-        
+
         # GPU 버튼 클릭 콜백 등록
         self.capture_control_bar.set_gpu_click_callback(self._on_gpu_button_click)
 
@@ -367,12 +365,12 @@ class MainWindow(wx.Frame):
         is_recording = self.record_state == self.STATE_RECORDING
         is_paused = self.record_state == self.STATE_PAUSED
         self.capture_control_bar.set_recording_state(is_recording, is_paused)
-    
+
     def _apply_global_style(self):
         """전역 스타일 적용 (wxPython, 밝기 0.5 테마)"""
         self.SetBackgroundColour(Colors.BG_PRIMARY)
         self.SetForegroundColour(Colors.TEXT_PRIMARY)
-    
+
     def _create_progress_area(self, parent_layout, parent_window):
         """프로그레스 바 영역 생성 (툴바 하단 중앙). v1과 동일: 높이 20, 내부 마진 (10,2,10,0), 간격 10."""
         progress_panel = wx.Panel(parent_window)
@@ -408,20 +406,20 @@ class MainWindow(wx.Frame):
         progress_sizer.AddStretchSpacer()
         outer.SetSizeHints(progress_panel)
         parent_layout.Add(progress_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
-    
+
     def _create_preview_area(self, parent_layout):
         """실시간 미리보기 영역 생성 (미구현 — 스텁)"""
         self.preview_label = None
         self.preview_widget = None
-    
+
     def _start_preview(self):
         """실시간 미리보기 시작"""
         if not self.preview_enabled:
             return
-        
+
         if not hasattr(self, 'preview_widget') or not self.preview_widget:
             return
-        
+
         # 기존 타이머 정리 (레이스 컨디션 방지)
         if self.preview_timer is not None:
             try:
@@ -429,78 +427,78 @@ class MainWindow(wx.Frame):
             except (TypeError, RuntimeError, AttributeError):
                 pass
             self.preview_timer = None
-        
+
         self.preview_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, lambda e: self._update_preview(), self.preview_timer)
         self.preview_timer.Start(100)  # 10 FPS 미리보기
-        
+
         self.preview_widget.Show()
-    
+
     def _stop_preview(self):
         """실시간 미리보기 중지"""
         from core.utils import safe_delete_timer
         if self.preview_timer:
             safe_delete_timer(self.preview_timer)
             self.preview_timer = None
-        
+
         if hasattr(self, 'preview_widget') and self.preview_widget:
             self.preview_widget.Hide()
             if hasattr(self, 'preview_label') and self.preview_label:
                 self.preview_label.SetLabel(tr('preview'))
-    
+
     def _update_preview(self):
         """미리보기 업데이트"""
         try:
             # 안전 검증
             if not self or self.recorder is None or not self.preview_enabled:
                 return
-            
+
             if not hasattr(self, 'preview_label') or self.preview_label is None:
                 return
-            
+
             frame = self.recorder.capture_single_frame()
-            
+
             # 프레임 유효성 검증
             if frame is None:
                 return
-            
+
             if not isinstance(frame, np.ndarray):
                 logger.warning(f"Invalid frame type: {type(frame)}")
                 return
-            
+
             if len(frame.shape) < 2 or frame.size == 0:
                 return
-            
+
             # 연속적인 배열로 변환 (메모리 접근 오류 방지)
             frame = np.ascontiguousarray(frame, dtype=np.uint8)
             h, w = frame.shape[:2]
-            
+
             # 유효한 크기 및 채널 확인
             if h <= 0 or w <= 0:
                 return
-            
+
             if len(frame.shape) < 3 or frame.shape[2] < 3:
                 logger.warning(f"Invalid frame channels: {frame.shape}")
                 return
-            
+
             if h > 0 and w > 0:
                     # 미리보기 비활성화 상태
                     pass
         except (AttributeError, ValueError, TypeError, RuntimeError) as e:
             # 예외 발생 시 로그 (미리보기 실패는 치명적이지 않음)
             logger.debug(f"미리보기 업데이트 실패: {e}")
-    
+
     def _init_recorder(self):
         """녹화기 초기화"""
         from core import ScreenRecorder, GifEncoder
         from core.hdr_utils import is_hdr_active
-        
+
         self.recorder = ScreenRecorder()
         self.encoder = GifEncoder()
-        
+
         # 설정에서 캡처 백엔드 로드 및 적용
         capture_backend = self.settings.get("capture_backend", fallback="gdi")  # 기본값 gdi
-        
+
         # Auto인 경우 HDR 상태에 따라 백엔드 선택
         if capture_backend == "auto":
             hdr_active = is_hdr_active()
@@ -515,23 +513,23 @@ class MainWindow(wx.Frame):
             if self.recorder:
                 self.recorder.set_capture_backend(capture_backend)
                 logger.info(f"Capture backend set to: {capture_backend}")
-        
+
         # 백그라운드에서 캡처 백엔드 워밍업 (앱 시작 시 자동)
         logger.info("Screen recorder initialized with pre-warming")
-        
+
         # 오디오 녹음기 초기화 (MP4용)
         self.audio_recorder = AudioRecorder()
         self.audio_file_path = None  # 녹음된 오디오 파일 경로
-        
+
         # 콜백 연결 (수집/캡처 스레드에서 호출되므로 wx.CallAfter로 메인 스레드에서 실행)
         self.recorder.set_frame_captured_callback(lambda n: wx.CallAfter(self._on_frame_captured, n))
         self.recorder.set_recording_stopped_callback(lambda: wx.CallAfter(self._on_recording_stopped))
         self.recorder.set_error_occurred_callback(lambda msg: wx.CallAfter(self._on_recording_error, msg))
-        
+
         # HDR 보정 설정: 사용자 설정값만 사용 (기본 OFF)
         hdr_on = self.settings.get('hdr_correction', fallback='false') == "true"
         self.recorder.set_hdr_correction(hdr_on)
-    
+
     # ── 의존성 관리 ──
 
     def _check_dep_for_feature(self, dep_name, skip_flag_key, feature_desc, disable_label=None):
@@ -556,8 +554,7 @@ class MainWindow(wx.Frame):
 
         # 3버튼 모달 표시
         from ui.dependency_dialogs import (
-            DependencyInstallDialog, ID_INSTALL, ID_DISABLE, ID_CANCEL_DEP,
-            show_install_flow,
+            DependencyInstallDialog, ID_INSTALL, show_install_flow,
         )
         dlg = DependencyInstallDialog(self, status, feature_desc, disable_label)
         ret = dlg.ShowModal()
@@ -582,7 +579,7 @@ class MainWindow(wx.Frame):
             self.settings.save()
         except Exception as e:
             logger.warning("설정 저장 실패: %s", e)
-    
+
     def _show_capture_overlay(self):
         """캡처 오버레이 표시"""
         from ui.capture_overlay import CaptureOverlay
@@ -599,12 +596,12 @@ class MainWindow(wx.Frame):
 
         if self.capture_overlay is None:
             self.capture_overlay = CaptureOverlay(self)
-            
+
             # 영역 변경 콜백 연결
             self.capture_overlay.set_region_changed_callback(self._on_region_changed)
             # 닫힘 콜백 연결
             self.capture_overlay.set_closed_callback(self._on_overlay_closed)
-            
+
             # 저장된 해상도 적용 (없으면 기본 320x240)
             saved_resolution = self.settings.get("resolution_preset", fallback="320 × 240")
             try:
@@ -617,24 +614,24 @@ class MainWindow(wx.Frame):
                     self.capture_overlay.set_capture_size(320, 240)
             except (ValueError, IndexError):
                 self.capture_overlay.set_capture_size(320, 240)
-        
+
         # 메인 윈도우 하단에 위치
         self._position_overlay_below_window()
         self.capture_overlay.Show()
         self.capture_overlay.Raise()  # 항상 최상위로
-    
+
     def _position_overlay_below_window(self):
         """캡처 오버레이를 메인 윈도우 하단에 위치"""
         if self.capture_overlay:
             main_rect = self.GetRect()
             overlay_rect = self.capture_overlay.GetRect()
-            
+
             # 메인 윈도우 바로 아래, 왼쪽 정렬
             new_x = main_rect.x
             new_y = main_rect.y + main_rect.height + 5
-            
+
             self.capture_overlay.SetPosition((new_x, new_y))
-    
+
     def OnMove(self, event):
         """메인 윈도우 이동 시 오버레이도 같은 방향으로 이동 (델타 기반)"""
         event.Skip()
@@ -672,16 +669,16 @@ class MainWindow(wx.Frame):
                 self.capture_control_bar.set_resolution(size_text)
         finally:
             self._updating_resolution = False
-        
+
         # 마지막 크기 저장
 
         self.settings.set("resolution_preset", size_text)
-    
+
     def _on_fps_changed(self, text):
         """FPS 값 변경됨"""
         if text:
             self.settings.set("fps", text)
-    
+
     def _on_format_changed(self, format_text):
         """출력 포맷 변경 시 FPS 자동 조정 + FFmpeg 인터셉트"""
         if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
@@ -701,7 +698,7 @@ class MainWindow(wx.Frame):
                         wx.CallAfter(self.capture_control_bar.set_format, "GIF")
                         return
                 self.capture_control_bar.set_fps(30)
-    
+
     def _on_resolution_preset_changed(self, text):
         """해상도 프리셋 변경됨"""
         if getattr(self, '_updating_resolution', False):
@@ -735,12 +732,12 @@ class MainWindow(wx.Frame):
                     self._updating_resolution = False
         except Exception as e:
             logger.error(f"Apply resolution error: {e}", exc_info=True)
-    
+
     def _on_quality_changed(self, index: int):
         """품질 변경됨"""
         # 품질 설정은 저장하지 않음 (기본값 사용)
         pass
-    
+
     def _on_overlay_closed(self):
         """오버레이 창 닫힘"""
         # 참조 제거
@@ -749,14 +746,14 @@ class MainWindow(wx.Frame):
         # 종료 진행 중에는 오버레이를 재생성하지 않음
         if self._is_closing:
             return
-        
+
         # 편집 모드에서는 오버레이 재생성 안함
         if self._editor_mode:
             return
         # 오버레이가 닫히면 다시 표시
         if self.record_state == self.STATE_READY:
             wx.CallLater(100, self._show_capture_overlay)
-    
+
     def _open_help(self):
         """도움말 다이얼로그 열기 (non-modal)"""
         # 이미 열려 있으면 포커스만 이동
@@ -781,7 +778,7 @@ class MainWindow(wx.Frame):
     def _open_settings(self):
         """설정 다이얼로그 열기"""
         from .settings_dialog import SettingsDialog
-        
+
         dialog = SettingsDialog(self, self.settings)
         try:
             if dialog.ShowModal() == wx.ID_OK:
@@ -789,16 +786,16 @@ class MainWindow(wx.Frame):
                 self._apply_settings()
         finally:
             dialog.Destroy()
-    
+
     def _apply_settings(self):
         """설정 변경사항을 recorder에 반영"""
         try:
-            
+
             # 워터마크
             if self.recorder and self.recorder.watermark:
                 watermark_enabled = self.settings.get("watermark", fallback="false") == "true"
                 self.recorder.watermark.set_enabled(watermark_enabled)
-            
+
             # 키보드 입력 표시
             if self.recorder and self.recorder.keyboard_display:
                 keyboard_enabled = self.settings.get("keyboard_display", fallback="false") == "true"
@@ -808,7 +805,7 @@ class MainWindow(wx.Frame):
                         self.settings.set("keyboard_display", "false")
                         return
                 self.recorder.keyboard_display.set_enabled(keyboard_enabled)
-            
+
             # 실시간 미리보기
             preview_enabled = self.settings.get("preview_enabled", fallback="false") == "true"
             if preview_enabled != self.preview_enabled:
@@ -817,7 +814,7 @@ class MainWindow(wx.Frame):
                     self._start_preview()
                 else:
                     self._stop_preview()
-            
+
             # HDR 보정 설정 반영
             hdr_on = self.settings.get("hdr_correction", fallback="false") == "true"
             if self.recorder:
@@ -825,15 +822,15 @@ class MainWindow(wx.Frame):
             self._update_hdr_label()
         except Exception as e:
             logger.warning("설정 적용 오류: %s", e)
-    
+
     def _on_start_btn_clicked(self, event):
         """녹화 시작 버튼 클릭 (wxPython 이벤트)"""
         self._on_rec_clicked()
-    
+
     def _on_stop_btn_clicked(self, event):
         """녹화 중지 버튼 클릭 (wxPython 이벤트)"""
         self._on_stop_clicked()
-    
+
     def _on_rec_clicked(self):
         """REC/STOP 토글 버튼 클릭"""
         try:
@@ -846,18 +843,18 @@ class MainWindow(wx.Frame):
         except Exception as e:
             wx.MessageBox(tr('start_failed').format(str(e)), tr('error'), wx.OK | wx.ICON_ERROR)
             logger.warning("REC 버튼 클릭 오류: %s", e)
-    
+
     def _on_pause_clicked(self):
         """PAUSE 버튼 클릭"""
         if self.record_state == self.STATE_RECORDING:
             self._pause_recording()
-    
+
     def _on_stop_clicked(self):
         """중지 버튼 클릭 처리"""
         if self.record_state != self.STATE_READY:
             self.status_msg_label.SetLabel(tr('recording'))  # Showing as finishing
             self._stop_recording()
-    
+
     def _start_recording(self):
         """녹화 시작"""
         # 녹화 중이면 무시
@@ -893,12 +890,12 @@ class MainWindow(wx.Frame):
             logger.error("Capture overlay not initialized")
             wx.MessageBox(tr('region_not_set'), tr('warning'), wx.OK | wx.ICON_WARNING)
             return
-        
+
         # 녹화 시작 전 현재 오버레이 위치로 캡처 영역 업데이트
         x, y, w, h = self.capture_overlay.get_capture_region()
         self.recorder.set_region(x, y, w, h)
         logger.info(f"Capture region set to: ({x}, {y}, {w}x{h})")
-        
+
         # 영역 유효성 검증
         try:
             region = self.recorder.region
@@ -911,7 +908,7 @@ class MainWindow(wx.Frame):
             logger.error(f"Invalid capture region: {e}")
             wx.MessageBox("캡처 영역이 유효하지 않습니다. 영역을 다시 설정해주세요.", tr('warning'), wx.OK | wx.ICON_WARNING)
             return
-        
+
         # capture_control_bar에서 설정값 가져오기
         if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
             fps = self.capture_control_bar.get_fps()
@@ -921,39 +918,39 @@ class MainWindow(wx.Frame):
             fps = 15
             include_cursor = True
             show_click_highlight = False
-        
+
         self.recorder.fps = fps
         self.recorder.include_cursor = include_cursor
         self.recorder.show_click_highlight = show_click_highlight
-        
+
         # 메모리 경고 플래그 및 프레임 크기 캐시 초기화
         self._memory_warned = False
         self._system_memory_warned = False
         self._zero_frame_warned = False
         self._cached_frame_size = None  # 프레임 크기 캐시 초기화
-        
+
         # 프레임 버퍼 명시적 초기화 (이전 녹화 참조 제거)
         self.frames = []
-        
+
         self.record_state = self.STATE_RECORDING
         self._update_button_states()
-        
+
         # 녹화 중 UI 비활성화
         if hasattr(self, 'include_cursor_cb') and self.include_cursor_cb:
             self.include_cursor_cb.Enable(False)
-        
+
         # 캡처 영역 오버레이 처리
         if self.capture_overlay:
             # 녹화 모드 활성화 (30% 투명도)
             self.capture_overlay.set_recording_mode(True)
             self.capture_overlay.set_movable(False)
-        
+
         # 녹화 시작 (오버레이 처리 후)
         wx.CallLater(50, self._do_start_recording)
-    
+
     def _do_start_recording(self):
         """실제 녹화 시작 (오버레이 숨김 후)"""
-        
+
         # 백엔드 설정: 매 녹화 시작 시 설정값 적용
         user_backend = str(self.settings.get("capture_backend", fallback="gdi"))
         if self.recorder:
@@ -968,7 +965,7 @@ class MainWindow(wx.Frame):
                 # 명시적 설정 적용
                 self.recorder.set_capture_backend(user_backend)
                 logger.info(f"[Manual] 백엔드 설정 적용: {user_backend}")
-        
+
         # 워터마크, 키보드 표시 설정 적용 (녹화 시작 전)
         try:
             if self.recorder and self.recorder.watermark:
@@ -976,7 +973,7 @@ class MainWindow(wx.Frame):
                 self.recorder.watermark.set_enabled(watermark_enabled)
         except (AttributeError, RuntimeError) as e:
             logger.error(f"Watermark setup failed: {e}")
-        
+
         try:
             if self.recorder and self.recorder.keyboard_display:
                 keyboard_enabled = self.settings.get("keyboard_display", fallback="false") == "true"
@@ -988,18 +985,18 @@ class MainWindow(wx.Frame):
                 self.recorder.keyboard_display.set_enabled(keyboard_enabled)
         except (AttributeError, RuntimeError) as e:
             logger.error(f"Keyboard display setup failed: {e}")
-        
+
         # 녹화 시작 (에러 처리)
         try:
             self.recorder.start_recording()
-            
+
             # 녹화가 실제로 시작되었는지 확인
             if not self.recorder.is_recording:
                 raise RuntimeError("녹화 시작 실패: recorder.is_recording = False")
-            
+
             # 백엔드가 이미 워밍업되었는지 확인
             backend_ready = getattr(self.recorder, '_backend_warmed_up', False)
-            
+
             if backend_ready:
                 # 백엔드가 이미 준비됨 - 즉시 활성화
                 self.status_msg_label.SetLabel(tr('recording'))
@@ -1015,12 +1012,12 @@ class MainWindow(wx.Frame):
 
                 wx.CallLater(500, _on_backend_ready)
                 logger.info("Backend not pre-warmed, using 500ms delay")
-            
+
             # 기존 타이머 정리 (안전)
             from core.utils import safe_delete_timer
             if self.record_timer is not None:
                 safe_delete_timer(self.record_timer)
-            
+
             # 녹화 시간 타이머 생성
             self.record_timer = wx.Timer(self)
             self.record_elapsed = 0
@@ -1032,22 +1029,22 @@ class MainWindow(wx.Frame):
             self._update_button_states()
             if hasattr(self, 'include_cursor_cb') and self.include_cursor_cb:
                 self.include_cursor_cb.Enable(True)
-            
+
             # 오디오 녹음 중지 및 정리
             if hasattr(self, 'audio_recorder') and self.audio_recorder and self.audio_recorder.is_recording():
                 self.audio_recorder.stop()
                 self.audio_recorder.cleanup()
-            
+
             # 오버레이 복원
             if self.capture_overlay:
                 self.capture_overlay.set_recording_mode(False)
                 self.capture_overlay.set_movable(True)
-            
+
             error_msg = tr("start_failed").format(str(e))
             wx.MessageBox(error_msg, tr("error"), wx.OK | wx.ICON_ERROR)
             self.status_msg_label.SetLabel(tr("save_failed"))
             logger.warning("녹화 시작 오류: %s", e)
-    
+
     def _pause_recording(self):
         """녹화 일시정지"""
         if self.recorder is None:
@@ -1055,36 +1052,36 @@ class MainWindow(wx.Frame):
         self.recorder.pause_recording()
         self.record_state = self.STATE_PAUSED
         self._update_button_states()
-        
+
         # 캡처 영역 오버레이 표시 (녹화 모드 해제, 이동만 가능)
         if self.capture_overlay:
             self.capture_overlay.set_recording_mode(False)
             self.capture_overlay.set_movable(True, allow_resize=False)
             self.capture_overlay.Show()
             self.capture_overlay.Raise()  # 항상 최상위로
-        
+
         self.status_msg_label.SetLabel(tr('paused'))
-    
+
     def _resume_recording(self):
         """녹화 재개"""
         self.record_state = self.STATE_RECORDING
         self._update_button_states()
-        
+
         # 캡처 영역 오버레이 처리 (녹화 모드 활성화)
         if self.capture_overlay:
             self.capture_overlay.set_recording_mode(True)
             self.capture_overlay.set_movable(False)
-        
+
         # 오버레이 처리 후 녹화 재개
         wx.CallLater(50, self._do_resume_recording)
-    
+
     def _do_resume_recording(self):
         """실제 녹화 재개 (오버레이 숨김 후)"""
         if self.recorder is None:
             return
         self.recorder.resume_recording()
         self.status_msg_label.SetLabel(tr('recording'))
-    
+
     def _stop_recording(self):
         """녹화 중지"""
         # 이미 녹화가 중지된 상태면 중복 실행 방지
@@ -1099,7 +1096,7 @@ class MainWindow(wx.Frame):
 
         self.record_state = self.STATE_READY
         self._update_button_states()
-        
+
         # 오디오 녹음 중지 (MP4 모드) - 안전
         self.audio_file_path = None
         try:
@@ -1107,24 +1104,24 @@ class MainWindow(wx.Frame):
                 self.audio_file_path = self.audio_recorder.stop()
         except (AttributeError, RuntimeError) as e:
             logger.error(f"Audio recording stop failed: {e}")
-        
+
         # 녹화 중지
         if self.recorder is not None:
             self.frames = self.recorder.stop_recording()
         else:
             self.frames = []
-        
+
         # 캡처 영역 오버레이 다시 표시 (녹화 모드 해제)
         if self.capture_overlay:
             self.capture_overlay.set_recording_mode(False)
             self.capture_overlay.set_movable(True, allow_resize=True)
             self.capture_overlay.Show()
             self.capture_overlay.Raise()  # 항상 최상위로
-        
+
         # 프레임 수 확인 및 로깅
         frame_count = len(self.frames) if self.frames else 0
         logger.info(f"Recording stopped with {frame_count} frames")
-        
+
         # 성능 경고 체크 (실제 FPS가 목표의 70% 미만일 때)
         if frame_count > 0 and hasattr(self.recorder, 'actual_fps') and self.recorder.actual_fps:
             target_fps = self.recorder.fps
@@ -1135,11 +1132,11 @@ class MainWindow(wx.Frame):
                     tr('low_fps_warning_title'),
                     wx.OK | wx.ICON_WARNING
                 )
-        
+
         if frame_count > 0:
             # 현재 출력 포맷 확인
             output_format = self.capture_control_bar.get_format() if hasattr(self, 'capture_control_bar') else "GIF"
-            
+
             if output_format == "MP4":
                 # MP4는 편집 불가 → 바로 저장으로 이동
                 self._save_gif()
@@ -1150,14 +1147,14 @@ class MainWindow(wx.Frame):
             # 프레임이 없는 이유 로깅
             logger.warning("No frames captured during recording")
             wx.MessageBox(
-                tr('no_frames') + "\n\n" + 
+                tr('no_frames') + "\n\n" +
                 "녹화 시간이 너무 짧았거나 캡처 프로세스 초기화가 늦어졌을 수 있습니다.\n" +
                 "최소 1초 이상 녹화를 유지해주세요.",
                 tr("warning"),
                 wx.OK | wx.ICON_WARNING
             )
             self._reset_ui()
-    
+
     def _show_save_edit_dialog(self, frame_count: int):
         """녹화 완료 후 저장/편집/삭제 선택 다이얼로그 표시"""
         # 커스텀 다이얼로그 생성
@@ -1168,10 +1165,10 @@ class MainWindow(wx.Frame):
             wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION
         )
         dlg.SetYesNoCancelLabels(tr('save_now'), tr('edit_now'), tr('discard'))
-        
+
         result = dlg.ShowModal()
         dlg.Destroy()
-        
+
         if result == wx.ID_YES:
             # 저장 선택
             self._save_gif()
@@ -1184,7 +1181,7 @@ class MainWindow(wx.Frame):
             if self.recorder:
                 self.recorder.clear_frames()
             self._reset_ui()
-    
+
     def _open_editor_with_frames(self):
         """녹화된 프레임으로 GifEditor 열기
         
@@ -1193,10 +1190,10 @@ class MainWindow(wx.Frame):
         """
         from PIL import Image
         import tempfile
-        
+
         try:
             self.status_msg_label.SetLabel(tr('opening_editor'))
-            
+
             # FPS 가져오기
             try:
                 if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
@@ -1205,15 +1202,15 @@ class MainWindow(wx.Frame):
                     fps = 15
             except (ValueError, TypeError):
                 fps = 15
-            
+
             delay_ms = int(1000 / fps)
             frame_count = len(self.frames) if self.frames else 0
-            
+
             if frame_count == 0:
                 wx.MessageBox(tr('no_frames'), tr('warning'), wx.OK | wx.ICON_WARNING)
                 self._reset_ui()
                 return
-            
+
             # PIL 이미지 리스트로 변환
             pil_frames = []
             logger.info(f"변환 시작: self.frames 개수 = {len(self.frames)}")
@@ -1242,11 +1239,11 @@ class MainWindow(wx.Frame):
                 wx.MessageBox(tr('no_frames'), tr('warning'), wx.OK | wx.ICON_WARNING)
                 self._reset_ui()
                 return
-            
+
             # 임시 GIF 파일로 저장
             temp_dir = tempfile.gettempdir()
             temp_path = os.path.join(temp_dir, 'xgif_temp_edit.gif')
-            
+
             pil_frames[0].save(
                 temp_path,
                 save_all=True,
@@ -1254,14 +1251,14 @@ class MainWindow(wx.Frame):
                 duration=delay_ms,
                 loop=0
             )
-            
+
             logger.info(f"Temp GIF saved to: {temp_path}")
-            
+
             # 기존 프레임 메모리 해제
             self.frames = []
             if self.recorder:
                 self.recorder.clear_frames()
-            
+
             # 같은 프로세스 내에서 에디터 창 열기 (PyInstaller 빌드 호환)
             try:
                 from editor.ui.editor_main_window_wx import MainWindow as EditorMainWindow
@@ -1282,7 +1279,7 @@ class MainWindow(wx.Frame):
                 )
 
             self._reset_ui()
-            
+
         except Exception as e:
             logger.error(f"Failed to open editor: {e}")
             import traceback
@@ -1302,27 +1299,27 @@ class MainWindow(wx.Frame):
         is_paused = self.record_state == self.STATE_PAUSED
         if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
             self.capture_control_bar.set_recording_state(is_recording, is_paused)
-    
+
     def _update_record_time(self):
         """녹화 시간 업데이트"""
         try:
             # 녹화 중이 아니면 무시
             if self.record_state != self.STATE_RECORDING:
                 return
-            
+
             # recorder가 None이면 무시
             if self.recorder is None:
                 return
-            
+
             # 위젯 삭제 체크
             if not self or not hasattr(self, 'info_label') or not self.info_label:
                 return
-            
+
             self.record_elapsed += 1
             minutes = self.record_elapsed // 60
             seconds = self.record_elapsed % 60
             frame_count = self.recorder.get_frame_count()
-            
+
             # 메모리 사용량 계산 (프레임 데이터 크기) - 최적화: 캐시된 프레임 크기 사용
             memory_mb = 0.0
             try:
@@ -1334,16 +1331,16 @@ class MainWindow(wx.Frame):
                             self._cached_frame_size = (estimated_mb * 1024 * 1024) / frame_count
                         else:
                             self._cached_frame_size = 0
-                    
+
                     if self._cached_frame_size and self._cached_frame_size > 0:
                         memory_mb = (self._cached_frame_size * frame_count) / (1024 * 1024)
             except (ZeroDivisionError, ValueError, TypeError) as e:
                 logger.warning(f"Memory calculation error: {e}")
                 memory_mb = 0.0
-            
+
             # 사용자 설정 메모리 제한 확인
             max_mem_mb = int(self.settings.get("memory_limit_mb", fallback="1024"))
-            
+
             # 메모리 임계값 도달 시 강제 중지
             if memory_mb >= max_mem_mb:
                 wx.CallAfter(wx.MessageBox, tr('mem_limit_msg').format(max_mem_mb), tr('mem_limit_reached'), wx.OK | wx.ICON_WARNING)
@@ -1369,30 +1366,30 @@ class MainWindow(wx.Frame):
                 self._memory_warned = True
                 if hasattr(self, 'status_msg_label') and self.status_msg_label:
                     self.status_msg_label.SetLabel(tr('mem_warning').format(memory_mb, max_mem_mb))
-            
+
             # 오디오 버퍼 상한 도달 시 녹화 중지 (메모리 안전성)
             if hasattr(self, 'audio_recorder') and self.audio_recorder and self.audio_recorder.buffer_limit_reached:
                 wx.CallAfter(wx.MessageBox, tr('audio_buffer_limit_reached'), tr('warning'), wx.OK | wx.ICON_WARNING)
                 wx.CallAfter(self._stop_recording)
                 return
-            
+
             # 녹화 시작 후 3초 이상 프레임이 0개면 한 번만 경고 (캡처 백엔드 실패 가능성)
             if self.record_elapsed >= 3 and frame_count == 0 and not getattr(self, '_zero_frame_warned', False):
                 self._zero_frame_warned = True
                 if hasattr(self, 'status_msg_label') and self.status_msg_label:
                     self.status_msg_label.SetLabel(tr('capture_no_frames_warning'))
-            
+
             rec_info = f"{minutes:02d}:{seconds:02d} | {frame_count}f | {memory_mb:.1f}MB"
             if hasattr(self, 'info_label') and self.info_label:
                 self.info_label.SetLabel(rec_info)
         except (RuntimeError, AttributeError) as e:
             # 위젯이 삭제된 경우 조용히 무시
             logger.debug(f"Timer callback error (widget deleted?): {e}")
-    
+
     def _on_frame_captured(self, frame_num):
         """프레임 캡처됨"""
         pass
-    
+
     def _on_recording_stopped(self):
         """녹화 중지됨 (비동기 - 레코더 자체에서 중지 시 호출)
 
@@ -1402,43 +1399,43 @@ class MainWindow(wx.Frame):
         """
         if self.record_state != self.STATE_READY:
             wx.CallAfter(self._stop_recording)
-    
+
     def _save_gif(self):
         """GIF 또는 MP4 저장"""
         # 인코딩 진행 중인지 확인
         if self.encoding_thread is not None and self.encoding_thread.is_alive():
             wx.MessageBox(tr('encoding') + "...", tr('warning'), wx.OK | wx.ICON_WARNING)
             return
-        
+
         # 프레임 유효성 검증
         if not self.frames or len(self.frames) == 0:
             logger.error("No frames to encode")
             wx.MessageBox("인코딩할 프레임이 없습니다.", tr('warning'), wx.OK | wx.ICON_WARNING)
             self._reset_ui()
             return
-        
+
         # 프레임 스냅샷 생성 (타이밍 이슈 방지)
         # 파일 다이얼로그가 모달로 표시되는 동안 _on_encoding_finished가
         # wx.CallAfter로 실행되어 self.frames를 비울 수 있으므로,
         # 현재 프레임 리스트의 복사본을 미리 생성
         frames_snapshot = list(self.frames)
-        
+
         # encoder 확인
         if self.encoder is None:
             logger.error("Encoder not initialized")
             wx.MessageBox("인코더가 초기화되지 않았습니다.", tr('error'), wx.OK | wx.ICON_ERROR)
             self._reset_ui()
             return
-        
+
         # 출력 포맷 확인
         if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
             output_format = self.capture_control_bar.get_format().lower()
         else:
             output_format = 'gif'
-        
+
         # 마지막 저장 경로 불러오기 (디렉토리만)
         last_dir = self.settings.get("last_save_dir", fallback="")
-        
+
         # 포맷에 따른 파일 다이얼로그
         if output_format == 'mp4':
             file_filter = "MP4 " + tr('file') + " (*.mp4)|*.mp4"
@@ -1448,18 +1445,18 @@ class MainWindow(wx.Frame):
             file_filter = "GIF " + tr('file') + " (*.gif)|*.gif"
             file_ext = '.gif'
             dialog_title = tr('save_gif')
-        
+
         with wx.FileDialog(self, dialog_title, last_dir, "", file_filter,
                           wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
             if dlg.ShowModal() == wx.ID_CANCEL:
                 self._reset_ui()
                 return
             file_path = dlg.GetPath()
-        
+
         if not file_path:
             self._reset_ui()
             return
-        
+
         # 기존 확장자 제거 후 올바른 확장자 추가
         base_path = file_path
         for ext in ['.gif', '.mp4', '.GIF', '.MP4']:
@@ -1467,11 +1464,11 @@ class MainWindow(wx.Frame):
                 base_path = file_path[:-len(ext)]
                 break
         file_path = base_path + file_ext
-        
+
         # 저장 디렉토리 기억
 
         self.settings.set("last_save_dir", os.path.dirname(file_path))
-        
+
         # 품질 설정
         if hasattr(self, 'capture_control_bar') and self.capture_control_bar:
             quality = self.capture_control_bar.get_quality()
@@ -1479,7 +1476,7 @@ class MainWindow(wx.Frame):
             quality = 0
         quality_map = ['high', 'medium', 'low']
         self.encoder.set_quality(quality_map[quality])
-        
+
         # 내장 프로그레스 바 표시
         format_name = output_format.upper()
         if self.encoding_progress_bar:
@@ -1492,7 +1489,7 @@ class MainWindow(wx.Frame):
         if getattr(self, '_progress_panel', None):
             self._progress_panel.Layout()
             self._progress_panel.Refresh()
-        
+
         # 인코딩 스레드 시작 (MP4인 경우 오디오 파일 경로 전달)
         # MP4의 경우 실제 캡처된 FPS 사용 (정확한 재생 속도)
         if output_format == 'mp4' and hasattr(self.recorder, 'actual_fps') and self.recorder.actual_fps:
@@ -1505,17 +1502,17 @@ class MainWindow(wx.Frame):
             else:
                 fps = 15
         audio_path = self.audio_file_path if output_format == 'mp4' else None
-        
+
         # 이전 인코딩 스레드 정리 (논블로킹)
         if self.encoding_thread is not None:
             if self.encoding_thread.is_alive():
                 # 데몬 스레드이므로 블로킹 대기 대신 경고만 출력
                 logger.warning("Previous encoding thread still running, it will finish in background")
             self.encoding_thread = None
-        
+
         # 프레임 넘기기 (스냅샷 사용 - 타이밍 이슈 방지)
         frames_to_encode = frames_snapshot
-        
+
         self.encoding_thread = EncodingThread(
             self.encoder, frames_to_encode, fps, file_path, output_format, audio_path,
             progress_callback=self._on_encoding_progress,
@@ -1523,7 +1520,7 @@ class MainWindow(wx.Frame):
             error_callback=self._on_encoding_error
         )
         self.encoding_thread.start()
-    
+
     def _on_encoding_progress(self, current, total):
         """인코딩 진행률"""
         try:
@@ -1533,7 +1530,7 @@ class MainWindow(wx.Frame):
                 percent = 0
         except (ZeroDivisionError, ValueError, TypeError):
             percent = 0
-        
+
         if percent >= 0:
             if self.encoding_progress_bar:
                 self.encoding_progress_bar.SetValue(percent)
@@ -1546,7 +1543,7 @@ class MainWindow(wx.Frame):
             self.status_msg_label.SetLabel(tr('encoding_percent').format(format_name, percent))
             if getattr(self, '_progress_panel', None):
                 self._progress_panel.Refresh()
-    
+
     def _on_encoding_finished(self, output_path):
         """인코딩 완료"""
         try:
@@ -1554,12 +1551,12 @@ class MainWindow(wx.Frame):
             self.frames = []
             if self.recorder:
                 self.recorder.clear_frames()
-            
+
             # 오디오 임시 파일 정리
             if hasattr(self, 'audio_recorder') and self.audio_recorder:
                 self.audio_recorder.cleanup()
             self.audio_file_path = None
-            
+
             # 파일 크기 계산
             file_size_str = ""
             try:
@@ -1573,7 +1570,7 @@ class MainWindow(wx.Frame):
                         file_size_str = f" ({file_size / (1024 * 1024):.1f} MB)"
             except Exception:
                 pass
-            
+
             # 프로그레스 바 완료 후 숨김
             if self.encoding_progress_bar:
                 self.encoding_progress_bar.SetValue(100)
@@ -1591,14 +1588,14 @@ class MainWindow(wx.Frame):
             if getattr(self, '_progress_panel', None):
                 self._progress_panel.Layout()
                 self._progress_panel.Refresh()
-            
+
             # 상태바에 파일 경로 표시
             filename = os.path.basename(output_path)
             self.status_msg_label.SetLabel(tr('saved_to').format(filename) + file_size_str)
-            
+
             # 일정 시간 후 메시지 제거
             wx.CallLater(ENCODING_STATUS_CLEAR_DELAY_MS, self._clear_encoding_status)
-            
+
             # 저장된 폴더 열기 (Windows)
             try:
                 folder = os.path.dirname(output_path)
@@ -1617,32 +1614,32 @@ class MainWindow(wx.Frame):
                     logger.warning(f"Output folder not accessible: {folder}")
             except (OSError, ValueError) as e:
                 logger.error(f"Path processing error: {e}")
-            
+
             self._reset_ui()
         except Exception as e:
             logger.warning("인코딩 완료 후처리 중 에러: %s", e)
             self._reset_ui()
-    
+
     def _clear_encoding_status(self):
         """인코딩 상태 메시지 제거"""
         self.status_msg_label.SetLabel(tr('ready'))
         if self.encoding_status_label:
             self.encoding_status_label.SetLabel("")
-    
+
     def _on_recording_error(self, error_msg):
         """녹화 에러 처리"""
         wx.MessageBox(tr('recording_error').format(error_msg), tr('error'), wx.OK | wx.ICON_ERROR)
         if self.record_state in [self.STATE_RECORDING, self.STATE_PAUSED]:
             self._stop_recording()
         self._reset_ui()
-    
+
     def _on_encoding_error(self, error_msg):
         """인코딩 에러"""
         # 프레임 버퍼 즉시 해제 (메모리 최적화)
         self.frames = []
         if self.recorder:
             self.recorder.clear_frames()
-        
+
         # 프로그레스 바 초기화 후 숨김
         if self.encoding_progress_bar:
             self.encoding_progress_bar.SetValue(0)
@@ -1653,13 +1650,13 @@ class MainWindow(wx.Frame):
         if getattr(self, '_progress_panel', None):
             self._progress_panel.Layout()
             self._progress_panel.Refresh()
-        
+
         wx.MessageBox(tr('encoding_failed') + f":\n{error_msg}", tr('error'), wx.OK | wx.ICON_ERROR)
-        
+
         # 일정 시간 후 메시지 제거
         wx.CallLater(ENCODING_STATUS_CLEAR_DELAY_MS, self._clear_encoding_status)
         self._reset_ui()
-    
+
     def _reset_ui(self):
         """UI 초기화"""
         # capture_control_bar 컨트롤 활성화
@@ -1671,7 +1668,7 @@ class MainWindow(wx.Frame):
         self.frames = []
         self.info_label.SetLabel("")
         self.status_msg_label.SetLabel(tr('ready'))
-    
+
     def _detect_system_capabilities(self):
         """시스템 능력 감지 → SystemDetector 위임."""
         self._system_detector.detect_system_capabilities()
@@ -1699,7 +1696,7 @@ class MainWindow(wx.Frame):
                     else:
                         # 잘못된 설정 - 파이프라인 적용
                         self.recorder.set_capture_backend(pipeline.capture_backend)
-                
+
                 # 인코더 설정
                 if self.encoder:
                     self.encoder.set_codec(pipeline.codec)
@@ -1714,7 +1711,7 @@ class MainWindow(wx.Frame):
                     elif 'lib' in pipeline.encoder:
                         encoder_type = 'cpu'
                     self.encoder.set_preferred_encoder(encoder_type)
-                
+
                 logger.info("[MainWindow] 최적 파이프라인 적용: %s", pipeline.name)
 
             # GPU 하드웨어 감지 시 백그라운드에서 CuPy까지 확인하여 자동 활성화
@@ -1788,7 +1785,7 @@ class MainWindow(wx.Frame):
                  nvenc="O" if gpu_info.ffmpeg_nvenc else "X",
                  driver=gpu_info.driver_version or "N/A")
         wx.MessageBox(msg, tr('gpu_info_title'), wx.OK | wx.ICON_INFORMATION, self)
-    
+
     def _update_hdr_label(self):
         """HDR 모드 레이블 업데이트 (상태바 필드 2 및 hdr_label)"""
         try:
@@ -1805,11 +1802,11 @@ class MainWindow(wx.Frame):
                     self.hdr_label.Hide()
         except (RuntimeError, AttributeError) as e:
             logger.debug("HDR label update failed: %s", e)
-    
+
     def _setup_shortcuts(self):
         """키보드 단축키 설정 (글로벌 핫키는 capture_control_bar에서 처리)"""
         pass
-    
+
     def _on_shortcut_rec(self):
         """F9 단축키: 녹화 시작/일시정지"""
         if self.record_state == self.STATE_READY:
@@ -1818,12 +1815,12 @@ class MainWindow(wx.Frame):
             self._resume_recording()
         elif self.record_state == self.STATE_RECORDING:
             self._pause_recording()
-    
+
     def _on_shortcut_stop(self):
         """F10 단축키: 녹화 중지"""
         if self.record_state in [self.STATE_RECORDING, self.STATE_PAUSED]:
             self._stop_recording()
-    
+
     def _on_shortcut_overlay(self):
         """F11 단축키: 캡처 영역 표시/숨김"""
         if self.capture_overlay:
@@ -1833,7 +1830,7 @@ class MainWindow(wx.Frame):
                 self.capture_overlay.Show()
                 self.capture_overlay.Raise()  # 항상 최상위로
                 self._position_overlay_below_window()
-    
+
     def _cleanup_overlay_on_quit(self):
         """앱 종료 직전 캡처 오버레이 강제 정리 (aboutToQuit에서 호출)"""
         overlay = getattr(self, 'capture_overlay', None)
@@ -1863,14 +1860,14 @@ class MainWindow(wx.Frame):
             if reply == wx.ID_NO:
                 event.Veto()
                 return
-            
+
             if self.recorder is not None:
                 self.recorder.stop_recording()
 
         self._is_closing = True
         # 종료 중 오버레이 재생성을 막기 위해 편집 모드 플래그도 함께 사용
         self._editor_mode = True
-        
+
         # 설정을 디스크에 저장 (해상도, FPS 등 유지)
         self._save_settings_to_disk()
 
@@ -1884,7 +1881,7 @@ class MainWindow(wx.Frame):
                 overlay.Destroy()
             except (RuntimeError, AttributeError):
                 pass
-        
+
         # 번역 콜백 등록 해제 (메모리 누수 및 PyDeadObjectError 방지)
         try:
             self.trans.unregister_callback(self.retranslateUi)
@@ -1900,33 +1897,33 @@ class MainWindow(wx.Frame):
             wx.CallLater(120, ensure_exit_if_no_primary_windows, "main_window_close")
         except Exception:
             pass
-        
+
         event.Skip()  # wxPython에서는 Skip() 사용
-    
+
     def _cleanup_all_resources(self):
         """모든 리소스 정리 - 메모리 누수 방지"""
         from core.utils import safe_delete_timer
-        
+
         # 미리보기 중지
         self._stop_preview()
-        
+
         # HDR 체크 타이머 정리
         if getattr(self, '_hdr_check_timer', None) is not None:
             safe_delete_timer(self._hdr_check_timer)
             self._hdr_check_timer = None
-        
+
         # 녹화 타이머 정리
         if self.record_timer is not None:
             safe_delete_timer(self.record_timer)
             self.record_timer = None
-        
+
         # 인코딩 스레드 정리 (threading.Thread 기반)
         if self.encoding_thread is not None:
             if self.encoding_thread.is_alive():
                 # 데몬 스레드이므로 종료 대기만
                 self.encoding_thread.join(timeout=2.0)
             self.encoding_thread = None
-        
+
         # 오디오 레코더 정리
         if hasattr(self, 'audio_recorder') and self.audio_recorder:
             try:
@@ -1935,7 +1932,7 @@ class MainWindow(wx.Frame):
                 self.audio_recorder.cleanup()
             except (AttributeError, RuntimeError):
                 pass
-        
+
         # 캡처 오버레이 정리 (wxPython, 로컬 참조 사용)
         overlay = self.capture_overlay
         self.capture_overlay = None
@@ -1945,12 +1942,12 @@ class MainWindow(wx.Frame):
                 overlay.Destroy()
             except (RuntimeError, AttributeError):
                 pass
-        
+
         # 프레임 버퍼 해제
         self.frames = []
         if self.recorder is not None:
             self.recorder.clear_frames()
-        
+
         # DXCam 공유 카메라 정리 (메모리 누수 방지)
         try:
             from core.capture_backend import DXCamBackend

@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Optional, Tuple, Callable, List
 from PIL import Image
 import numpy as np
-import os
 
 from ..utils.logger import get_logger
 
@@ -71,7 +70,7 @@ def get_available_upscalers() -> List[str]:
 
 # === 노이즈 제거 ===
 
-def denoise_bilateral(image: Image.Image, 
+def denoise_bilateral(image: Image.Image,
                       d: int = 9,
                       sigma_color: float = 75,
                       sigma_space: float = 75) -> Image.Image:
@@ -90,20 +89,20 @@ def denoise_bilateral(image: Image.Image,
     """
     try:
         import cv2
-        
+
         # PIL to OpenCV
         img_array = np.array(image)
         has_alpha = image.mode == 'RGBA'
-        
+
         if has_alpha:
             bgr = cv2.cvtColor(img_array[:, :, :3], cv2.COLOR_RGB2BGR)
             alpha = img_array[:, :, 3]
         else:
             bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-        
+
         # 양방향 필터 적용
         denoised = cv2.bilateralFilter(bgr, d, sigma_color, sigma_space)
-        
+
         # OpenCV to PIL
         if has_alpha:
             rgb = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
@@ -112,7 +111,7 @@ def denoise_bilateral(image: Image.Image,
         else:
             rgb = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
             return Image.fromarray(rgb, 'RGB')
-            
+
     except ImportError:
         _logger.warning("OpenCV 없음 - 기본 블러 사용")
         from PIL import ImageFilter
@@ -139,21 +138,21 @@ def denoise_nlmeans(image: Image.Image,
     """
     try:
         import cv2
-        
+
         img_array = np.array(image)
         has_alpha = image.mode == 'RGBA'
-        
+
         if has_alpha:
             bgr = cv2.cvtColor(img_array[:, :, :3], cv2.COLOR_RGB2BGR)
             alpha = img_array[:, :, 3]
         else:
             bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-        
+
         # NLMeans 노이즈 제거
         denoised = cv2.fastNlMeansDenoisingColored(
             bgr, None, h, h, template_window_size, search_window_size
         )
-        
+
         if has_alpha:
             rgb = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
             result = np.dstack([rgb, alpha])
@@ -161,12 +160,12 @@ def denoise_nlmeans(image: Image.Image,
         else:
             rgb = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
             return Image.fromarray(rgb, 'RGB')
-            
+
     except ImportError:
         return denoise_bilateral(image)
 
 
-def denoise_wavelet(image: Image.Image, 
+def denoise_wavelet(image: Image.Image,
                     sigma: Optional[float] = None,
                     mode: str = 'soft') -> Image.Image:
     """웨이블릿 기반 노이즈 제거 (scikit-image)
@@ -181,22 +180,22 @@ def denoise_wavelet(image: Image.Image,
     """
     if not _skimage_available:
         return denoise_bilateral(image)
-    
+
     try:
         from skimage.restoration import denoise_wavelet as sk_denoise_wavelet
-        
+
         img_array = np.array(image).astype(np.float32) / 255.0
         has_alpha = image.mode == 'RGBA'
-        
+
         if has_alpha:
             rgb = img_array[:, :, :3]
             alpha = img_array[:, :, 3]
-            
+
             denoised = sk_denoise_wavelet(
-                rgb, sigma=sigma, mode=mode, 
+                rgb, sigma=sigma, mode=mode,
                 channel_axis=2, rescale_sigma=True
             )
-            
+
             result = np.dstack([denoised, alpha])
             result = (np.clip(result, 0, 1) * 255).astype(np.uint8)
             return Image.fromarray(result, 'RGBA')
@@ -207,7 +206,7 @@ def denoise_wavelet(image: Image.Image,
             )
             result = (np.clip(denoised, 0, 1) * 255).astype(np.uint8)
             return Image.fromarray(result, image.mode)
-            
+
     except Exception as e:
         _logger.warning(f"웨이블릿 노이즈 제거 실패: {e}")
         return denoise_bilateral(image)
@@ -232,34 +231,34 @@ def denoise_bilateral_gpu(image: Image.Image,
     """
     if not _cucim_available:
         _logger.info("cuCIM 없음 - CPU 폴백 사용")
-        return denoise_bilateral(image, sigma_color=int(sigma_color * 255), 
+        return denoise_bilateral(image, sigma_color=int(sigma_color * 255),
                                   sigma_space=sigma_spatial)
-    
+
     try:
         import cupy as cp
         from cucim.skimage.restoration import denoise_bilateral as cucim_bilateral
-        
+
         img_array = np.array(image).astype(np.float32) / 255.0
         has_alpha = image.mode == 'RGBA'
-        
+
         if has_alpha:
             rgb = img_array[:, :, :3]
             alpha = img_array[:, :, 3]
-            
+
             # GPU로 전송
             rgb_gpu = cp.asarray(rgb)
-            
+
             # GPU에서 노이즈 제거
             denoised_gpu = cucim_bilateral(
-                rgb_gpu, 
+                rgb_gpu,
                 sigma_color=sigma_color,
                 sigma_spatial=sigma_spatial,
                 channel_axis=2
             )
-            
+
             # CPU로 복사
             denoised = cp.asnumpy(denoised_gpu)
-            
+
             result = np.dstack([denoised, alpha])
             result = (np.clip(result, 0, 1) * 255).astype(np.uint8)
             return Image.fromarray(result, 'RGBA')
@@ -274,7 +273,7 @@ def denoise_bilateral_gpu(image: Image.Image,
             denoised = cp.asnumpy(denoised_gpu)
             result = (np.clip(denoised, 0, 1) * 255).astype(np.uint8)
             return Image.fromarray(result, image.mode)
-            
+
     except Exception as e:
         _logger.warning(f"GPU 양방향 필터 실패: {e}")
         return denoise_bilateral(image)
@@ -294,22 +293,22 @@ def denoise_gaussian_gpu(image: Image.Image, sigma: float = 1.0) -> Image.Image:
         _logger.info("cuCIM 없음 - CPU 폴백 사용")
         from PIL import ImageFilter
         return image.filter(ImageFilter.GaussianBlur(radius=sigma))
-    
+
     try:
         import cupy as cp
         from cucim.skimage.filters import gaussian as cucim_gaussian
-        
+
         img_array = np.array(image).astype(np.float32) / 255.0
         has_alpha = image.mode == 'RGBA'
-        
+
         if has_alpha:
             rgb = img_array[:, :, :3]
             alpha = img_array[:, :, 3]
-            
+
             rgb_gpu = cp.asarray(rgb)
             denoised_gpu = cucim_gaussian(rgb_gpu, sigma=sigma, channel_axis=2)
             denoised = cp.asnumpy(denoised_gpu)
-            
+
             result = np.dstack([denoised, alpha])
             result = (np.clip(result, 0, 1) * 255).astype(np.uint8)
             return Image.fromarray(result, 'RGBA')
@@ -319,7 +318,7 @@ def denoise_gaussian_gpu(image: Image.Image, sigma: float = 1.0) -> Image.Image:
             denoised = cp.asnumpy(denoised_gpu)
             result = (np.clip(denoised, 0, 1) * 255).astype(np.uint8)
             return Image.fromarray(result, image.mode)
-            
+
     except Exception as e:
         _logger.warning(f"GPU 가우시안 필터 실패: {e}")
         from PIL import ImageFilter
@@ -342,29 +341,29 @@ def denoise_median_gpu(image: Image.Image, size: int = 3) -> Image.Image:
         _logger.info("cuCIM 없음 - CPU 폴백 사용")
         from PIL import ImageFilter
         return image.filter(ImageFilter.MedianFilter(size=size))
-    
+
     try:
         import cupy as cp
         from cucim.skimage.filters import median as cucim_median
         from cucim.skimage.morphology import disk as cucim_disk
-        
+
         img_array = np.array(image).astype(np.float32) / 255.0
         has_alpha = image.mode == 'RGBA'
-        
+
         # footprint 생성 (GPU에서)
         footprint = cucim_disk(size // 2)
-        
+
         if has_alpha:
             rgb = img_array[:, :, :3]
             alpha = img_array[:, :, 3]
-            
+
             # 채널별 미디언 적용
             denoised_channels = []
             for c in range(3):
                 channel_gpu = cp.asarray(rgb[:, :, c])
                 filtered_gpu = cucim_median(channel_gpu, footprint=footprint)
                 denoised_channels.append(cp.asnumpy(filtered_gpu))
-            
+
             denoised = np.stack(denoised_channels, axis=2)
             result = np.dstack([denoised, alpha])
             result = (np.clip(result, 0, 1) * 255).astype(np.uint8)
@@ -380,15 +379,15 @@ def denoise_median_gpu(image: Image.Image, size: int = 3) -> Image.Image:
                 channel_gpu = cp.asarray(channel)
                 filtered_gpu = cucim_median(channel_gpu, footprint=footprint)
                 denoised_channels.append(cp.asnumpy(filtered_gpu))
-            
+
             if len(denoised_channels) == 1:
                 denoised = denoised_channels[0]
             else:
                 denoised = np.stack(denoised_channels, axis=2)
-            
+
             result = (np.clip(denoised, 0, 1) * 255).astype(np.uint8)
             return Image.fromarray(result, image.mode)
-            
+
     except Exception as e:
         _logger.warning(f"GPU 미디언 필터 실패: {e}")
         from PIL import ImageFilter
@@ -413,9 +412,9 @@ def denoise_auto_gpu(image: Image.Image, strength: str = 'medium') -> Image.Imag
         'medium': {'sigma_color': 0.05, 'sigma_spatial': 15},
         'strong': {'sigma_color': 0.08, 'sigma_spatial': 20},
     }
-    
+
     p = params.get(strength, params['medium'])
-    
+
     if _cucim_available:
         return denoise_bilateral_gpu(image, **p)
     else:
@@ -448,19 +447,19 @@ def denoise_batch_gpu(images: List[Image.Image],
         'median': denoise_median_gpu,
         'auto': denoise_auto_gpu,
     }
-    
+
     denoise_func = methods.get(method, denoise_auto_gpu)
-    
+
     results = []
     total = len(images)
-    
+
     for i, image in enumerate(images):
         result = denoise_func(image, **kwargs)
         results.append(result)
-        
+
         if progress_callback:
             progress_callback(i + 1, total)
-    
+
     return results
 
 
@@ -521,23 +520,23 @@ def upscale_batch(images: List[Image.Image], scale: int = 2,
     """
     # 모든 AI 업스케일러가 제거되어 항상 Lanczos 사용
     upscale_func = lambda img: upscale_lanczos(img, scale)
-    
+
     results = []
     total = len(images)
-    
+
     for i, image in enumerate(images):
         result = upscale_func(image)
         results.append(result)
-        
+
         if progress_callback:
             progress_callback(i + 1, total)
-    
+
     return results
 
 
 # === 히스토그램 평활화 ===
 
-def equalize_histogram(image: Image.Image, 
+def equalize_histogram(image: Image.Image,
                        adaptive: bool = True,
                        clip_limit: float = 2.0,
                        tile_size: Tuple[int, int] = (8, 8)) -> Image.Image:
@@ -554,20 +553,20 @@ def equalize_histogram(image: Image.Image,
     """
     try:
         import cv2
-        
+
         img_array = np.array(image)
         has_alpha = image.mode == 'RGBA'
-        
+
         if has_alpha:
             bgr = cv2.cvtColor(img_array[:, :, :3], cv2.COLOR_RGB2BGR)
             alpha = img_array[:, :, 3]
         else:
             bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-        
+
         # LAB 색공간으로 변환
         lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        
+
         if adaptive:
             # CLAHE 적용
             clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
@@ -575,11 +574,11 @@ def equalize_histogram(image: Image.Image,
         else:
             # 일반 히스토그램 평활화
             l = cv2.equalizeHist(l)
-        
+
         # 다시 합치기
         lab = cv2.merge([l, a, b])
         result_bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-        
+
         if has_alpha:
             rgb = cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGB)
             result = np.dstack([rgb, alpha])
@@ -587,7 +586,7 @@ def equalize_histogram(image: Image.Image,
         else:
             rgb = cv2.cvtColor(result_bgr, cv2.COLOR_BGR2RGB)
             return Image.fromarray(rgb, 'RGB')
-            
+
     except ImportError:
         # OpenCV 없으면 PIL 자동 대비 사용
         from PIL import ImageOps
@@ -635,8 +634,8 @@ def apply_ai_effect(image: Image.Image, effect: str, **kwargs) -> Image.Image:
         'upscale_lanczos': upscale_lanczos,
         'equalize': equalize_histogram,
     }
-    
+
     if effect not in effects:
         raise ValueError(f"알 수 없는 효과: {effect}. 가능한 효과: {list(effects.keys())}")
-    
+
     return effects[effect](image, **kwargs)

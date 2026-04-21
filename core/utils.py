@@ -13,7 +13,7 @@ import gc
 import subprocess
 from typing import Tuple, Optional
 import numpy as np
-from PIL import Image, ImageFont
+from PIL import ImageFont
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ def calculate_overlay_position(
         y = frame_height - overlay_height - margin
     else:  # center
         y = (frame_height - overlay_height) // 2
-    
+
     # 가로 위치
     if 'left' in position:
         x = margin
@@ -176,11 +176,11 @@ def calculate_overlay_position(
         x = frame_width - overlay_width - margin
     else:  # center
         x = (frame_width - overlay_width) // 2
-    
+
     # 클리핑 (프레임 경계 내로)
     x = max(0, min(x, frame_width - overlay_width))
     y = max(0, min(y, frame_height - overlay_height))
-    
+
     return (x, y)
 
 
@@ -210,23 +210,23 @@ def apply_alpha_blend(
     try:
         overlay_h, overlay_w = overlay.shape[:2]
         bg_h, bg_w = background.shape[:2]
-        
+
         # 영역 클리핑
         x = max(0, min(x, bg_w - overlay_w))
         y = max(0, min(y, bg_h - overlay_h))
-        
+
         # ROI 추출
         roi = background[y:y+overlay_h, x:x+overlay_w]
-        
+
         # ROI와 오버레이 크기가 다르면 스킵
         if roi.shape[:2] != overlay.shape[:2]:
             return background
-        
+
         # 알파 채널 처리
         if overlay.shape[2] == 4:  # RGBA
             alpha = overlay[:, :, 3:4] / 255.0 * opacity
             rgb = overlay[:, :, :3]
-            
+
             if roi.shape[2] == 3:
                 blended = (roi * (1.0 - alpha) + rgb * alpha).astype(np.uint8)
                 background[y:y+overlay_h, x:x+overlay_w] = blended
@@ -234,9 +234,9 @@ def apply_alpha_blend(
             # 투명도만 적용
             blended = (roi * (1.0 - opacity) + overlay * opacity).astype(np.uint8)
             background[y:y+overlay_h, x:x+overlay_w] = blended
-        
+
         return background
-        
+
     except (ValueError, IndexError) as e:
         logger.debug(f"알파 블렌딩 실패: {e}")
         return background
@@ -265,10 +265,10 @@ def load_system_font(font_size: int, preferred_fonts: Optional[list] = None) -> 
         os.path.join(fonts_dir, "consola.ttf"),
         os.path.join(fonts_dir, "segoeui.ttf"),
     ]
-    
+
     # 선호 폰트가 있으면 앞에 추가
     fonts_to_try = (preferred_fonts or []) + default_fonts
-    
+
     # 순서대로 시도
     for font_path in fonts_to_try:
         try:
@@ -276,9 +276,9 @@ def load_system_font(font_size: int, preferred_fonts: Optional[list] = None) -> 
                 return ImageFont.truetype(font_path, font_size)
         except (OSError, IOError):
             continue
-    
+
     # 모두 실패하면 기본 폰트
-    logger.warning(f"시스템 폰트를 찾을 수 없음, 기본 폰트 사용")
+    logger.warning("시스템 폰트를 찾을 수 없음, 기본 폰트 사용")
     return ImageFont.load_default()
 
 
@@ -303,11 +303,11 @@ def parse_resolution(text: str) -> Optional[Tuple[int, int]]:
     """
     if not text:
         return None
-    
+
     try:
         # 모든 구분자를 'x'로 통일
         clean = text.replace(" ", "").replace("×", "x").replace("X", "x").replace("*", "x").lower()
-        
+
         if "x" in clean:
             parts = clean.split("x")
             if len(parts) == 2:
@@ -316,7 +316,7 @@ def parse_resolution(text: str) -> Optional[Tuple[int, int]]:
                 return (width, height)
     except (ValueError, IndexError):
         pass
-    
+
     return None
 
 
@@ -384,7 +384,7 @@ def safe_rmtree(path: str, max_retries: int = 3) -> bool:
             func(path)
         except (OSError, PermissionError):
             pass
-    
+
     for attempt in range(max_retries):
         try:
             if os.path.exists(path):
@@ -418,7 +418,7 @@ def run_subprocess_silent(cmd: list, timeout: int = 60, **kwargs) -> subprocess.
     """
     # Windows에서 콘솔 창 숨김
     creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-    
+
     # 기본 설정
     default_kwargs = {
         'capture_output': True,
@@ -426,9 +426,9 @@ def run_subprocess_silent(cmd: list, timeout: int = 60, **kwargs) -> subprocess.
         'timeout': timeout,
         'creationflags': creation_flags
     }
-    
+
     # 사용자 인자로 덮어쓰기
     default_kwargs.update(kwargs)
-    
+
     return subprocess.run(cmd, **default_kwargs)
 

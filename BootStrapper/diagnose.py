@@ -74,7 +74,6 @@ if not all_ok:
 # 4) Try creating the wx.App
 print("[4] wx.App 생성 테스트...")
 try:
-    import logging
     from logging_setup import setup_logging
     from paths import get_log_file
     logger = setup_logging(get_log_file())

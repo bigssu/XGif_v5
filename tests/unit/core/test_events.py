@@ -1,6 +1,5 @@
 """EventBus subscribe/emit/unsubscribe 테스트."""
 
-import pytest
 from core.events import AppEvent, EventBus, get_event_bus
 
 

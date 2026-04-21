@@ -50,7 +50,7 @@ class SpeechBubbleConfig:
 
 class SpeechBubble:
     """말풍선 생성 클래스"""
-    
+
     @staticmethod
     def create(width: int, height: int, config: SpeechBubbleConfig,
                font_path: Optional[str] = None) -> Image.Image:
@@ -88,7 +88,7 @@ class SpeechBubble:
             bubble_w = width - tail_space
         elif config.tail_direction == TailDirection.RIGHT_CENTER:
             bubble_w = width - tail_space
-        
+
         # 스타일별 말풍선 그리기
         if config.style == BubbleStyle.ROUNDED:
             SpeechBubble._draw_rounded(draw, bubble_x, bubble_y, bubble_w, bubble_h, config)
@@ -102,17 +102,17 @@ class SpeechBubble:
             SpeechBubble._draw_rectangle(draw, bubble_x, bubble_y, bubble_w, bubble_h, config)
         elif config.style == BubbleStyle.OVAL:
             SpeechBubble._draw_oval(draw, bubble_x, bubble_y, bubble_w, bubble_h, config)
-        
+
         # 꼬리 그리기
         if config.tail_direction != TailDirection.NONE:
             SpeechBubble._draw_tail(draw, bubble_x, bubble_y, bubble_w, bubble_h, config)
-        
+
         # 텍스트 그리기
         if config.text:
             SpeechBubble._draw_text(draw, bubble_x, bubble_y, bubble_w, bubble_h, config, font_path)
-        
+
         return img
-    
+
     @staticmethod
     def _draw_rounded(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int,
                       config: SpeechBubbleConfig):
@@ -125,7 +125,7 @@ class SpeechBubble:
             outline=config.border_color,
             width=config.border_width
         )
-    
+
     @staticmethod
     def _draw_cloud(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int,
                     config: SpeechBubbleConfig):
@@ -134,23 +134,23 @@ class SpeechBubble:
         bump_radius = min(w, h) // 6
         num_bumps_x = max(3, w // (bump_radius * 2))
         num_bumps_y = max(2, h // (bump_radius * 2))
-        
+
         # 배경 채우기
         draw.rounded_rectangle(
-            [x + bump_radius//2, y + bump_radius//2, 
+            [x + bump_radius//2, y + bump_radius//2,
              x + w - bump_radius//2 - 1, y + h - bump_radius//2 - 1],
             radius=bump_radius,
             fill=config.bg_color
         )
-        
+
         # 상단 범프
         for i in range(num_bumps_x):
             cx = x + bump_radius + i * ((w - bump_radius * 2) // max(1, num_bumps_x - 1))
             cy = y + bump_radius // 2
-            draw.ellipse([cx - bump_radius, cy - bump_radius//2, 
+            draw.ellipse([cx - bump_radius, cy - bump_radius//2,
                          cx + bump_radius, cy + bump_radius//2 + bump_radius],
                         fill=config.bg_color)
-        
+
         # 하단 범프
         for i in range(num_bumps_x):
             cx = x + bump_radius + i * ((w - bump_radius * 2) // max(1, num_bumps_x - 1))
@@ -158,7 +158,7 @@ class SpeechBubble:
             draw.ellipse([cx - bump_radius, cy - bump_radius//2 - bump_radius,
                          cx + bump_radius, cy + bump_radius//2],
                         fill=config.bg_color)
-        
+
         # 테두리
         draw.rounded_rectangle(
             [x + bump_radius//2, y + bump_radius//2,
@@ -167,19 +167,19 @@ class SpeechBubble:
             outline=config.border_color,
             width=config.border_width
         )
-    
+
     @staticmethod
     def _draw_shout(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int,
                     config: SpeechBubbleConfig):
         """외침(톱니) 말풍선"""
         spike_size = 15
         num_spikes = max(4, (w + h) // 40)
-        
+
         points = []
         # 외곽선을 따라 톱니 생성
         for i in range(num_spikes * 4):
             progress = i / (num_spikes * 4)
-            
+
             if progress < 0.25:  # 상단
                 t = progress / 0.25
                 bx = x + t * w
@@ -196,50 +196,50 @@ class SpeechBubble:
                 t = (progress - 0.75) / 0.25
                 bx = x
                 by = y + h - t * h
-            
+
             # 중심 방향 오프셋
             cx, cy = x + w/2, y + h/2
             dx, dy = bx - cx, by - cy
             dist = math.sqrt(dx*dx + dy*dy) or 1
-            
+
             # 짝수/홀수로 안/바깥 결정
             if i % 2 == 0:
                 points.append((bx - dx/dist * spike_size, by - dy/dist * spike_size))
             else:
                 points.append((bx, by))
-        
+
         draw.polygon(points, fill=config.bg_color, outline=config.border_color, width=config.border_width)
-    
+
     @staticmethod
     def _draw_thought(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int,
                       config: SpeechBubbleConfig):
         """생각 말풍선 (타원)"""
         draw.ellipse([x, y, x + w - 1, y + h - 1],
                     fill=config.bg_color, outline=config.border_color, width=config.border_width)
-    
+
     @staticmethod
     def _draw_rectangle(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int,
                         config: SpeechBubbleConfig):
         """사각형 말풍선"""
         draw.rectangle([x, y, x + w - 1, y + h - 1],
                       fill=config.bg_color, outline=config.border_color, width=config.border_width)
-    
+
     @staticmethod
     def _draw_oval(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int,
                    config: SpeechBubbleConfig):
         """타원형 말풍선"""
         draw.ellipse([x, y, x + w - 1, y + h - 1],
                     fill=config.bg_color, outline=config.border_color, width=config.border_width)
-    
+
     @staticmethod
     def _draw_tail(draw: ImageDraw.Draw, bx: int, by: int, bw: int, bh: int,
                    config: SpeechBubbleConfig):
         """말풍선 꼬리 그리기"""
         tail_len = config.tail_length
         tail_width = 20
-        
+
         direction = config.tail_direction
-        
+
         # 꼬리 시작점과 끝점 계산
         if direction == TailDirection.BOTTOM_LEFT:
             p1 = (bx + bw // 4 - tail_width//2, by + bh - config.border_width)
@@ -275,7 +275,7 @@ class SpeechBubble:
             p3 = (bx + bw + tail_len, by + bh // 2)
         else:
             return
-        
+
         # 생각 말풍선은 작은 원들로 꼬리 표현
         if config.style == BubbleStyle.THOUGHT:
             num_circles = 3
@@ -292,7 +292,7 @@ class SpeechBubble:
             # 테두리 (양쪽 선만)
             draw.line([p1, p3], fill=config.border_color, width=config.border_width)
             draw.line([p2, p3], fill=config.border_color, width=config.border_width)
-    
+
     @staticmethod
     def _draw_text(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int,
                    config: SpeechBubbleConfig, font_path: Optional[str]):
@@ -308,7 +308,7 @@ class SpeechBubble:
                 font = ImageFont.truetype("C:/Windows/Fonts/arial.ttf", config.font_size)
             except (OSError, IOError):
                 font = ImageFont.load_default()
-        
+
         # 텍스트 영역
         text_area = (
             x + config.padding,
@@ -316,17 +316,17 @@ class SpeechBubble:
             x + w - config.padding,
             y + h - config.padding
         )
-        
+
         # 텍스트 중앙 정렬
         bbox = draw.textbbox((0, 0), config.text, font=font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
-        
+
         text_x = x + (w - text_w) // 2
         text_y = y + (h - text_h) // 2
-        
+
         draw.text((text_x, text_y), config.text, font=font, fill=config.text_color)
-    
+
     @staticmethod
     def get_style_names() -> List[Tuple[str, BubbleStyle]]:
         """UI용 스타일 이름 목록"""
@@ -338,7 +338,7 @@ class SpeechBubble:
             ("사각형", BubbleStyle.RECTANGLE),
             ("타원형", BubbleStyle.OVAL),
         ]
-    
+
     @staticmethod
     def get_tail_directions() -> List[Tuple[str, TailDirection]]:
         """UI용 꼬리 방향 목록"""

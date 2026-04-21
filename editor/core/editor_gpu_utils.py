@@ -38,14 +38,14 @@ def _check_gpu() -> bool:
         bool: GPU 사용 가능 시 True, 아니면 False
     """
     global _cupy_module, _gpu_init_error
-    
+
     # CUDA_VISIBLE_DEVICES 환경 변수 확인
     cuda_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '')
     if cuda_devices == '-1':
         _gpu_init_error = "CUDA_VISIBLE_DEVICES가 -1로 설정됨 (GPU 비활성화)"
         _logger.info(f"GPU 초기화 건너뜀: {_gpu_init_error}")
         return False
-    
+
     try:
         from core.utils import ensure_system_site_packages
         ensure_system_site_packages()
@@ -58,38 +58,38 @@ def _check_gpu() -> bool:
         # CUDA 런타임 버전 확인
         cuda_version = cp.cuda.runtime.runtimeGetVersion()
         _logger.info(f"CUDA 런타임 버전: {cuda_version // 1000}.{(cuda_version % 1000) // 10}")
-        
+
         # GPU 장치 수 확인
         device_count = cp.cuda.runtime.getDeviceCount()
         if device_count == 0:
             _gpu_init_error = "사용 가능한 CUDA 장치가 없습니다"
             _logger.warning(_gpu_init_error)
             return False
-        
+
         _logger.info(f"CUDA 장치 발견: {device_count}개")
-        
+
         # 기본 장치 선택 및 정보 로깅
         device = cp.cuda.Device()
         props = cp.cuda.runtime.getDeviceProperties(device.id)
         device_name = props["name"].decode() if isinstance(props["name"], bytes) else props["name"]
         total_memory_mb = props["totalGlobalMem"] // (1024 * 1024)
         compute_cap = f"{props['major']}.{props['minor']}"
-        
+
         _logger.info(f"GPU 선택됨: {device_name}")
         _logger.info(f"  - 메모리: {total_memory_mb:,} MB")
         _logger.info(f"  - Compute Capability: {compute_cap}")
-        
+
         # GPU 메모리 할당 테스트
         test_arr = cp.array([1, 2, 3], dtype=cp.float32)
         result = test_arr.sum()
         _ = result.get()
         del test_arr, result
         cp.get_default_memory_pool().free_all_blocks()
-        
+
         _cupy_module = cp
         _logger.info("GPU 초기화 완료 - CuPy 사용 가능")
         return True
-        
+
     except ImportError as e:
         _gpu_init_error = f"CuPy가 설치되지 않음: {str(e)}"
         _logger.info(f"GPU 가속 사용 불가: {_gpu_init_error}")
@@ -177,38 +177,38 @@ def get_gpu_info() -> Dict[str, Any]:
         "cuda_version": "N/A",
         "cupy_version": "N/A"
     }
-    
+
     if not is_gpu_available():
         if _gpu_init_error:
             info["error"] = _gpu_init_error
         return info
-    
+
     try:
         import cupy as cp
-        
+
         info["available"] = True
         info["cupy_version"] = cp.__version__
-        
+
         # CUDA 버전
         cuda_version = cp.cuda.runtime.runtimeGetVersion()
         info["cuda_version"] = f"{cuda_version // 1000}.{(cuda_version % 1000) // 10}"
-        
+
         # 장치 정보
         device = cp.cuda.Device()
         props = cp.cuda.runtime.getDeviceProperties(device.id)
-        
+
         info["name"] = props["name"].decode() if isinstance(props["name"], bytes) else props["name"]
         info["memory_total"] = props["totalGlobalMem"] // (1024 * 1024)
         info["compute_capability"] = f"{props['major']}.{props['minor']}"
-        
+
         # 현재 메모리 사용량
         mempool = cp.get_default_memory_pool()
         info["memory_used"] = mempool.used_bytes() // (1024 * 1024)
         info["memory_free"] = info["memory_total"] - info["memory_used"]
-        
+
     except Exception as e:
         info["error"] = str(e)
-    
+
     return info
 
 
@@ -223,17 +223,17 @@ def get_gpu_memory_info() -> Dict[str, int]:
     """
     if not is_gpu_available():
         return {"total": 0, "used": 0, "free": 0}
-    
+
     try:
         import cupy as cp
-        
+
         device = cp.cuda.Device()
         props = cp.cuda.runtime.getDeviceProperties(device.id)
         total = props["totalGlobalMem"] // (1024 * 1024)
-        
+
         mempool = cp.get_default_memory_pool()
         used = mempool.used_bytes() // (1024 * 1024)
-        
+
         return {"total": total, "used": used, "free": total - used}
     except Exception:
         return {"total": 0, "used": 0, "free": 0}
@@ -246,21 +246,21 @@ def clear_gpu_memory() -> None:
     """
     if not is_gpu_available():
         return
-    
+
     try:
         import cupy as cp
-        
+
         mempool = cp.get_default_memory_pool()
         pinned_mempool = cp.get_default_pinned_memory_pool()
-        
+
         before_used = mempool.used_bytes() // (1024 * 1024)
-        
+
         mempool.free_all_blocks()
         pinned_mempool.free_all_blocks()
-        
+
         after_used = mempool.used_bytes() // (1024 * 1024)
         freed = before_used - after_used
-        
+
         if freed > 0:
             _logger.debug(f"GPU 메모리 정리: {freed} MB 해제됨")
     except Exception as e:
@@ -334,18 +334,18 @@ def should_use_gpu(image_size: Tuple[int, int], frame_count: int = 1) -> bool:
     """
     if not is_gpu_enabled():
         return False
-    
+
     width, height = image_size
     pixels = width * height
-    
+
     # 임계값: 약 300x300 픽셀 이상, 또는 10프레임 이상
     MIN_PIXELS = 90000  # 300 * 300
     MIN_FRAMES_FOR_BATCH = 10
-    
+
     # 단일 이미지: 픽셀 수가 충분히 커야 함
     if frame_count == 1:
         return pixels >= MIN_PIXELS
-    
+
     # 배치 처리: 총 연산량이 충분히 커야 함
     total_pixels = pixels * frame_count
     return total_pixels >= MIN_PIXELS * MIN_FRAMES_FOR_BATCH or frame_count >= MIN_FRAMES_FOR_BATCH
@@ -365,46 +365,46 @@ def gpu_sepia(img_array: np.ndarray) -> np.ndarray:
     # 입력 검증
     if img_array is None:
         raise ValueError("이미지 배열이 None입니다")
-    
+
     if not isinstance(img_array, np.ndarray):
         raise TypeError(f"numpy 배열이 필요합니다. 받은 타입: {type(img_array)}")
-    
+
     if len(img_array.shape) != 3 or img_array.shape[2] < 3:
         raise ValueError(f"이미지 배열 shape이 올바르지 않습니다. 예상: (H, W, 3+) 받음: {img_array.shape}")
-    
+
     if img_array.size == 0:
         raise ValueError("빈 이미지 배열입니다")
-    
+
     if not is_gpu_enabled():
         return cpu_sepia(img_array)
-    
+
     try:
         import cupy as cp
-        
+
         # GPU로 전송
         gpu_arr = cp.asarray(img_array, dtype=cp.float32)
-        
+
         # 세피아 매트릭스
         sepia_matrix = cp.array([
             [0.393, 0.769, 0.189],
             [0.349, 0.686, 0.168],
             [0.272, 0.534, 0.131]
         ], dtype=cp.float32)
-        
+
         # RGB 채널만 추출
         rgb = gpu_arr[:, :, :3]
-        
+
         # 행렬 연산
         sepia = cp.dot(rgb, sepia_matrix.T)
         sepia = cp.clip(sepia, 0, 255)
-        
+
         # 결과 합성
         result = gpu_arr.copy()
         result[:, :, :3] = sepia
-        
+
         # CPU로 반환
         return cp.asnumpy(result).astype(np.uint8)
-    
+
     except MemoryError:
         _logger.warning("GPU 메모리 부족 - CPU로 폴백")
         return cpu_sepia(img_array)
@@ -422,20 +422,20 @@ def cpu_sepia(img_array: np.ndarray) -> np.ndarray:
 def _numpy_sepia(img_array: np.ndarray) -> np.ndarray:
     """NumPy 기반 세피아 효과 (기본 폴백)"""
     arr = img_array.astype(np.float32)
-    
+
     sepia_matrix = np.array([
         [0.393, 0.769, 0.189],
         [0.349, 0.686, 0.168],
         [0.272, 0.534, 0.131]
     ])
-    
+
     rgb = arr[:, :, :3]
     sepia = np.dot(rgb, sepia_matrix.T)
     sepia = np.clip(sepia, 0, 255)
-    
+
     result = arr.copy()
     result[:, :, :3] = sepia
-    
+
     return result.astype(np.uint8)
 
 
@@ -454,53 +454,53 @@ def gpu_vignette(img_array: np.ndarray, strength: float = 0.5) -> np.ndarray:
     # 입력 검증
     if img_array is None:
         raise ValueError("이미지 배열이 None입니다")
-    
+
     if not isinstance(img_array, np.ndarray):
         raise TypeError(f"numpy 배열이 필요합니다. 받은 타입: {type(img_array)}")
-    
+
     if len(img_array.shape) != 3 or img_array.shape[2] < 3:
         raise ValueError(f"이미지 배열 shape이 올바르지 않습니다. 예상: (H, W, 3+) 받음: {img_array.shape}")
-    
+
     if img_array.size == 0:
         raise ValueError("빈 이미지 배열입니다")
-    
+
     # strength 범위 검증
     strength = max(0.0, min(1.0, float(strength)))
-    
+
     if not is_gpu_enabled():
         return cpu_vignette(img_array, strength)
-    
+
     try:
         import cupy as cp
-        
+
         height, width = img_array.shape[:2]
-        
+
         if height == 0 or width == 0:
             raise ValueError(f"이미지 크기가 유효하지 않습니다: {height}x{width}")
-        
+
         # GPU에서 마스크 생성
         x = cp.linspace(-1, 1, width, dtype=cp.float32)
         y = cp.linspace(-1, 1, height, dtype=cp.float32)
         X, Y = cp.meshgrid(x, y)
-        
+
         # 거리 계산
         distance = cp.sqrt(X**2 + Y**2)
-        
+
         # 비네트 마스크
         vignette = 1 - (distance * strength)
         vignette = cp.clip(vignette, 0, 1)
-        
+
         # 이미지를 GPU로 전송
         gpu_arr = cp.asarray(img_array, dtype=cp.float32)
-        
+
         # RGB 채널에 적용
         for i in range(3):
             gpu_arr[:, :, i] *= vignette
-        
+
         gpu_arr = cp.clip(gpu_arr, 0, 255)
-        
+
         return cp.asnumpy(gpu_arr).astype(np.uint8)
-    
+
     except MemoryError:
         _logger.warning("GPU 메모리 부족 - CPU로 폴백")
         return cpu_vignette(img_array, strength)
@@ -517,19 +517,19 @@ def cpu_vignette(img_array: np.ndarray, strength: float = 0.5) -> np.ndarray:
 def _numpy_vignette(img_array: np.ndarray, strength: float = 0.5) -> np.ndarray:
     """NumPy 기반 비네트 효과 (기본 폴백)"""
     height, width = img_array.shape[:2]
-    
+
     x = np.linspace(-1, 1, width)
     y = np.linspace(-1, 1, height)
     X, Y = np.meshgrid(x, y)
-    
+
     distance = np.sqrt(X**2 + Y**2)
     vignette = 1 - (distance * strength)
     vignette = np.clip(vignette, 0, 1)
-    
+
     arr = img_array.astype(np.float32)
     for i in range(3):
         arr[:, :, i] *= vignette
-    
+
     return np.clip(arr, 0, 255).astype(np.uint8)
 
 
@@ -548,73 +548,73 @@ def gpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
     # 입력 검증
     if img_array is None:
         raise ValueError("이미지 배열이 None입니다")
-    
+
     if not isinstance(img_array, np.ndarray):
         raise TypeError(f"numpy 배열이 필요합니다. 받은 타입: {type(img_array)}")
-    
+
     if len(img_array.shape) != 3 or img_array.shape[2] < 3:
         raise ValueError(f"이미지 배열 shape이 올바르지 않습니다. 예상: (H, W, 3+) 받음: {img_array.shape}")
-    
+
     if img_array.size == 0:
         raise ValueError("빈 이미지 배열입니다")
-    
+
     # shift 범위 검증
     shift = max(-180, min(180, int(shift)))
-    
+
     if not is_gpu_enabled():
         return cpu_hue_shift(img_array, shift)
-    
+
     try:
         import cupy as cp
-        
+
         # GPU로 전송
         gpu_arr = cp.asarray(img_array, dtype=cp.float32)
-        
+
         # RGB를 HSV로 변환 (GPU에서)
         r = gpu_arr[:, :, 0] / 255.0
         g = gpu_arr[:, :, 1] / 255.0
         b = gpu_arr[:, :, 2] / 255.0
-        
+
         max_c = cp.maximum(cp.maximum(r, g), b)
         min_c = cp.minimum(cp.minimum(r, g), b)
         diff = max_c - min_c
-        
+
         # Hue 계산
         h = cp.zeros_like(max_c)
-        
+
         # diff가 0이 아닌 곳만 계산
         mask = diff > 0
-        
+
         # R이 max인 경우
         r_max = (max_c == r) & mask
         h[r_max] = (60 * ((g[r_max] - b[r_max]) / diff[r_max]) + 360) % 360
-        
+
         # G가 max인 경우
         g_max = (max_c == g) & mask
         h[g_max] = (60 * ((b[g_max] - r[g_max]) / diff[g_max]) + 120) % 360
-        
+
         # B가 max인 경우
         b_max = (max_c == b) & mask
         h[b_max] = (60 * ((r[b_max] - g[b_max]) / diff[b_max]) + 240) % 360
-        
+
         # Saturation, Value
         s = cp.where(max_c > 0, diff / max_c, 0)
         v = max_c
-        
+
         # Hue 이동
         h = (h + shift) % 360
-        
+
         # HSV를 RGB로 변환
         c = v * s
         x = c * (1 - cp.abs((h / 60) % 2 - 1))
         m = v - c
-        
+
         h_i = (h / 60).astype(cp.int32) % 6
-        
+
         r_new = cp.zeros_like(h)
         g_new = cp.zeros_like(h)
         b_new = cp.zeros_like(h)
-        
+
         for i, (r_v, g_v, b_v) in enumerate([
             (c, x, 0), (x, c, 0), (0, c, x),
             (0, x, c), (x, 0, c), (c, 0, x)
@@ -632,18 +632,18 @@ def gpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
                 b_new[mask_i] = b_v
             else:
                 b_new[mask_i] = b_v[mask_i]
-        
+
         r_new = (r_new + m) * 255
         g_new = (g_new + m) * 255
         b_new = (b_new + m) * 255
-        
+
         result = gpu_arr.copy()
         result[:, :, 0] = cp.clip(r_new, 0, 255)
         result[:, :, 1] = cp.clip(g_new, 0, 255)
         result[:, :, 2] = cp.clip(b_new, 0, 255)
-        
+
         return cp.asnumpy(result).astype(np.uint8)
-    
+
     except MemoryError:
         _logger.warning("GPU 메모리 부족 - CPU로 폴백")
         return cpu_hue_shift(img_array, shift)
@@ -655,24 +655,24 @@ def gpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
 def cpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
     """CPU Hue 조절 (폴백용) - PIL 사용"""
     from PIL import Image
-    
+
     img = Image.fromarray(img_array, 'RGBA')
     r, g, b, a = img.split()
     rgb = Image.merge('RGB', (r, g, b))
-    
+
     hsv = rgb.convert('HSV')
     h, s, v = hsv.split()
-    
+
     h_array = np.array(h, dtype=np.int32)
     # PIL HSV의 H는 0-255 범위. shift를 0-360 기준에서 0-255 기준으로 변환하여 GPU 경로와 일치시킴
     shift_normalized = int(round(shift * 256 / 360)) if abs(shift) > 0 else 0
     h_array = (h_array + shift_normalized) % 256
     h = Image.fromarray(h_array.astype(np.uint8))
-    
+
     hsv = Image.merge('HSV', (h, s, v))
     rgb = hsv.convert('RGB')
     r, g, b = rgb.split()
-    
+
     result = Image.merge('RGBA', (r, g, b, a))
     return np.array(result)
 
@@ -689,22 +689,22 @@ def gpu_calculate_similarity(arr1: np.ndarray, arr2: np.ndarray) -> float:
     """
     if arr1.shape != arr2.shape:
         return 0.0
-    
+
     if not is_gpu_enabled():
         return cpu_calculate_similarity(arr1, arr2)
-    
+
     try:
         import cupy as cp
-        
+
         # GPU로 전송
         gpu_arr1 = cp.asarray(arr1[:, :, :3], dtype=cp.float32)
         gpu_arr2 = cp.asarray(arr2[:, :, :3], dtype=cp.float32)
-        
+
         # 차이 계산
         diff = cp.abs(gpu_arr1 - gpu_arr2).mean()
-        
+
         return float(1.0 - (diff / 255.0))
-    
+
     except Exception:
         return cpu_calculate_similarity(arr1, arr2)
 
@@ -720,12 +720,12 @@ def _numpy_similarity(arr1: np.ndarray, arr2: np.ndarray) -> float:
     """NumPy 기반 이미지 유사도 계산 (기본 폴백)"""
     a1 = arr1[:, :, :3].astype(np.float32)
     a2 = arr2[:, :, :3].astype(np.float32)
-    
+
     # 샘플링으로 성능 최적화
     step = max(1, min(a1.shape[0], a1.shape[1]) // 50)
     a1 = a1[::step, ::step]
     a2 = a2[::step, ::step]
-    
+
     diff = np.abs(a1 - a2).mean()
     return 1.0 - (diff / 255.0)
 
@@ -755,30 +755,30 @@ def gpu_batch_process(images: list, operation: str, **kwargs) -> list:
     """
     if not images:
         return []
-    
+
     operations = {
         'sepia': lambda img, **kw: gpu_sepia(img),
         'vignette': lambda img, **kw: gpu_vignette(img, kw.get('strength', 0.5)),
         'hue_shift': lambda img, **kw: gpu_hue_shift(img, kw.get('shift', 0)),
     }
-    
+
     if operation not in operations:
         _logger.warning(f"알 수 없는 GPU 연산: {operation}. 원본 이미지 반환.")
         return images
-    
+
     op_func = operations[operation]
     results = []
-    
+
     # GPU 사용 권장 여부 확인
     if images and is_gpu_enabled():
         height, width = images[0].shape[:2]
         use_gpu = should_use_gpu((width, height), len(images))
-        
+
         if use_gpu:
             _logger.debug(f"GPU 배치 처리 시작: {len(images)}개 이미지, 연산: {operation}")
         else:
             _logger.debug(f"CPU 배치 처리 시작: {len(images)}개 이미지 (GPU 사용 불필요)")
-    
+
     # 배치 처리 (이미지 크기에 따라 동적 조정)
     # gpu_batch_process는 이미 배치 단위로 호출되므로 여기서는 작은 배치로 세분화
     # (apply_effect_gpu_batch에서 큰 배치로 나누고, 여기서는 GPU 메모리 관리를 위해 작은 단위로 처리)
@@ -787,11 +787,11 @@ def gpu_batch_process(images: list, operation: str, **kwargs) -> list:
         batch = images[i:i + internal_batch_size]
         batch_results = [op_func(img, **kwargs) for img in batch]
         results.extend(batch_results)
-        
+
         # 배치 처리 후 GPU 메모리 정리 (마지막 배치가 아니면)
         if is_gpu_enabled() and (i + internal_batch_size) < len(images):
             clear_gpu_memory()
-    
+
     if is_gpu_enabled():
         clear_gpu_memory()
 
@@ -814,12 +814,12 @@ def initialize_gpu(force: bool = False) -> bool:
         bool: GPU 사용 가능 여부
     """
     global _gpu_available, _gpu_init_error
-    
+
     if force:
         _gpu_available = None
         _gpu_init_error = None
         _logger.info("GPU 상태 재검사 시작...")
-    
+
     return is_gpu_available()
 
 

@@ -84,7 +84,7 @@ _install_startup_crash_reporter()
 import wx
 
 # 공통 상수
-from core.utils import APP_SETTINGS_ORG, APP_SETTINGS_NAME
+from core.utils import APP_SETTINGS_NAME
 
 # 크래시 핸들러
 from core.crash_handler import install_crash_handler
@@ -107,14 +107,14 @@ except ImportError:
 def setup_logging():
     """로깅 설정 (안전한 파일 핸들러 + 로그 로테이션)"""
     from logging.handlers import RotatingFileHandler
-    
+
     handlers = [logging.StreamHandler()]
-    
+
     try:
         appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
         log_dir = os.path.join(appdata, APP_SETTINGS_NAME, 'logs')
         os.makedirs(log_dir, exist_ok=True)
-        
+
         log_file = os.path.join(log_dir, 'app.log')
         # 로그 로테이션: 최대 5MB, 3개 파일 유지
         file_handler = RotatingFileHandler(
@@ -126,7 +126,7 @@ def setup_logging():
         handlers.append(file_handler)
     except (OSError, PermissionError) as e:
         print(f"Warning: Cannot create log file: {e}")
-    
+
     level = logging.DEBUG if os.environ.get('XGIF_DEBUG') else logging.INFO
     logging.basicConfig(
         level=level,
@@ -140,7 +140,7 @@ logger = logging.getLogger(__name__)
 
 class XGifApp(wx.App):
     """XGif 애플리케이션 클래스"""
-    
+
     def OnInit(self):
         """애플리케이션 초기화"""
         # 크래시 핸들러 설치 (전역 예외 포착) — self에 저장하여 GC 방지
@@ -149,7 +149,7 @@ class XGifApp(wx.App):
             logger.info("XGif starting...")
         except Exception as e:
             print(f"Warning: Crash handler installation failed: {e}")
-        
+
         # 앱 아이콘 설정
         try:
             from core.utils import get_resource_path
@@ -162,7 +162,7 @@ class XGifApp(wx.App):
                 self.SetAppDisplayName(APP_SETTINGS_NAME)
         except Exception as e:
             logger.warning(f"App icon setting failed: {e}")
-        
+
         # 단일 인스턴스 체크
         self.checker = SingleInstanceChecker(APP_UNIQUE_NAME)
         if self.checker.IsAnotherRunning():
@@ -209,7 +209,7 @@ class XGifApp(wx.App):
                     wx.OK | wx.ICON_ERROR
                 )
                 return False
-        
+
         # UI 모듈 지연 로딩
         try:
             from ui import MainWindow
@@ -239,9 +239,9 @@ class XGifApp(wx.App):
                 wx.OK | wx.ICON_ERROR
             )
             return False
-        
+
         return True
-    
+
     def OnExit(self):
         """애플리케이션 종료 시 정리"""
         logger.info("Application terminated")

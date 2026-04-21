@@ -13,28 +13,28 @@ def main():
     else:
         # 개발 환경
         app_dir = os.path.dirname(os.path.abspath(__file__))
-    
+
     # 모듈 경로 추가
     if app_dir not in sys.path:
         sys.path.insert(0, app_dir)
-    
+
     # 로깅 초기화 (wxPython import 전에!)
     import paths
     from logging_setup import setup_logging
-    
+
     log_file = paths.get_log_file()
     logger = setup_logging(log_file)
-    
+
     logger.info(f"실행 경로: {app_dir}")
     logger.info(f"Python 버전: {sys.version}")
     logger.info(f"Frozen: {getattr(sys, 'frozen', False)}")
-    
+
     try:
         # wxPython 임포트 (무거운 작업이므로 여기서)
         logger.info("wxPython 로딩 중...")
         import wx
         logger.info(f"wxPython 버전: {wx.version()}")
-        
+
         # UI 생성 및 실행
         from ui_main import create_app
         app = create_app(logger, paths)
@@ -47,7 +47,7 @@ def main():
         exit_code = 0 if setup_success else 1
         logger.info(f"종료 코드: {exit_code} (setup_success={setup_success})")
         sys.exit(exit_code)
-        
+
     except ImportError as e:
         logger.error(f"모듈 임포트 실패: {e}")
         # GUI 없이 에러 표시
@@ -60,7 +60,7 @@ def main():
                 0x10  # MB_ICONERROR
             )
         sys.exit(1)
-        
+
     except Exception as e:
         logger.error(f"예상치 못한 오류: {e}", exc_info=True)
         sys.exit(1)

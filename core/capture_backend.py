@@ -28,7 +28,7 @@ except ImportError:
 
 class CaptureBackend(ABC):
     """캡처 백엔드 추상 클래스"""
-    
+
     @abstractmethod
     def start(self, region: Tuple[int, int, int, int], target_fps: int = 30) -> bool:
         """캡처 시작
@@ -41,12 +41,12 @@ class CaptureBackend(ABC):
             bool: 시작 성공 여부
         """
         pass
-    
+
     @abstractmethod
     def stop(self):
         """캡처 중지"""
         pass
-    
+
     @abstractmethod
     def grab(self) -> Optional[np.ndarray]:
         """프레임 캡처
@@ -55,12 +55,12 @@ class CaptureBackend(ABC):
             np.ndarray: BGR 형식의 프레임 (없으면 None)
         """
         pass
-    
+
     @abstractmethod
     def get_name(self) -> str:
         """백엔드 이름 반환"""
         pass
-    
+
     @property
     @abstractmethod
     def is_running(self) -> bool:
@@ -75,12 +75,12 @@ class DXCamBackend(CaptureBackend):
     - Windows 8 이상에서 가장 빠른 캡처 방법
     - GPU 복사 사용으로 CPU 부하 최소화
     """
-    
+
     # 클래스 레벨 카메라 (재사용)
     _shared_camera: Optional['dxcam.DXCamera'] = None
     _camera_lock = threading.Lock()
     _instance_count = 0  # 활성 인스턴스 수 추적
-    
+
     @classmethod
     def cleanup_shared_camera(cls):
         """앱 종료 시 공유 카메라 명시적 정리 (메모리 누수 방지)"""
@@ -96,18 +96,18 @@ class DXCamBackend(CaptureBackend):
                     pass
                 cls._shared_camera = None
                 logger.info("[DXCamBackend] Shared camera cleaned up")
-    
+
     def __init__(self):
         self._camera: Optional[dxcam.DXCamera] = None
         self._region: Optional[Tuple[int, int, int, int]] = None
         self._running = False
         self._target_fps = 30
         self._using_shared = False
-        
+
         # 인스턴스 수 추적
         with DXCamBackend._camera_lock:
             DXCamBackend._instance_count += 1
-    
+
     def __del__(self):
         """소멸자: 인스턴스 수 감소"""
         try:
@@ -115,20 +115,20 @@ class DXCamBackend(CaptureBackend):
                 DXCamBackend._instance_count = max(0, DXCamBackend._instance_count - 1)
         except Exception:
             pass
-    
+
     def start(self, region: Tuple[int, int, int, int], target_fps: int = 30) -> bool:
         """캡처 시작 (GPU 가속, 빠른 시작)"""
         if not HAS_DXCAM:
             return False
-        
+
         try:
             self.stop()  # 기존 카메라 정리
-            
+
             x, y, w, h = region
             # dxcam은 (left, top, right, bottom) 형식 사용
             self._region = (x, y, x + w, y + h)
             self._target_fps = target_fps
-            
+
             # 공유 카메라 재사용 시도 (빠른 시작)
             with DXCamBackend._camera_lock:
                 if DXCamBackend._shared_camera is not None:
@@ -140,14 +140,14 @@ class DXCamBackend(CaptureBackend):
                     # 새 카메라 생성 (처음만 느림)
                     logger.info("[DXCamBackend] Creating new camera (first time, may take ~500ms)")
                     self._camera = dxcam.create(output_color="BGR")
-                    
+
                     if self._camera is None:
                         return False
-                    
+
                     # 공유 카메라로 저장 (다음 번에 재사용)
                     DXCamBackend._shared_camera = self._camera
                     self._using_shared = True
-            
+
             # 캡처 시작 (region과 fps만 변경 - 빠름)
             # video_mode=True: 연속 캡처 모드 (성능 향상)
             # 락 내에서 start 호출하여 동시 start 레이스 컨디션 방지
@@ -158,26 +158,26 @@ class DXCamBackend(CaptureBackend):
                     # video_mode 파라미터 미지원 시 기본 모드
                     self._camera.start(region=self._region, target_fps=target_fps)
                 self._running = True
-            
+
             # 빠른 워밍업 (짧게)
             import time
             warmup_start = time.time()
             max_warmup_time = 0.1  # 100ms만 (카메라 재사용 시 매우 빠름)
-            
+
             while time.time() - warmup_start < max_warmup_time:
                 test_frame = self._camera.get_latest_frame()
                 if test_frame is not None:
                     logger.debug(f"[DXCamBackend] First frame ready in {(time.time() - warmup_start)*1000:.0f}ms")
                     break
                 time.sleep(0.005)  # 5ms 체크
-            
+
             return True
-            
+
         except (RuntimeError, OSError, AttributeError) as e:
             logger.error(f"[DXCamBackend] 시작 실패: {e}")
             self._running = False
             return False
-    
+
     def stop(self):
         """캡처 중지 (카메라는 유지 - 재사용 위해)"""
         # 먼저 running 플래그 해제 (새 캡처 방지)
@@ -191,12 +191,12 @@ class DXCamBackend(CaptureBackend):
                     # 카메라는 삭제하지 않음 - 공유 카메라로 유지
                 except (RuntimeError, OSError) as e:
                     logger.debug(f"[DXCamBackend] 중지 오류: {e}")
-    
+
     def grab(self) -> Optional[np.ndarray]:
         """프레임 캡처"""
         if not self._running or self._camera is None:
             return None
-        
+
         try:
             # get_latest_frame()은 새 프레임이 없으면 None 반환
             frame = self._camera.get_latest_frame()
@@ -204,7 +204,7 @@ class DXCamBackend(CaptureBackend):
         except (RuntimeError, AttributeError) as e:
             logger.debug(f"[DXCamBackend] 캡처 오류: {e}")
             return None
-    
+
     def get_name(self) -> str:
         return "dxcam"
 
@@ -266,21 +266,21 @@ class FastGdiBackend(CaptureBackend):
     DC와 비트맵을 재사용하여 30fps 달성.
     Windows 색상 관리가 자동 적용되어 HDR 환경에서도 색상 정확.
     """
-    
+
     def __init__(self):
         if not HAS_GDI:
             raise RuntimeError("GDI backend requires Windows")
-        
+
         self._running = False
         self._region: Optional[Tuple[int, int, int, int]] = None
-        
+
         # GDI 핸들
         self._hdc_screen = None
         self._hdc_mem = None
         self._hbitmap = None
         self._old_bitmap = None
         self._bitmap_buffer = None
-        
+
         # ctypes 로드
         import ctypes
         from ctypes import wintypes
@@ -288,7 +288,7 @@ class FastGdiBackend(CaptureBackend):
         self.user32 = ctypes.windll.user32
         self.ctypes = ctypes
         self.wintypes = wintypes
-        
+
         # BITMAPINFOHEADER 구조체
         class BITMAPINFOHEADER(ctypes.Structure):
             _fields_ = [
@@ -304,9 +304,9 @@ class FastGdiBackend(CaptureBackend):
                 ('biClrUsed', wintypes.DWORD),
                 ('biClrImportant', wintypes.DWORD)
             ]
-        
+
         self.BITMAPINFOHEADER = BITMAPINFOHEADER
-    
+
     def start(self, region: Tuple[int, int, int, int], target_fps: int = 30) -> bool:
         """DC 한 번만 생성 (재사용)"""
         try:
@@ -347,21 +347,21 @@ class FastGdiBackend(CaptureBackend):
             logger.error(f"[FastGdiBackend] start failed: {e}")
             self.stop()
             return False
-    
+
     def stop(self):
         """DC 정리"""
         self._running = False
-        
+
         try:
             if self._old_bitmap and self._hdc_mem:
                 self.gdi32.SelectObject(self._hdc_mem, self._old_bitmap)
-            
+
             if self._hbitmap:
                 self.gdi32.DeleteObject(self._hbitmap)
-            
+
             if self._hdc_mem:
                 self.gdi32.DeleteDC(self._hdc_mem)
-            
+
             if self._hdc_screen:
                 self.user32.ReleaseDC(0, self._hdc_screen)
         except Exception:
@@ -372,19 +372,19 @@ class FastGdiBackend(CaptureBackend):
         self._hbitmap = None
         self._old_bitmap = None
         # _bitmap_buffer는 유지하여 동일 해상도 재시작 시 재사용
-    
+
     def grab(self) -> Optional[np.ndarray]:
         """BitBlt + GetDIBits로 고속 캡처 (DC 재사용). 실패 시 PIL 폴백."""
         if not self._running or not self._region:
             return None
-        
+
         x, y, w, h = self._region
         ctypes = self.ctypes
         gdi32 = self.gdi32
         SRCCOPY = 0x00CC0020
         DIB_RGB_COLORS = 0
         BI_RGB = 0
-        
+
         try:
             # 1) BitBlt: 화면 DC -> 메모리 DC
             if not gdi32.BitBlt(
@@ -392,7 +392,7 @@ class FastGdiBackend(CaptureBackend):
                 self._hdc_screen, x, y, SRCCOPY
             ):
                 raise RuntimeError("BitBlt failed")
-            
+
             # 2) BITMAPINFO (top-down, 32bpp)
             Bmi = self.BITMAPINFOHEADER
             bmi = Bmi()
@@ -407,7 +407,7 @@ class FastGdiBackend(CaptureBackend):
             bmi.biYPelsPerMeter = 0
             bmi.biClrUsed = 0
             bmi.biClrImportant = 0
-            
+
             # 3) GetDIBits: 비트맵 -> 버퍼 (BGRA)
             nlines = gdi32.GetDIBits(
                 self._hdc_mem, self._hbitmap, 0, h,
@@ -416,11 +416,11 @@ class FastGdiBackend(CaptureBackend):
             )
             if nlines == 0:
                 raise RuntimeError("GetDIBits returned 0")
-            
+
             # 4) BGRA -> BGR (3채널, 호출부 기대 형식)
             frame_bgr = self._bitmap_buffer[:, :, :3].copy()
             return frame_bgr
-            
+
         except Exception as e:
             logger.debug(f"[FastGdiBackend] GetDIBits path failed: {e}, using PIL fallback")
             try:
@@ -434,10 +434,10 @@ class FastGdiBackend(CaptureBackend):
             except Exception as e2:
                 logger.debug(f"[FastGdiBackend] grab failed: {e2}")
                 return None
-    
+
     def get_name(self) -> str:
         return "gdi"
-    
+
     @property
     def is_running(self) -> bool:
         return self._running

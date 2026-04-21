@@ -6,7 +6,7 @@ Each event corresponds to a specific user action or state change.
 """
 
 import wx
-from typing import Any, Optional, List
+from typing import Optional, List
 
 
 # =============================================================================

@@ -4,9 +4,9 @@ from .ffmpeg_installer import FFmpegManager, FFmpegDownloader
 from . import utils
 
 __all__ = [
-    'ScreenRecorder', 
-    'GifEncoder', 
-    'FFmpegManager', 
+    'ScreenRecorder',
+    'GifEncoder',
+    'FFmpegManager',
     'FFmpegDownloader',
     'utils'
 ]

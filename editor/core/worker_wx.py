@@ -3,7 +3,7 @@ Worker - Threading 기반 비동기 작업 처리 (wxPython 호환)
 백그라운드에서 이미지 효과 적용, 파일 저장 등을 처리하여 UI 응답성 향상
 """
 from __future__ import annotations
-from typing import Callable, Any, Optional, List, Dict
+from typing import Callable, Optional, List, Dict
 import wx
 from PIL import Image
 import traceback

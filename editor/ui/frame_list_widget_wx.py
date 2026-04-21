@@ -8,8 +8,7 @@ import wx.grid as grid
 from typing import TYPE_CHECKING, List
 from .style_constants_wx import Colors
 from ..utils.wx_events import (
-    FrameSelectedEvent, FrameDeletedEvent, FrameDelayChangedEvent,
-    EVT_FRAME_SELECTED, EVT_FRAME_DELETED, EVT_FRAME_DELAY_CHANGED
+    FrameSelectedEvent, FrameDeletedEvent, FrameDelayChangedEvent
 )
 
 if TYPE_CHECKING:

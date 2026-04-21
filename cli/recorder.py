@@ -142,7 +142,7 @@ class CLIRecordingSession:
 
         # 9. 녹화 정보 표시
         x, y, w, h = region
-        self._progress.print(f"\n  XGif CLI -- 화면 녹화\n")
+        self._progress.print("\n  XGif CLI -- 화면 녹화\n")
         self._progress.print(f"  영역:     ({x}, {y}) {w}x{h}")
         self._progress.print(
             f"  백엔드:   {self._recorder.get_capture_backend_name()}"
@@ -257,7 +257,7 @@ class CLIRecordingSession:
                     print(output_path)
                 return EXIT_SUCCESS
             else:
-                print(f"\nxgif: 에러: 인코딩 실패", file=sys.stderr)
+                print("\nxgif: 에러: 인코딩 실패", file=sys.stderr)
                 return EXIT_RUNTIME_ERROR
         except KeyboardInterrupt:
             # Ctrl+C: 리소스 정리 후 관례적 종료 코드 130 반환

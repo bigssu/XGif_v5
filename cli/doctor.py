@@ -73,7 +73,7 @@ def run_doctor(args) -> int:
     gpu_detected = False
     has_cupy = False
     try:
-        from core.gpu_utils import detect_gpu, is_cupy_available
+        from core.gpu_utils import detect_gpu
         gpu = detect_gpu()
         if gpu.gpu_name:
             gpu_detected = True
@@ -371,7 +371,7 @@ def _install_cupy() -> int:
         cupy_pkg = "cupy-cuda12x"
 
     print(f"  패키지: {cupy_pkg}")
-    print(f"  설치 중... (수 분이 소요될 수 있습니다)")
+    print("  설치 중... (수 분이 소요될 수 있습니다)")
 
     try:
         result = subprocess.run(
@@ -402,12 +402,12 @@ def _install_cupy() -> int:
                     # pip 성공했지만 import 실패 — CUDA 경로 문제일 수 있음
                     stderr_msg = verify.stderr[:300] if verify.stderr else ""
                     if "CUDA path" in stderr_msg or "cudart" in stderr_msg.lower():
-                        print(f"  CuPy 패키지 설치 완료, 그러나 CUDA 런타임을 찾을 수 없습니다.")
-                        print(f"  해결: CUDA Toolkit을 설치하거나 CUDA_PATH 환경 변수를 설정하세요.")
-                        print(f"  https://developer.nvidia.com/cuda-downloads")
+                        print("  CuPy 패키지 설치 완료, 그러나 CUDA 런타임을 찾을 수 없습니다.")
+                        print("  해결: CUDA Toolkit을 설치하거나 CUDA_PATH 환경 변수를 설정하세요.")
+                        print("  https://developer.nvidia.com/cuda-downloads")
                         return EXIT_SUCCESS  # pip 자체는 성공
                     else:
-                        print(f"  CuPy 패키지 설치 완료, 그러나 import 검증 실패", file=sys.stderr)
+                        print("  CuPy 패키지 설치 완료, 그러나 import 검증 실패", file=sys.stderr)
                         if stderr_msg:
                             logger.debug(f"Verify stderr: {stderr_msg}")
                         return EXIT_SUCCESS  # pip 자체는 성공

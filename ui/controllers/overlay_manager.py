@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 import wx
 
-from ui.i18n import tr
 
 if TYPE_CHECKING:
     from ui.main_window import MainWindow
