@@ -265,6 +265,15 @@ class CaptureThread(threading.Thread):
             consecutive_shape_mismatch = 0
             SHAPE_MISMATCH_THRESHOLD = 10
 
+            # P3-3 (2026-04-21 리뷰): hot path 캐싱. run() 진입 후 값이 바뀌지 않는
+            # 분기 조건은 로컬 bool 로 미리 계산해 매 프레임 attribute/property 조회를 절약.
+            hdr_correction_force = bool(self.hdr_correction_force)
+            backend_needs_hdr_gate = not backend.supports_managed_color
+            cursor_enabled = bool(self.include_cursor and HAS_WIN32)
+            click_highlight_enabled = bool(self.show_click_highlight)
+            # watermark / keyboard 는 run() 중 set 될 수 있는 위 변수라 True/False 는 매 프레임 평가.
+            needs_overlay_base = cursor_enabled or click_highlight_enabled
+
             # 성능 프로파일링용 타이밍 추적
             timing_samples = {
                 'grab': deque(maxlen=200),
@@ -299,29 +308,28 @@ class CaptureThread(threading.Thread):
                             logger.info("[CaptureThread] First frame captured - recording active!")
 
                         # HDR 보정: 사용자가 수동으로 켤 때만 적용 (적응형).
-                        # P1-6: backend.supports_managed_color 로 분기.
+                        # P3-3: hot path 에서 property getter / attr lookup 회피.
                         t2 = time.perf_counter()
-                        if getattr(self, 'hdr_correction_force', False) and not backend.supports_managed_color:
+                        if hdr_correction_force and backend_needs_hdr_gate:
                             frame = apply_hdr_correction_adaptive(frame)
                         t3 = time.perf_counter()
                         timing_samples['hdr'].append(t3 - t2)
 
-                        # 오버레이 필요 시 단일 writable 복사 (이후 모든 처리 in-place)
-                        needs_overlay = ((self.include_cursor and HAS_WIN32)
-                                        or self.show_click_highlight
-                                        or watermark or keyboard)
+                        # 오버레이 필요 시 단일 writable 복사 (이후 모든 처리 in-place).
+                        # P3-3: cursor/click_highlight 는 불변, watermark/keyboard 는 런타임 변화 가능.
+                        needs_overlay = needs_overlay_base or bool(watermark) or bool(keyboard)
                         if needs_overlay and not frame.flags.writeable:
                             frame = frame.copy()
 
                         # 커서 그리기
                         t4 = time.perf_counter()
-                        if self.include_cursor and HAS_WIN32:
+                        if cursor_enabled:
                             frame = draw_cursor_internal(frame, x, y)
                         t5 = time.perf_counter()
                         timing_samples['cursor'].append(t5 - t4)
 
                         # 클릭 하이라이트
-                        if self.show_click_highlight:
+                        if click_highlight_enabled:
                             frame = draw_click_highlight_internal(frame, x, y, last_click_pos, click_lock)
 
                         # 오버레이 적용

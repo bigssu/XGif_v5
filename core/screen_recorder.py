@@ -11,6 +11,7 @@ import numpy as np
 import threading
 import time
 import logging
+from collections import deque
 from typing import Callable, List, Optional, Tuple
 
 # 로깅 설정 (basicConfig는 main.py에서 1회만 호출)
@@ -594,13 +595,14 @@ class ScreenRecorder:
         return self.frames
 
     def _frame_collector_loop_threaded(self):
-        """프레임 수집 루프 (스레드 기반 버전)"""
+        """프레임 수집 루프 (스레드 기반 버전)."""
         frame_count = 0
         consecutive_errors = 0
         max_consecutive_errors = 10
 
         loop_start = time.perf_counter()
-        processing_times = []
+        # P3-2: 수동 trim list → deque(maxlen=200). 의도 명시적.
+        processing_times: "deque[float]" = deque(maxlen=200)
 
         # None 체크로 안전하게 접근 (로컬 변수로 캐싱하여 레이스 컨디션 방지).
         # P1-2: 이름이 frame_ready_event / frame_consumed_event 로 바뀌었으나 의미는 동일.
@@ -636,22 +638,24 @@ class ScreenRecorder:
                     # 처리 완료 알림
                     frame_consumed_event.set()
 
-                    # 처리 시간 측정
+                    # 처리 시간 측정 (deque(maxlen=200) 이 자동 bounded)
                     process_time = time.perf_counter() - process_start
                     processing_times.append(process_time)
-                    if len(processing_times) > 200:
-                        del processing_times[:-200]
 
                     # UI 업데이트 (10프레임마다)
                     if frame_count % 10 == 0:
                         self._emit_frame_captured(frame_count)
 
-                    # 성능 로깅 (100프레임마다)
-                    if frame_count % 100 == 0:
-                        avg_time = sum(processing_times[-100:]) / min(100, len(processing_times))
+                    # 성능 로깅 (100프레임마다) — deque 는 slicing 미지원이므로 list 변환.
+                    if frame_count % 100 == 0 and processing_times:
+                        last_100 = list(processing_times)[-100:]
+                        avg_time = sum(last_100) / len(last_100)
                         elapsed = time.perf_counter() - loop_start
                         actual_fps = frame_count / elapsed if elapsed > 0 else 0
-                        logger.debug(f"[Collector] Frame {frame_count}, avg: {avg_time*1000:.2f}ms, actual FPS: {actual_fps:.1f}")
+                        logger.debug(
+                            f"[Collector] Frame {frame_count}, "
+                            f"avg: {avg_time*1000:.2f}ms, actual FPS: {actual_fps:.1f}"
+                        )
 
                 except (ValueError, RuntimeError, MemoryError) as exc:
                     consecutive_errors += 1
