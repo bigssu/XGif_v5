@@ -2,6 +2,12 @@
 화면 캡처 및 녹화 모듈
 캡처 백엔드 추상화: dxcam (DXGI), GDI (색상 정확, Windows 전용)
 CPU 최적화 (커서 그리기는 CPU에서 충분히 빠름)
+
+스레드 모델 주의:
+    CaptureThread는 threading.Thread (multiprocessing 아님).
+    공유 DXCam 카메라 재사용을 위해 thread-in-process 설계를 선택.
+    shm_* 접두어는 레거시 명칭이며 실제로는 직접 공유되는 NumPy 버퍼 +
+    threading.Event 조합이다 (아직 multiprocessing.SharedMemory 미사용).
 """
 
 import numpy as np
@@ -13,6 +19,13 @@ from typing import Optional, List, Tuple, Callable
 
 # 로깅 설정 (basicConfig는 main.py에서 1회만 호출)
 logger = logging.getLogger(__name__)
+
+# 모듈 상수 (D4, D2, N5)
+MAX_FRAME_BYTES = 100 * 1024 * 1024  # 100MB — 프레임당 최대 메모리 크기
+CLICK_HIGHLIGHT_DURATION = 0.3       # 초 — 클릭 하이라이트 표시 시간
+
+# 타입 별칭 (N5)
+Region = Tuple[int, int, int, int]  # (x, y, width, height)
 
 # 캡처 백엔드 추상화
 from .capture_backend import (
@@ -93,8 +106,8 @@ class ScreenRecorder:
         self.show_click_highlight = False  # 마우스 클릭 하이라이트
         
         # 마우스 클릭 추적
-        self._last_click_pos: Optional[tuple] = None  # (x, y, timestamp)
-        self._click_highlight_duration = 0.3  # 초
+        self._last_click_pos: Optional[Tuple[int, int, float]] = None  # (x, y, timestamp)
+        self._click_highlight_duration = CLICK_HIGHLIGHT_DURATION
         
         # 워터마크
         try:
@@ -302,7 +315,7 @@ class ScreenRecorder:
             return self._capture_backend.get_name()
         return self._preferred_backend
     
-    def get_available_backends(self) -> list:
+    def get_available_backends(self) -> List[str]:
         """사용 가능한 캡처 백엔드 목록"""
         return get_available_backends()
     
@@ -426,8 +439,8 @@ class ScreenRecorder:
             
             # 메모리 크기 계산 (오버플로우 방지)
             try:
-                frame_size = w * h * 3  # BGR
-                if frame_size <= 0 or frame_size > 100 * 1024 * 1024:  # 100MB 제한
+                frame_size = w * h * 3  # width * height * 3 bytes (BGR)
+                if frame_size <= 0 or frame_size > MAX_FRAME_BYTES:
                     logger.error(f"Invalid frame size: {frame_size} bytes")
                     self._emit_error_occurred(f"프레임 크기가 너무 큽니다: {frame_size // (1024*1024)}MB")
                     self.is_recording = False
@@ -718,9 +731,8 @@ class ScreenRecorder:
                         logger.critical("Too many consecutive errors, stopping collector")
                         self._emit_error_occurred("프레임 수집 중 심각한 오류 발생")
                         break
-            else:
-                continue
-        
+            # R6: shm_event.wait()가 False면 그냥 다음 iteration으로 넘어감 (else: continue 제거)
+
         # 최종 통계
         elapsed = time.perf_counter() - loop_start
         actual_fps = frame_count / elapsed if elapsed > 0 else 0
@@ -786,9 +798,10 @@ def draw_click_highlight_internal(frame: np.ndarray, region_x: int, region_y: in
     with click_lock:
         click_x, click_y, click_time = last_click_pos
         current_time = time.perf_counter()
-        if current_time - click_time > 0.3: # duration
+        # D2: 매직 넘버 0.3 → CLICK_HIGHLIGHT_DURATION 상수로 치환
+        if current_time - click_time > CLICK_HIGHLIGHT_DURATION:
             return frame
-    
+
     try:
         cx, cy = click_x - region_x, click_y - region_y
         h, w = frame.shape[:2]
@@ -799,10 +812,12 @@ def draw_click_highlight_internal(frame: np.ndarray, region_x: int, region_y: in
         if not frame.flags.writeable:
             frame = frame.copy()
         elapsed = current_time - click_time
-        fade_ratio = 1.0 - (elapsed / 0.3)
+        fade_ratio = 1.0 - (elapsed / CLICK_HIGHLIGHT_DURATION)
         alpha = max(0.0, min(1.0, fade_ratio))
         radius = int(20 * alpha)
-        if radius < 2: return frame
+        # R3: inline if → 두 줄로 분리
+        if radius < 2:
+            return frame
         
         yy, xx = np.ogrid[cy-radius:cy+radius+1, cx-radius:cx+radius+1]
         dist_sq = (xx - cx)**2 + (yy - cy)**2
@@ -979,7 +994,7 @@ class CaptureThread(threading.Thread):
                             first_frame_captured = True
                             next_capture_time = current_time
                             self._first_frame_ready.set()
-                            logger.info(f"[CaptureThread] First frame captured - recording active!")
+                            logger.info("[CaptureThread] First frame captured - recording active!")
 
                         # HDR 보정: 사용자가 수동으로 켤 때만 적용 (적응형)
                         # 단, GDI 백엔드는 Windows가 자동으로 색상 관리를 처리하므로 보정 스킵
@@ -1023,7 +1038,15 @@ class CaptureThread(threading.Thread):
                             avg_cursor = sum(timing_samples['cursor']) / max(1, len(timing_samples['cursor']))
                             avg_overlay = sum(timing_samples['overlay']) / max(1, len(timing_samples['overlay']))
                             total_avg = avg_grab + avg_hdr + avg_cursor + avg_overlay
-                            logger.info(f"[Perf] Frame {self.frame_count}: grab={avg_grab*1000:.1f}ms, hdr={avg_hdr*1000:.1f}ms, cursor={avg_cursor*1000:.1f}ms, overlay={avg_overlay*1000:.1f}ms, total={total_avg*1000:.1f}ms")
+                            # R1: 225ch 로그 라인을 여러 라인으로 분할
+                            logger.info(
+                                f"[Perf] Frame {self.frame_count}: "
+                                f"grab={avg_grab*1000:.1f}ms, "
+                                f"hdr={avg_hdr*1000:.1f}ms, "
+                                f"cursor={avg_cursor*1000:.1f}ms, "
+                                f"overlay={avg_overlay*1000:.1f}ms, "
+                                f"total={total_avg*1000:.1f}ms"
+                            )
                         
                         # 공유 버퍼에 쓰기
                         if self.shm_processed_event.wait(timeout=0.5):
