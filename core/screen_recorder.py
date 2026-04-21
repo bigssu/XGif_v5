@@ -139,7 +139,8 @@ class ScreenRecorder:
         
         # 스레드 기반 캡처 (멀티프로세싱 대신 - 공유 카메라 재사용 가능)
         self._capture_thread: Optional[CaptureThread] = None
-        self._capture_thread_ref = None
+        # P0-1/P1-3: 워커 종료 직전에 스냅샷; _capture_thread_ref 참조 보관 대신 값만 보존
+        self._last_dropped_frames: int = 0
         self._frame_buffer: Optional[np.ndarray] = None
         
         # 스레드용 이벤트
@@ -547,22 +548,34 @@ class ScreenRecorder:
         if self._thread_pause_event:
             self._thread_pause_event.clear()
         
+        # P0-1/P1-3: 워커 통계(dropped_frames)를 join 전에 읽지 않고, join 이후
+        # _capture_thread가 아직 살아있을 수 있으므로 null-처리 전에 스냅샷한다.
+        # 참조(_capture_thread_ref) 보관 대신 값만 저장하여 GC/race 표면적 축소.
+        capture_thread = self._capture_thread
+        collector_thread = self._collector_thread
+
         # 캡처 스레드 종료 대기
         threads_alive = False
-        if self._capture_thread:
-            self._capture_thread.join(timeout=3.0)
-            if self._capture_thread.is_alive():
+        if capture_thread:
+            capture_thread.join(timeout=3.0)
+            if capture_thread.is_alive():
                 logger.warning("Capture thread did not terminate in time")
                 threads_alive = True
-            self._capture_thread = None
 
         # 수집 스레드 종료 대기
-        if self._collector_thread:
-            self._collector_thread.join(timeout=2.0)
-            if self._collector_thread.is_alive():
+        if collector_thread:
+            collector_thread.join(timeout=2.0)
+            if collector_thread.is_alive():
                 logger.warning("Collector thread did not terminate in time")
                 threads_alive = True
-            self._collector_thread = None
+
+        # 스레드 통계 스냅샷 (join 후, null 처리 전)
+        dropped = getattr(capture_thread, 'dropped_frames', 0) if capture_thread else 0
+        self._last_dropped_frames = dropped
+
+        # 스레드 참조 해제 (스냅샷 이후)
+        self._capture_thread = None
+        self._collector_thread = None
 
         # 버퍼/이벤트 정리 - 스레드가 아직 살아있으면 None 접근 크래시 방지를 위해 스킵
         if threads_alive:
@@ -573,9 +586,8 @@ class ScreenRecorder:
             self._thread_shm_processed_event = None
             self._thread_stop_event = None
             self._thread_pause_event = None
-        
-        # 드롭프레임 통보
-        dropped = getattr(self._capture_thread_ref, 'dropped_frames', 0) if hasattr(self, '_capture_thread_ref') else 0
+
+        # 드롭프레임 통보 (스냅샷된 값 사용)
         if dropped > 0:
             logger.warning(f"Recording had {dropped} dropped frames")
 
