@@ -174,10 +174,13 @@ Flask/FastAPI/Django 가정으로 mock DB/API를 제안하지 마세요.
 - cli/ → wx import 금지
 - editor/ → 독립 wxPython 서브시스템, core/ 호출 허용, ui/와 공유 모듈 최소화
 - BootStrapper/ → 독립 앱, XGif 본체 모듈 import 금지
-GOD_OBJECTS (4개 파일): `ui/main_window.py` (1,983 LOC), `core/screen_recorder.py`,
-`core/capture_backend.py`, `core/gif_encoder.py`. 수정 시 책임 범위 확장 여부 평가 필요.
+GOD_OBJECTS (3개 파일, 2026-04-21 갱신): `ui/main_window.py` (1,983 LOC),
+`core/capture_backend.py` (~733 LOC), `core/gif_encoder.py`. 수정 시 책임 범위 확장 여부 평가 필요.
+`core/screen_recorder.py` 는 P1 refactor 이후 680 LOC 파사드로 축소되어 GOD_OBJECT 에서 제외되었고,
+CaptureThread 는 `core/capture_worker.py` 로 분리됨.
 CRITICAL_DIRS: `editor/ui/` — 디렉터리 단위. GOD_OBJECT와 구별. 두 분류 모두 최소 M-grade
 승격 대상이며, 개별 파일 risk 등급만 다르다.
+CRITICAL_FILES (권고 ≥ M): `core/screen_recorder.py`, `core/capture_worker.py` — 책임 밀도는 여전히 높음.
 ```
 
 ### `prelude-optimization-engineer`

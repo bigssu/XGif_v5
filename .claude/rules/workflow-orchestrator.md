@@ -28,18 +28,27 @@ any agent.
 
 ## Grade Assessment (Complexity Gate)
 
-**GOD_OBJECTS (SSoT — 4 files, any touch forces ≥ M-grade):**
+**GOD_OBJECTS (SSoT — 3 files, any touch forces ≥ M-grade):**
 
 ```
 GOD_OBJECTS = {
     "ui/main_window.py",            # 1,983 LOC, UI entry point
-    "core/screen_recorder.py",       # capture orchestrator
-    "core/capture_backend.py",       # DXCam/FastGDI/GDI multi-branch
+    "core/capture_backend.py",       # DXCam/FastGDI/GDI ABC + pool + fallback (~733 LOC)
     "core/gif_encoder.py",           # FFmpeg pipe control
 }
 ```
 
+> `core/screen_recorder.py` 는 2026-04-21 P1 refactor (커밋 `d29aabf`) 이후
+> 680 LOC 의 파사드로 축소되었고 CaptureThread 는 `core/capture_worker.py`
+> 로 분리되었다. GOD_OBJECT 목록에서 제외. 다만 `core/capture_worker.py`
+> (~450 LOC) 와 `core/screen_recorder.py` 는 여전히 **CRITICAL_FILES** 로
+> 간주하여 수정 시 M-grade 승격을 권고한다 (책임 밀도는 여전히 높음).
+
 **CRITICAL_DIRS (auto-promote to ≥ M):** `editor/ui/`
+
+**CRITICAL_FILES (권고 ≥ M, 강제 아님):**
+- `core/screen_recorder.py` — facade + collector thread
+- `core/capture_worker.py` — capture thread + overlay drawing
 
 **Grade decision (upward bias — promote when in doubt):**
 
