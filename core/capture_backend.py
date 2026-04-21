@@ -709,6 +709,19 @@ def is_gdi_available() -> bool:
     return HAS_GDI
 
 
+def cleanup_shared_cameras() -> None:
+    """모든 백엔드의 공유 리소스를 정리 (앱 종료 시 UI 에서 호출하기 위한 파사드).
+
+    P2-7 (2026-04-21 리뷰): UI 가 구체 클래스(DXCamBackend) 를 직접 import 하지
+    않도록 모듈 레벨 파사드를 제공. 추가 백엔드가 공유 리소스를 보유하게 되면
+    이 파사드에 정리 호출을 추가한다.
+    """
+    try:
+        DXCamBackend.cleanup_shared_camera()
+    except Exception as exc:  # pragma: no cover — 방어적. 앱 종료 경로이므로 로그만.
+        logger.debug(f"cleanup_shared_cameras — DXCamBackend error: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # 백엔드 시작 폴백 헬퍼 (원래 screen_recorder.py 에 있던 로직을 P1-1 재구성 시
 # capture_worker.py 와 screen_recorder.py 양쪽에서 쓰기 위해 이곳으로 이동).

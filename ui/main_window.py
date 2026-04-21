@@ -1948,9 +1948,10 @@ class MainWindow(wx.Frame):
         if self.recorder is not None:
             self.recorder.clear_frames()
 
-        # DXCam 공유 카메라 정리 (메모리 누수 방지)
+        # 공유 카메라 정리 (메모리 누수 방지). P2-7: 파사드 사용 — UI 는 구체 백엔드
+        # 클래스를 직접 import 하지 않고 core.capture_backend 의 cleanup_shared_cameras() 호출.
         try:
-            from core.capture_backend import DXCamBackend
-            DXCamBackend.cleanup_shared_camera()
+            from core.capture_backend import cleanup_shared_cameras
+            cleanup_shared_cameras()
         except Exception as e:
-            logger.debug(f"DXCam cleanup error: {e}")
+            logger.debug(f"Shared camera cleanup error: {e}")
