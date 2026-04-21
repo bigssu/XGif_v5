@@ -100,16 +100,16 @@ class ScreenRecorder:
         try:
             from .watermark import Watermark
             self.watermark = Watermark()
-        except (ImportError, RuntimeError) as e:
-            logger.warning(f"워터마크 초기화 실패: {e}")
+        except (ImportError, RuntimeError) as exc:
+            logger.warning(f"워터마크 초기화 실패: {exc}")
             self.watermark = None
-        
+
         # 키보드 입력 표시
         try:
             from .keyboard_display import KeyboardDisplay
             self.keyboard_display = KeyboardDisplay()
-        except (ImportError, RuntimeError) as e:
-            logger.warning(f"키보드 입력 표시 초기화 실패: {e}")
+        except (ImportError, RuntimeError) as exc:
+            logger.warning(f"키보드 입력 표시 초기화 실패: {exc}")
             self.keyboard_display = None
         
         # 상태
@@ -165,28 +165,39 @@ class ScreenRecorder:
         self._error_occurred_callback = callback
     
     def _emit_frame_captured(self, frame_num: int):
-        """프레임 캡처 이벤트 발생"""
+        """프레임 캡처 이벤트 발생.
+
+        NOTE: 콜백은 백그라운드 스레드(_frame_collector_loop_threaded)에서 호출되므로
+        consumer는 wx.CallAfter() 등으로 GUI 스레드에 마샬링해야 한다.
+        """
         if self._frame_captured_callback:
             try:
                 self._frame_captured_callback(frame_num)
-            except Exception:
-                pass
-    
+            except Exception as exc:
+                # P1-7: callback 예외를 log로 surface — 무음 삼킴이 디버깅 홀을 만들었음
+                logger.exception(f"frame_captured callback raised: {exc}")
+
     def _emit_recording_stopped(self):
-        """녹화 중지 이벤트 발생"""
+        """녹화 중지 이벤트 발생.
+
+        NOTE: 백그라운드 스레드에서 호출될 수 있음. wx.CallAfter() 사용 권장.
+        """
         if self._recording_stopped_callback:
             try:
                 self._recording_stopped_callback()
-            except Exception:
-                pass
-    
+            except Exception as exc:
+                logger.exception(f"recording_stopped callback raised: {exc}")
+
     def _emit_error_occurred(self, error_msg: str):
-        """에러 발생 이벤트 발생"""
+        """에러 발생 이벤트 발생.
+
+        NOTE: 백그라운드 스레드에서 호출될 수 있음. wx.CallAfter() 사용 권장.
+        """
         if self._error_occurred_callback:
             try:
                 self._error_occurred_callback(error_msg)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.exception(f"error_occurred callback raised: {exc}")
 
     def _handle_capture_failure(self, error_msg: str):
         """백엔드/캡처 실패 시 내부 상태를 즉시 정리."""
@@ -221,9 +232,9 @@ class ScreenRecorder:
                                 self._backend_warmed_up = True
                                 logger.info("GDI backend pre-warmed successfully (PIL ImageGrab ready)")
                                 return
-                        except Exception as e:
-                            logger.warning(f"GDI pre-warming failed: {e}")
-                    
+                        except (ImportError, OSError, RuntimeError) as exc:
+                            logger.warning(f"GDI pre-warming failed: {exc}")
+
                     # dxcam 전역 초기화 (처음만 느림, 이후 빠름)
                     elif self._preferred_backend == "auto" or self._preferred_backend == "dxcam":
                         try:
@@ -232,8 +243,7 @@ class ScreenRecorder:
                             # 별도 카메라를 만들지 않아 리소스 충돌 방지
                             warmup_backend = DXCamBackend()
                             if warmup_backend.start((0, 0, 100, 100), target_fps=30):
-                                import time
-                                time.sleep(0.1)  # 100ms 워밍업
+                                time.sleep(0.1)  # 100ms 워밍업 (R2: 중복 import time 제거)
                                 test_frame = warmup_backend.grab()
                                 warmup_backend.stop()
 
@@ -241,18 +251,18 @@ class ScreenRecorder:
                                     self._backend_warmed_up = True
                                     logger.info("DXCam backend pre-warmed successfully (shared camera ready)")
                                     return
-                        except Exception as e:
-                            logger.warning(f"DXCam pre-warming failed: {e}")
-                    
-                except Exception as e:
-                    logger.warning(f"Backend pre-warming failed: {e}")
-            
+                        except (ImportError, OSError, RuntimeError) as exc:
+                            logger.warning(f"DXCam pre-warming failed: {exc}")
+
+                except (ImportError, OSError, RuntimeError) as exc:
+                    logger.warning(f"Backend pre-warming failed: {exc}")
+
             # 데몬 스레드로 실행 (앱 종료 시 자동 정리)
             warmup_thread_obj = threading.Thread(target=warmup_thread, daemon=True)
             warmup_thread_obj.start()
-            
-        except Exception as e:
-            logger.warning(f"Could not start backend pre-warming: {e}")
+
+        except (RuntimeError, OSError) as exc:
+            logger.warning(f"Could not start backend pre-warming: {exc}")
     
     # P0-3: __del__ 제거 — daemon thread 비정상 종료로 DXGI 핸들 손상 가능.
     # 호출자는 try/finally에서 stop_recording()을 명시적으로 호출하거나,
@@ -356,8 +366,8 @@ class ScreenRecorder:
             
             return frame
                 
-        except (RuntimeError, ValueError, OSError) as e:
-            logger.error(f"캡처 에러: {e}")
+        except (RuntimeError, ValueError, OSError) as exc:
+            logger.error(f"캡처 에러: {exc}")
             return None
     
     def start_recording(self):
@@ -424,8 +434,8 @@ class ScreenRecorder:
                     self._emit_error_occurred(f"프레임 크기가 너무 큽니다: {frame_size // (1024*1024)}MB")
                     self.is_recording = False
                     return
-            except (OverflowError, MemoryError) as e:
-                logger.error(f"Frame size calculation overflow: {e}")
+            except (OverflowError, MemoryError) as exc:
+                logger.error(f"Frame size calculation overflow: {exc}")
                 self._emit_error_occurred("메모리 계산 오류")
                 self.is_recording = False
                 return
@@ -491,10 +501,10 @@ class ScreenRecorder:
             
             logger.info("Recording started successfully")
             
-        except Exception as e:
+        except Exception as exc:
             self._frame_buffer = None
-            self._handle_capture_failure(f"녹화 시작 실패: {str(e)}")
-            logger.exception(f"Recording start failed: {e}")
+            self._handle_capture_failure(f"녹화 시작 실패: {str(exc)}")
+            logger.exception(f"Recording start failed: {exc}")
     
     def pause_recording(self):
         """녹화 일시정지"""
@@ -640,11 +650,13 @@ class ScreenRecorder:
             roi[outer_mask] = [0, 0, 0]
             
             return frame
-            
-        except Exception:
+
+        except Exception as exc:
+            # P1-7: 그리기 오류는 debug로 surface (hot path, 노이즈 최소화)
+            logger.debug(f"_draw_cursor skipped due to error: {exc}")
             return frame
-    
-    
+
+
     def _frame_collector_loop_threaded(self):
         """프레임 수집 루프 (스레드 기반 버전)"""
         frame_count = 0
@@ -699,9 +711,9 @@ class ScreenRecorder:
                         actual_fps = frame_count / elapsed if elapsed > 0 else 0
                         logger.debug(f"[Collector] Frame {frame_count}, avg: {avg_time*1000:.2f}ms, actual FPS: {actual_fps:.1f}")
                         
-                except (ValueError, RuntimeError, MemoryError) as e:
+                except (ValueError, RuntimeError, MemoryError) as exc:
                     consecutive_errors += 1
-                    logger.error(f"Collector error ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                    logger.error(f"Collector error ({consecutive_errors}/{max_consecutive_errors}): {exc}")
                     processed_event.set()
                     
                     if consecutive_errors >= max_consecutive_errors:
@@ -770,9 +782,10 @@ def draw_cursor_internal(frame: np.ndarray, region_x: int, region_y: int) -> np.
         roi = frame[y1:y2, x1:x2]
         roi[center_mask] = [255, 255, 255]
         roi[outer_mask] = [0, 0, 0]
-        
+
         return frame
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"draw_cursor_internal skipped due to error: {exc}")
         return frame
 
 def draw_click_highlight_internal(frame: np.ndarray, region_x: int, region_y: int, last_click_pos, click_lock) -> np.ndarray:
@@ -818,7 +831,8 @@ def draw_click_highlight_internal(frame: np.ndarray, region_x: int, region_y: in
                     roi[:, :, c]
                 )
         return frame
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"draw_click_highlight_internal skipped due to error: {exc}")
         return frame
 
 class CaptureThread(threading.Thread):
@@ -875,8 +889,8 @@ class CaptureThread(threading.Thread):
             if self._on_failed:
                 try:
                     self._on_failed(msg)
-                except Exception as cb_e:
-                    logger.warning(f"[CaptureThread] on_failed callback error: {cb_e}")
+                except Exception as exc:
+                    logger.warning(f"[CaptureThread] on_failed callback error: {exc}")
         
         try:
             x, y, w, h = self.region
@@ -928,8 +942,8 @@ class CaptureThread(threading.Thread):
                                     last_click_pos = (cursor_pos.x, cursor_pos.y, time.perf_counter())
                             last_state = current_state
                             time.sleep(0.01)
-                    except Exception as e:
-                        logger.error(f"[CaptureThread] Click detection error: {e}")
+                    except Exception as exc:
+                        logger.error(f"[CaptureThread] Click detection error: {exc}")
                 
                 threading.Thread(target=click_detection, daemon=True).start()
             
@@ -1060,14 +1074,14 @@ class CaptureThread(threading.Thread):
                 drop_rate = self.dropped_frames / (self.frame_count + self.dropped_frames) * 100
                 logger.warning(f"[CaptureThread] Drop rate: {drop_rate:.1f}%")
             
-        except Exception as e:
-            logger.exception(f"[CaptureThread] Fatal error: {e}")
-            _notify_failed(f"녹화 캡처 오류: {e}")
+        except Exception as exc:
+            logger.exception(f"[CaptureThread] Fatal error: {exc}")
+            _notify_failed(f"녹화 캡처 오류: {exc}")
             # 수집 스레드가 대기 중일 수 있으므로 이벤트 해제
             try:
                 self.shm_event.set()
-            except Exception:
-                pass
+            except Exception as set_exc:
+                logger.debug(f"[CaptureThread] shm_event.set() after fatal error failed: {set_exc}")
         finally:
             # 항상 리소스 정리 (예외 발생해도)
             logger.debug("[CaptureThread] Cleaning up resources...")
