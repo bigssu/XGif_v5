@@ -9,7 +9,7 @@ import time
 import logging
 import threading
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -673,3 +673,61 @@ def is_dxcam_available() -> bool:
 def is_gdi_available() -> bool:
     """GDI 백엔드 사용 가능 여부 (Windows 전용)"""
     return HAS_GDI
+
+
+# ---------------------------------------------------------------------------
+# 백엔드 시작 폴백 헬퍼 (원래 screen_recorder.py 에 있던 로직을 P1-1 재구성 시
+# capture_worker.py 와 screen_recorder.py 양쪽에서 쓰기 위해 이곳으로 이동).
+# ---------------------------------------------------------------------------
+
+
+def _backend_candidates(preferred: str) -> List[str]:
+    """선호 백엔드를 기준으로 시도 순서를 반환."""
+    normalized = (preferred or "auto").strip().lower()
+    if normalized == "auto" or normalized == "dxcam":
+        candidates = ["dxcam", "gdi"]
+    elif normalized == "gdi":
+        candidates = ["gdi", "dxcam"]
+    else:
+        candidates = [normalized, "dxcam", "gdi"]
+
+    unique_candidates: List[str] = []
+    for name in candidates:
+        if name not in unique_candidates:
+            unique_candidates.append(name)
+    return unique_candidates
+
+
+def _start_backend_with_fallback(
+    preferred: str,
+    region: Tuple[int, int, int, int],
+    target_fps: int,
+    factory: Optional[Callable[[str], CaptureBackend]] = None,
+) -> Tuple[Optional[CaptureBackend], Optional[str], List[str]]:
+    """백엔드 시작을 시도하고 실패 시 우선순위대로 폴백.
+
+    Args:
+        factory: 테스트용 주입. None 이면 create_capture_backend 로 폴백.
+    """
+    errors: List[str] = []
+    make_backend = factory or create_capture_backend
+
+    for backend_name in _backend_candidates(preferred):
+        backend: Optional[CaptureBackend] = None
+        started = False
+        try:
+            backend = make_backend(backend_name)
+            started = backend.start(region, target_fps=target_fps)
+            if started:
+                return backend, backend_name, errors
+            errors.append(f"{backend_name}: start() returned False")
+        except (RuntimeError, OSError, ValueError) as exc:
+            errors.append(f"{backend_name}: {exc}")
+        finally:
+            if backend is not None and not started:
+                try:  # noqa: SIM105 — contextlib.suppress 도입은 새 import 강제라 회피
+                    backend.stop()
+                except (RuntimeError, OSError, ValueError):
+                    pass
+
+    return None, None, errors

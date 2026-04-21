@@ -74,6 +74,34 @@ def test_capture_single_frame_falls_back_to_gdi(monkeypatch):
     assert np.all(captured == 7)
 
 
+def test_backend_factory_injection_avoids_monkeypatch():
+    """backend_factory 생성자 주입으로 monkeypatch 없이 fake backend 사용 가능해야 한다."""
+    from core.screen_recorder import ScreenRecorder
+
+    call_order = []
+    frame = np.full((4, 4, 3), 9, dtype=np.uint8)
+
+    def injected_factory(name):
+        call_order.append(name)
+        if name == "dxcam":
+            return _FakeBackend("dxcam", start_ok=False, frame=None)
+        if name == "gdi":
+            return _FakeBackend("gdi", start_ok=True, frame=frame)
+        raise RuntimeError(f"unexpected backend: {name}")
+
+    recorder = ScreenRecorder(backend_factory=injected_factory)
+    recorder._preferred_backend = "dxcam"
+    recorder.include_cursor = False
+    recorder.set_region(0, 0, 4, 4)
+
+    captured = recorder.capture_single_frame()
+
+    assert call_order == ["dxcam", "gdi"]
+    assert captured is not None
+    assert captured.shape == (4, 4, 3)
+    assert np.all(captured == 9)
+
+
 def test_capture_thread_failure_resets_recording_state(monkeypatch):
     import core.screen_recorder as sr
     from core.screen_recorder import ScreenRecorder
