@@ -254,16 +254,20 @@ class ScreenRecorder:
         except Exception as e:
             logger.warning(f"Could not start backend pre-warming: {e}")
     
-    def __del__(self):
-        """소멸자: 리소스 정리"""
+    # P0-3: __del__ 제거 — daemon thread 비정상 종료로 DXGI 핸들 손상 가능.
+    # 호출자는 try/finally에서 stop_recording()을 명시적으로 호출하거나,
+    # 아래 컨텍스트 매니저(with ScreenRecorder() as rec:) 패턴을 사용할 것.
+    def __enter__(self) -> "ScreenRecorder":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        # 녹화 중이면 종료 (blocking join 포함)
         try:
-            # 녹화 중이면 중지 시도
-            if hasattr(self, 'is_recording') and self.is_recording:
-                if hasattr(self, '_thread_stop_event') and self._thread_stop_event:
-                    self._thread_stop_event.set()
-        except Exception:
-            pass
-    
+            if self.is_recording:
+                self.stop_recording()
+        except Exception as exc:
+            logger.exception(f"ScreenRecorder cleanup on __exit__ failed: {exc}")
+
     def set_region(self, x: int, y: int, width: int, height: int):
         """캡처 영역 설정"""
         self.region = (x, y, width, height)
@@ -1067,12 +1071,35 @@ class CaptureThread(threading.Thread):
         finally:
             # 항상 리소스 정리 (예외 발생해도)
             logger.debug("[CaptureThread] Cleaning up resources...")
-            
+
+            # P0-4: backend.stop() 실패 시 강제 해제 폴백 시도.
+            # FFmpeg 서브프로세스 패턴(process.kill())과 동일한 guarantee 제공.
+            # CaptureBackend ABC에 force_release()가 없어도 duck typing으로 안전하게 호출.
             if backend:
+                stop_failed = False
                 try:
                     backend.stop()
-                except Exception as e:
-                    logger.error(f"[CaptureThread] Backend stop error: {e}")
+                except Exception as exc:
+                    stop_failed = True
+                    logger.error(f"[CaptureThread] Backend stop error: {exc}")
+
+                if stop_failed:
+                    force_release = getattr(backend, 'force_release', None)
+                    if callable(force_release):
+                        try:
+                            force_release()
+                            logger.warning("[CaptureThread] Backend force_release() invoked after stop() failure")
+                        except Exception as exc:
+                            logger.error(f"[CaptureThread] Backend force_release error: {exc}")
+                    else:
+                        # ABC에 force_release 미구현 백엔드의 경우: 내부 핸들 해제를 최대한 시도
+                        # (현재 DXCamBackend 구조상 _camera 속성을 None 처리하면 DXGI 핸들 GC 대상)
+                        try:
+                            if hasattr(backend, '_camera'):
+                                backend._camera = None
+                                logger.warning("[CaptureThread] Backend._camera = None fallback applied after stop() failure")
+                        except Exception as exc:
+                            logger.error(f"[CaptureThread] Backend _camera fallback error: {exc}")
             
             # P0-2 fix: keyboard/watermark는 facade가 소유하는 인스턴스이므로
             # 워커에서는 stop_listening()만 호출 (인스턴스 자체는 facade가 재사용).
