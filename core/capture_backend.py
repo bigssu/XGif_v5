@@ -212,7 +212,7 @@ class DXCamBackend(CaptureBackend):
             return False
 
     def stop(self):
-        """캡처 중지 (카메라는 유지 - 재사용 위해)"""
+        """캡처 중지 (카메라는 유지 - 재사용 위해)."""
         # 먼저 running 플래그 해제 (새 캡처 방지)
         self._running = False
 
@@ -222,8 +222,10 @@ class DXCamBackend(CaptureBackend):
                     self._camera.stop()  # 캡처만 중지
                     logger.debug("[DXCamBackend] Capture stopped (camera kept for reuse)")
                     # 카메라는 삭제하지 않음 - 공유 카메라로 유지
-                except (RuntimeError, OSError) as e:
-                    logger.debug(f"[DXCamBackend] 중지 오류: {e}")
+                except Exception as exc:  # P2-3: dxcam 내부에서 RuntimeError/OSError 외
+                    # AttributeError/ValueError/KeyError 등도 던질 수 있음. 정보 유실 방지
+                    # 위해 범위를 Exception 으로 확대하고 로그 레벨을 warning 으로 격상.
+                    logger.warning(f"[DXCamBackend] 중지 오류: {exc}")
 
     def grab(self) -> Optional[np.ndarray]:
         """프레임 캡처"""
@@ -265,15 +267,34 @@ class DXCamBackend(CaptureBackend):
                 pass
             return False
 
-    # P0-4: stop() 이 실패했을 때 DXGI duplicator 를 GC 가능 상태로 강제 해제.
-    # 내부 _camera 참조를 끊어 다음 recording에서 핸들 충돌이 일어나지 않도록.
+    # P0-4 + P1-A (2026-04-21 리뷰): stop() 이 실패했을 때 DXGI duplicator 를
+    # GC 가능 상태로 강제 해제. 인스턴스 _camera 와 클래스 레벨 _shared_camera
+    # 가 같은 객체일 경우 *둘 다* 정리해야 다음 녹화에서 손상된 카메라가
+    # 재사용되는 자기증폭 실패 루프를 차단할 수 있다.
     def force_release(self) -> None:
+        self._running = False
+        broken_camera = self._camera
+        self._camera = None
+
+        if broken_camera is None:
+            return
+
+        with DXCamBackend._camera_lock:
+            # 공유 카메라와 동일한 객체면 클래스 레벨 참조도 정리
+            if DXCamBackend._shared_camera is broken_camera:
+                DXCamBackend._shared_camera = None
+                logger.warning(
+                    "[DXCamBackend] force_release: shared camera cleared (DXGI duplicator GC)"
+                )
+            else:
+                logger.warning("[DXCamBackend] force_release: instance camera cleared")
+
+        # 손상된 카메라 객체의 stop() 을 마지막으로 한 번 더 시도 (best effort).
+        # 이미 stop() 이 실패한 경로에서 호출되므로 예외 삼킴이 정책.
         try:
-            self._running = False
-            self._camera = None
-            logger.warning("[DXCamBackend] force_release: _camera cleared")
+            broken_camera.stop()
         except Exception as exc:
-            logger.error(f"[DXCamBackend] force_release error: {exc}")
+            logger.debug(f"[DXCamBackend] force_release: broken.stop() ignored: {exc}")
 
 
 # 앱 종료 시 공유 DXCam 카메라 자동 정리 (리소스 누수 방지)

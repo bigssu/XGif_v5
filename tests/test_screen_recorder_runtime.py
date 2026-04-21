@@ -102,6 +102,66 @@ def test_backend_factory_injection_avoids_monkeypatch():
     assert np.all(captured == 9)
 
 
+def test_dxcam_force_release_clears_shared_camera():
+    """P1-A 회귀 방지: force_release() 가 인스턴스 _camera + 클래스 _shared_camera 양쪽을
+    정리해야 자기증폭 실패 루프가 차단된다. dxcam 미설치 환경에서도 돌도록 속성만 검증."""
+    from core.capture_backend import DXCamBackend
+
+    backend = DXCamBackend()
+
+    # 실제 dxcam 없이도 force_release 의 공유 카메라 정리 로직만 검증하기 위한 더미.
+    class _DummyCamera:
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    dummy = _DummyCamera()
+    backend._camera = dummy
+    DXCamBackend._shared_camera = dummy  # 동일 객체 (공유 카메라)
+
+    try:
+        backend.force_release()
+
+        assert backend._camera is None
+        assert DXCamBackend._shared_camera is None, \
+            "force_release must clear class-level _shared_camera when it matches instance _camera"
+        assert dummy.stopped is True, "broken camera stop() must be attempted once as best-effort"
+    finally:
+        DXCamBackend._shared_camera = None
+
+
+def test_dxcam_force_release_preserves_unrelated_shared_camera():
+    """force_release() 는 공유 카메라가 다른 객체일 때는 건드리지 않아야 한다."""
+    from core.capture_backend import DXCamBackend
+
+    backend = DXCamBackend()
+
+    class _Cam:
+        def __init__(self):
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    instance_cam = _Cam()
+    other_shared = _Cam()
+    backend._camera = instance_cam
+    DXCamBackend._shared_camera = other_shared  # 다른 객체
+
+    try:
+        backend.force_release()
+
+        assert backend._camera is None
+        assert DXCamBackend._shared_camera is other_shared, \
+            "force_release must not touch _shared_camera when it differs from instance camera"
+        assert other_shared.stopped is False, "unrelated shared camera must not be stopped"
+        assert instance_cam.stopped is True
+    finally:
+        DXCamBackend._shared_camera = None
+
+
 def test_capture_thread_failure_resets_recording_state(monkeypatch):
     import core.screen_recorder as sr
     from core.screen_recorder import ScreenRecorder

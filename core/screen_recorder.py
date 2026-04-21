@@ -437,7 +437,8 @@ class ScreenRecorder:
 
             # 캡처 스레드 시작 (공유 DXCam 카메라 재사용!).
             # P0-2: 워터마크/키보드 인스턴스를 DI 로 전달하여 단일 소유권 유지.
-            # P1-2: kwarg 이름이 shm_* → frame_* 로 바뀜.
+            # P1-2: kwarg 이름이 shm_* → frame_* 로 변경.
+            # P2-1: backend_factory 를 pass-through 하여 본 녹화 경로도 DI 가능.
             self._capture_thread = CaptureThread(
                 region=self.region,
                 fps=self.fps,
@@ -453,6 +454,7 @@ class ScreenRecorder:
                 keyboard_display=self.keyboard_display,
                 hdr_correction_force=self.hdr_correction_force,
                 on_failed=self._handle_capture_failure,
+                backend_factory=self._backend_factory,
             )
             self._capture_thread.start()
 

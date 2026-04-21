@@ -1,10 +1,9 @@
 """
 캡처 워커 스레드 및 드로잉 헬퍼.
 
-P1-1: 원래 core/screen_recorder.py 에 함께 있던 CaptureThread 와
-draw_cursor_internal / draw_click_highlight_internal 을 분리한 모듈.
-P1-2: 공개 kwarg 를 shm_* → frame_* 로 리네임하여 multiprocessing.SharedMemory
-미사용 사실을 네이밍에 반영 (실제로는 NumPy 버퍼 + threading.Event 조합).
+P1-1 (2026-04-21) 로 core/screen_recorder.py 에서 분리된 모듈. 공개 kwarg 는
+frame_* 네이밍을 사용한다 (구 shm_* 에서 변경, 실제 구현은 NumPy 버퍼 +
+threading.Event 조합이며 multiprocessing.SharedMemory 가 아니다).
 """
 
 from __future__ import annotations
@@ -13,12 +12,16 @@ import logging
 import threading
 import time
 from collections import deque
-from typing import Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 import numpy as np
 
-from .capture_backend import _start_backend_with_fallback
+from .capture_backend import CaptureBackend, _start_backend_with_fallback
 from .hdr_utils import apply_hdr_correction_adaptive
+
+if TYPE_CHECKING:
+    from .keyboard_display import KeyboardDisplay
+    from .watermark import Watermark
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +75,8 @@ def draw_click_highlight_internal(
     frame: np.ndarray,
     region_x: int,
     region_y: int,
-    last_click_pos,
-    click_lock,
+    last_click_pos: Optional[Tuple[int, int, float]],
+    click_lock: threading.Lock,
 ) -> np.ndarray:
     """마우스 클릭 하이라이트 그리기 (Top-level function)."""
     if not HAS_WIN32 or last_click_pos is None:
@@ -125,12 +128,8 @@ def draw_click_highlight_internal(
 class CaptureThread(threading.Thread):
     """스레드 기반 캡처 워커 (프로세스 대신 스레드 사용 — 공유 DXCam 카메라 재사용 가능).
 
-    P0-2: watermark/keyboard_display 는 facade(ScreenRecorder)가 소유하는 단일
-    인스턴스를 DI로 주입받는다. 워커가 별도 인스턴스를 만들지 않으므로 녹화 중
-    facade에 대한 설정 변경이 워커에 반영된다.
-    P1-2: frame_buffer / frame_ready_event / frame_consumed_event 로 리네임
-    (구 이름: shm_buffer / shm_event / shm_processed_event. 실제 구현은
-    multiprocessing.SharedMemory 가 아니라 NumPy 버퍼 + threading.Event).
+    watermark/keyboard_display 는 facade(ScreenRecorder)가 소유하는 단일
+    인스턴스를 DI로 주입받는다 (녹화 중 facade 설정 변경이 워커에 반영되도록).
     """
 
     def __init__(
@@ -145,10 +144,11 @@ class CaptureThread(threading.Thread):
         frame_ready_event: threading.Event,
         frame_consumed_event: threading.Event,
         preferred_backend: str,
-        watermark=None,
-        keyboard_display=None,
+        watermark: Optional["Watermark"] = None,
+        keyboard_display: Optional["KeyboardDisplay"] = None,
         hdr_correction_force: bool = False,
         on_failed: Optional[Callable[[str], None]] = None,
+        backend_factory: Optional[Callable[[str], CaptureBackend]] = None,
     ):
         super().__init__(daemon=True)
 
@@ -167,7 +167,8 @@ class CaptureThread(threading.Thread):
         self.keyboard_display = keyboard_display
         self.hdr_correction_force = hdr_correction_force
         self._on_failed = on_failed
-        self._backend_is_dxcam = False
+        # P2-1: 테스트용 DI. ScreenRecorder._backend_factory 를 pass-through 받는다.
+        self._backend_factory = backend_factory
 
         # 통계
         self.frame_count = 0
@@ -199,9 +200,13 @@ class CaptureThread(threading.Thread):
                 _notify_failed(err_msg)
                 return
 
-            # 백엔드 생성 (실패 시 우선순위대로 폴백)
+            # 백엔드 생성 (실패 시 우선순위대로 폴백).
+            # P2-1: backend_factory 가 주입되면 fallback 경로도 DI 대상이 되도록 전달.
             backend, selected_backend, backend_errors = _start_backend_with_fallback(
-                self.preferred_backend, self.region, target_fps=self.fps
+                self.preferred_backend,
+                self.region,
+                target_fps=self.fps,
+                factory=self._backend_factory,
             )
             if backend is None:
                 details = " | ".join(backend_errors) if backend_errors else "unknown error"
@@ -217,8 +222,6 @@ class CaptureThread(threading.Thread):
                 )
 
             logger.info(f"[CaptureThread] Backend started: {backend.get_name()}")
-            name = (selected_backend or backend.get_name() or "").lower()
-            self._backend_is_dxcam = "dxcam" in name
 
             # 마우스 클릭 감지
             last_click_pos = None
