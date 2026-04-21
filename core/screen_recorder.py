@@ -445,6 +445,8 @@ class ScreenRecorder:
             self._collector_thread.start()
             
             # 캡처 스레드 시작 (공유 DXCam 카메라 재사용!)
+            # P0-2 fix: 워터마크/키보드 인스턴스를 직접 전달하여 단일 소유권 유지
+            # (기존: bool만 전달 → worker가 재-import & 재-instantiate하여 twin 상태 발생)
             self._capture_thread = CaptureThread(
                 region=self.region,
                 fps=self.fps,
@@ -456,14 +458,12 @@ class ScreenRecorder:
                 shm_event=self._thread_shm_event,
                 shm_processed_event=self._thread_shm_processed_event,
                 preferred_backend=self._preferred_backend,
-                webcam_enabled=False,
-                watermark_enabled=self.watermark.enabled if self.watermark else False,
-                keyboard_enabled=self.keyboard_display.enabled if self.keyboard_display else False,
+                watermark=self.watermark,
+                keyboard_display=self.keyboard_display,
                 hdr_correction_force=self.hdr_correction_force,
                 on_failed=self._handle_capture_failure,
             )
             self._capture_thread.start()
-            self._capture_thread_ref = self._capture_thread  # 드롭프레임 통계 참조용
 
             # 첫 프레임 캡처 대기 (빠른 시작)
             if self._backend_warmed_up:
@@ -806,17 +806,23 @@ def draw_click_highlight_internal(frame: np.ndarray, region_x: int, region_y: in
         return frame
 
 class CaptureThread(threading.Thread):
-    """스레드 기반 캡처 워커 (프로세스 대신 스레드 사용 - 공유 DXCam 카메라 재사용 가능)"""
-    
+    """스레드 기반 캡처 워커 (프로세스 대신 스레드 사용 - 공유 DXCam 카메라 재사용 가능)
+
+    P0-2 fix: watermark/keyboard_display는 facade(ScreenRecorder)가 소유하는
+    단일 인스턴스를 DI로 주입받는다. 워커가 별도 인스턴스를 만들지 않으므로
+    녹화 중 facade에 대한 설정 변경이 워커에 반영된다.
+    """
+
     def __init__(self, region: Tuple[int, int, int, int], fps: int, include_cursor: bool,
                  show_click_highlight: bool, shm_buffer: np.ndarray,
                  stop_event: threading.Event, pause_event: threading.Event,
                  shm_event: threading.Event, shm_processed_event: threading.Event,
-                 preferred_backend: str, webcam_enabled: bool, watermark_enabled: bool,
-                 keyboard_enabled: bool, hdr_correction_force: bool = False,
+                 preferred_backend: str,
+                 watermark=None, keyboard_display=None,
+                 hdr_correction_force: bool = False,
                  on_failed: Optional[Callable[[str], None]] = None):
         super().__init__(daemon=True)
-        
+
         self.region = region
         self.fps = fps
         self.include_cursor = include_cursor
@@ -827,9 +833,9 @@ class CaptureThread(threading.Thread):
         self.shm_event = shm_event
         self.shm_processed_event = shm_processed_event
         self.preferred_backend = preferred_backend
-        self.webcam_enabled = webcam_enabled
-        self.watermark_enabled = watermark_enabled
-        self.keyboard_enabled = keyboard_enabled
+        # facade(ScreenRecorder)에서 주입받은 인스턴스. None일 수 있음.
+        self.watermark = watermark
+        self.keyboard_display = keyboard_display
         self.hdr_correction_force = hdr_correction_force
         self._on_failed = on_failed  # 백엔드/캡처 실패 시 메인 스레드에 알림
         self._backend_is_dxcam = False  # run()에서 실제 백엔드로 설정
@@ -911,24 +917,17 @@ class CaptureThread(threading.Thread):
                 
                 threading.Thread(target=click_detection, daemon=True).start()
             
-            # 오버레이 초기화
-            watermark = None
-            if self.watermark_enabled:
+            # 오버레이 초기화 — facade가 주입한 인스턴스를 그대로 사용 (DI)
+            # P0-2 fix: 재-import & 재-instantiate 대신 facade 소유 인스턴스 사용
+            watermark = self.watermark if (self.watermark and self.watermark.enabled) else None
+
+            if self.keyboard_display and self.keyboard_display.enabled:
+                keyboard = self.keyboard_display
                 try:
-                    from .watermark import Watermark
-                    watermark = Watermark()
-                    watermark.set_enabled(True)
-                except Exception as e:
-                    logger.warning(f"[CaptureThread] Watermark init failed: {e}")
-            
-            if self.keyboard_enabled:
-                try:
-                    from .keyboard_display import KeyboardDisplay
-                    keyboard = KeyboardDisplay()
-                    keyboard.set_enabled(True)
                     keyboard.start_listening()
-                except Exception as e:
-                    logger.warning(f"[CaptureThread] Keyboard init failed: {e}")
+                except Exception as exc:
+                    logger.warning(f"[CaptureThread] Keyboard start_listening failed: {exc}")
+                    keyboard = None
             
             frame_interval = 1.0 / self.fps
             next_capture_time = time.perf_counter()
@@ -1063,17 +1062,13 @@ class CaptureThread(threading.Thread):
                 except Exception as e:
                     logger.error(f"[CaptureThread] Backend stop error: {e}")
             
+            # P0-2 fix: keyboard/watermark는 facade가 소유하는 인스턴스이므로
+            # 워커에서는 stop_listening()만 호출 (인스턴스 자체는 facade가 재사용).
+            # 캐시는 facade 측 set_* 호출 시 무효화되므로 여기서 건드리지 않는다.
             if keyboard:
                 try:
                     keyboard.stop_listening()
-                except Exception as e:
-                    logger.error(f"[CaptureThread] Keyboard stop error: {e}")
-
-            if watermark:
-                try:
-                    watermark._cached_text_image = None
-                    watermark._cached_image = None
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.error(f"[CaptureThread] Keyboard stop error: {exc}")
 
             logger.debug("[CaptureThread] Cleanup complete")
