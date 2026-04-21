@@ -213,25 +213,30 @@ class ScreenRecorder:
     def _warmup_backend(self):
         """백엔드 미리 준비 (앱 시작 시 호출).
 
-        P1-4 / P1-8: 워밍업 로직은 CaptureBackend.warm_up() 으로 이관됨.
-        이 메서드는 데몬 스레드에서 backend.warm_up() 을 호출하고 성공 여부만 기록한다.
-        백엔드별 4단계 중첩 try/except 은 제거되었다.
+        워밍업 로직은 CaptureBackend.warm_up() 으로 이관되어 있어 여기서는
+        데몬 스레드에서 호출하고 성공 여부만 기록한다.
         """
 
         def warmup_thread():
+            # P1-B (2026-04-21 리뷰): 데몬 스레드 최상위에 catch-all 을 둔다.
+            # warm_up() 내부가 잡지 못한 MemoryError / KeyError / AttributeError
+            # 가 daemon 에서 소멸되면 GUI 에는 증거가 남지 않으므로,
+            # 최상위에서 logger.exception 으로 반드시 stacktrace 를 기록한다.
             try:
-                preferred = (self._preferred_backend or "auto").strip().lower()
-                # "auto" 는 DXCam 을 우선 시도 (create_capture_backend 의 auto 분기와 동일).
-                backend_name = "dxcam" if preferred in ("auto", "dxcam") else preferred
-                backend = create_capture_backend(backend_name)
-            except RuntimeError as exc:
-                # 해당 백엔드 자체가 사용 불가 (dxcam 미설치 / 비-Windows GDI 등)
-                logger.warning(f"Backend pre-warming skipped — unavailable: {exc}")
-                return
+                try:
+                    # P2-6: create_capture_backend 의 "auto" 분기가 이미 DXCam 우선이므로
+                    # preferred 변환 없이 그대로 전달한다.
+                    backend = create_capture_backend(self._preferred_backend or "auto")
+                except RuntimeError as exc:
+                    # 해당 백엔드 자체가 사용 불가 (dxcam 미설치 / 비-Windows GDI 등)
+                    logger.warning(f"Backend pre-warming skipped — unavailable: {exc}")
+                    return
 
-            if backend.warm_up():
-                self._backend_warmed_up = True
-                logger.info(f"{backend.get_name()} backend pre-warmed successfully")
+                if backend.warm_up():
+                    self._backend_warmed_up = True
+                    logger.info(f"{backend.get_name()} backend pre-warmed successfully")
+            except Exception as exc:
+                logger.exception(f"Backend pre-warming thread crashed: {exc}")
 
         try:
             threading.Thread(target=warmup_thread, daemon=True).start()
