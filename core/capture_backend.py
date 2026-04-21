@@ -32,11 +32,11 @@ class CaptureBackend(ABC):
     @abstractmethod
     def start(self, region: Tuple[int, int, int, int], target_fps: int = 30) -> bool:
         """캡처 시작
-        
+
         Args:
             region: (x, y, width, height) 캡처 영역
             target_fps: 목표 FPS
-            
+
         Returns:
             bool: 시작 성공 여부
         """
@@ -50,7 +50,7 @@ class CaptureBackend(ABC):
     @abstractmethod
     def grab(self) -> Optional[np.ndarray]:
         """프레임 캡처
-        
+
         Returns:
             np.ndarray: BGR 형식의 프레임 (없으면 None)
         """
@@ -66,6 +66,39 @@ class CaptureBackend(ABC):
     def is_running(self) -> bool:
         """캡처 중인지 여부"""
         pass
+
+    # P1-4: 백엔드별 워밍업을 ABC에서 흡수. 기본은 no-op.
+    # DXCam처럼 첫 start()가 느린 백엔드는 override하여 카메라 초기화를 선행한다.
+    def warm_up(self) -> bool:
+        """백엔드 미리 준비 (앱 시작 시 호출).
+
+        기본 구현은 no-op (즉시 준비됨). 백엔드별로 first-start latency가
+        큰 경우 override 하여 리소스를 선행 초기화한다.
+
+        Returns:
+            bool: 워밍업 성공 여부 (실패해도 예외를 올리지 않는다).
+        """
+        return True
+
+    # P1-6: HDR 보정 우회 판단을 polymorphic 속성으로. backend_name 문자열 비교 제거.
+    @property
+    def supports_managed_color(self) -> bool:
+        """Windows 색상 관리(ICC, HDR→SDR)가 백엔드 내부에서 자동 적용되는지.
+
+        True면 caller는 HDR 보정을 스킵해야 한다 (이중 처리 방지).
+        예: GDI 계열은 PIL ImageGrab / GetDIBits 경로에서 OS가 색상 관리 수행.
+        dxcam은 DXGI raw buffer라 보정 미포함 → False 반환.
+        """
+        return False
+
+    # P0-4: backend.stop() 실패 시 호출되는 강제 해제 폴백. 기본은 no-op.
+    def force_release(self) -> None:
+        """stop() 이 예외로 실패했을 때 호출되는 강제 리소스 해제.
+
+        기본 구현은 no-op. DXGI duplicator 같이 OS 핸들을 소유하는 백엔드는
+        override 하여 핸들 해제를 시도한다.
+        """
+        return None
 
 
 class DXCamBackend(CaptureBackend):
@@ -211,6 +244,36 @@ class DXCamBackend(CaptureBackend):
     @property
     def is_running(self) -> bool:
         return self._running
+
+    # P1-4: DXCam은 첫 dxcam.create()가 ~500ms 걸리므로 워밍업 이득이 큼.
+    # 100x100 영역으로 짧게 start→grab→stop 해서 공유 카메라를 선행 초기화한다.
+    def warm_up(self) -> bool:
+        if not HAS_DXCAM:
+            return False
+        try:
+            if not self.start((0, 0, 100, 100), target_fps=30):
+                return False
+            time.sleep(0.1)
+            test_frame = self.grab()
+            self.stop()
+            return test_frame is not None
+        except (ImportError, OSError, RuntimeError, AttributeError) as exc:
+            logger.warning(f"[DXCamBackend] warm_up failed: {exc}")
+            try:
+                self.stop()
+            except (RuntimeError, OSError):
+                pass
+            return False
+
+    # P0-4: stop() 이 실패했을 때 DXGI duplicator 를 GC 가능 상태로 강제 해제.
+    # 내부 _camera 참조를 끊어 다음 recording에서 핸들 충돌이 일어나지 않도록.
+    def force_release(self) -> None:
+        try:
+            self._running = False
+            self._camera = None
+            logger.warning("[DXCamBackend] force_release: _camera cleared")
+        except Exception as exc:
+            logger.error(f"[DXCamBackend] force_release error: {exc}")
 
 
 # 앱 종료 시 공유 DXCam 카메라 자동 정리 (리소스 누수 방지)
@@ -442,6 +505,23 @@ class FastGdiBackend(CaptureBackend):
     def is_running(self) -> bool:
         return self._running
 
+    # P1-6: GetDIBits 경로는 GDI+/Windows 색상 관리가 자동 적용되므로 HDR 보정 스킵.
+    @property
+    def supports_managed_color(self) -> bool:
+        return True
+
+    # P1-4: PIL ImageGrab 을 즉시 호출하여 PIL lazy-import 를 선행. 100x100 smoke.
+    def warm_up(self) -> bool:
+        if not HAS_GDI:
+            return False
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab((0, 0, 100, 100))
+            return img is not None
+        except (ImportError, OSError, RuntimeError) as exc:
+            logger.warning(f"[FastGdiBackend] warm_up failed: {exc}")
+            return False
+
 
 class GdiBackend(CaptureBackend):
     """GDI+ 기반 캡처 백엔드 (Windows 전용, PIL ImageGrab 사용).
@@ -495,6 +575,23 @@ class GdiBackend(CaptureBackend):
     @property
     def is_running(self) -> bool:
         return self._running
+
+    # P1-6: PIL ImageGrab 은 GDI+ 를 통해 Windows 색상 관리를 수행하므로 True.
+    @property
+    def supports_managed_color(self) -> bool:
+        return True
+
+    # P1-4: FastGdiBackend 와 동일하게 PIL ImageGrab 을 선행 호출한다.
+    def warm_up(self) -> bool:
+        if not HAS_GDI:
+            return False
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab((0, 0, 100, 100))
+            return img is not None
+        except (ImportError, OSError, RuntimeError) as exc:
+            logger.warning(f"[GdiBackend] warm_up failed: {exc}")
+            return False
 
 
 def create_capture_backend(preferred: str = "auto") -> CaptureBackend:

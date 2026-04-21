@@ -227,50 +227,30 @@ class ScreenRecorder:
         self._emit_error_occurred(error_msg)
 
     def _warmup_backend(self):
-        """백엔드 미리 준비 (앱 시작 시 호출) - 실제 사용 가능한 백엔드 준비"""
+        """백엔드 미리 준비 (앱 시작 시 호출).
+
+        P1-4 / P1-8: 워밍업 로직은 CaptureBackend.warm_up() 으로 이관됨.
+        이 메서드는 데몬 스레드에서 backend.warm_up() 을 호출하고 성공 여부만 기록한다.
+        백엔드별 4단계 중첩 try/except 은 제거되었다.
+        """
+
+        def warmup_thread():
+            try:
+                preferred = (self._preferred_backend or "auto").strip().lower()
+                # "auto" 는 DXCam 을 우선 시도 (create_capture_backend 의 auto 분기와 동일).
+                backend_name = "dxcam" if preferred in ("auto", "dxcam") else preferred
+                backend = create_capture_backend(backend_name)
+            except RuntimeError as exc:
+                # 해당 백엔드 자체가 사용 불가 (dxcam 미설치 / 비-Windows GDI 등)
+                logger.warning(f"Backend pre-warming skipped — unavailable: {exc}")
+                return
+
+            if backend.warm_up():
+                self._backend_warmed_up = True
+                logger.info(f"{backend.get_name()} backend pre-warmed successfully")
+
         try:
-            # 백그라운드 스레드로 백엔드 워밍업
-            def warmup_thread():
-                try:
-                    # GDI 백엔드 워밍업 (PIL ImageGrab은 즉시 사용 가능)
-                    if self._preferred_backend == "gdi":
-                        try:
-                            from PIL import ImageGrab
-                            # 작은 영역으로 빠르게 테스트
-                            img = ImageGrab.grab((0, 0, 100, 100))
-                            if img:
-                                self._backend_warmed_up = True
-                                logger.info("GDI backend pre-warmed successfully (PIL ImageGrab ready)")
-                                return
-                        except (ImportError, OSError, RuntimeError) as exc:
-                            logger.warning(f"GDI pre-warming failed: {exc}")
-
-                    # dxcam 전역 초기화 (처음만 느림, 이후 빠름)
-                    elif self._preferred_backend == "auto" or self._preferred_backend == "dxcam":
-                        try:
-                            from .capture_backend import DXCamBackend
-                            # DXCamBackend의 공유 카메라를 사용하여 워밍업
-                            # 별도 카메라를 만들지 않아 리소스 충돌 방지
-                            warmup_backend = DXCamBackend()
-                            if warmup_backend.start((0, 0, 100, 100), target_fps=30):
-                                time.sleep(0.1)  # 100ms 워밍업 (R2: 중복 import time 제거)
-                                test_frame = warmup_backend.grab()
-                                warmup_backend.stop()
-
-                                if test_frame is not None:
-                                    self._backend_warmed_up = True
-                                    logger.info("DXCam backend pre-warmed successfully (shared camera ready)")
-                                    return
-                        except (ImportError, OSError, RuntimeError) as exc:
-                            logger.warning(f"DXCam pre-warming failed: {exc}")
-
-                except (ImportError, OSError, RuntimeError) as exc:
-                    logger.warning(f"Backend pre-warming failed: {exc}")
-
-            # 데몬 스레드로 실행 (앱 종료 시 자동 정리)
-            warmup_thread_obj = threading.Thread(target=warmup_thread, daemon=True)
-            warmup_thread_obj.start()
-
+            threading.Thread(target=warmup_thread, daemon=True).start()
         except (RuntimeError, OSError) as exc:
             logger.warning(f"Could not start backend pre-warming: {exc}")
 
@@ -363,16 +343,14 @@ class ScreenRecorder:
             if frame is None or frame.size == 0:
                 return None
 
-            # HDR 보정: 사용자가 수동으로 켤 때만 적용
-            # 단, GDI 백엔드는 Windows가 자동으로 색상 관리를 처리하므로 보정 스킵
-            backend_name = (selected_backend or (backend.get_name() if backend else "")).lower()
-            is_gdi = backend_name == "gdi"
-            if not is_gdi and self.hdr_correction_force:
+            # HDR 보정: 사용자가 수동으로 켤 때만 적용.
+            # P1-6: 백엔드 이름 문자열 비교 대신 polymorphic supports_managed_color 로 분기.
+            if self.hdr_correction_force and not backend.supports_managed_color:
                 frame = apply_hdr_correction_adaptive(frame)
 
-            # 마우스 커서 그리기
+            # 마우스 커서 그리기 (P1-5: _draw_cursor 메서드 제거, 자유 함수로 일원화)
             if self.include_cursor and HAS_WIN32:
-                frame = self._draw_cursor(frame, x, y)
+                frame = draw_cursor_internal(frame, x, y)
 
             return frame
 
@@ -618,53 +596,6 @@ class ScreenRecorder:
         if was_recording or has_active_threads:
             self._emit_recording_stopped()
         return self.frames
-
-    def _draw_cursor(self, frame: np.ndarray, region_x: int, region_y: int) -> np.ndarray:
-        """마우스 커서를 프레임에 그리기 (NumPy 벡터화 최적화 + JIT)"""
-        if not HAS_WIN32:
-            return frame
-
-        try:
-            # 커서 위치 가져오기
-            cursor_pos = wintypes.POINT()
-            ctypes.windll.user32.GetCursorPos(ctypes.byref(cursor_pos))
-
-            # 영역 내 상대 좌표 계산
-            cx = cursor_pos.x - region_x
-            cy = cursor_pos.y - region_y
-
-            # 영역 밖이면 복사 없이 원본 반환
-            h, w = frame.shape[:2]
-            if cx < 0 or cy < 0 or cx >= w or cy >= h:
-                return frame
-
-            # 커서 그리기 위해 복사 (여기서만 복사)
-            frame = frame.copy()
-
-            # 커서 그리기
-            cursor_size = 8
-            y1 = max(0, cy - cursor_size)
-            y2 = min(h, cy + cursor_size + 1)
-            x1 = max(0, cx - cursor_size)
-            x2 = min(w, cx + cursor_size + 1)
-
-            yy, xx = np.ogrid[y1-cy:y2-cy, x1-cx:x2-cx]
-            dist_sq = xx*xx + yy*yy
-
-            center_mask = dist_sq <= 4
-            outer_mask = (dist_sq >= 36) & (dist_sq <= 64)
-
-            roi = frame[y1:y2, x1:x2]
-            roi[center_mask] = [255, 255, 255]
-            roi[outer_mask] = [0, 0, 0]
-
-            return frame
-
-        except Exception as exc:
-            # P1-7: 그리기 오류는 debug로 surface (hot path, 노이즈 최소화)
-            logger.debug(f"_draw_cursor skipped due to error: {exc}")
-            return frame
-
 
     def _frame_collector_loop_threaded(self):
         """프레임 수집 루프 (스레드 기반 버전)"""
@@ -924,7 +855,9 @@ class CaptureThread(threading.Thread):
             logger.info(f"[CaptureThread] Backend started: {backend.get_name()}")
             name = (selected_backend or backend.get_name() or "").lower()
             self._backend_is_dxcam = "dxcam" in name
-            self._backend_is_gdi = name == "gdi"
+            # P1-6: backend_name 문자열 비교 대신 polymorphic 속성 사용.
+            # (_backend_is_gdi 플래그는 레거시 호환을 위해 유지하되, 분기는 속성 기반으로 한다.)
+            self._backend_is_gdi = bool(backend.supports_managed_color)
 
             # 마우스 클릭 감지
             last_click_pos = None
@@ -994,10 +927,10 @@ class CaptureThread(threading.Thread):
                             self._first_frame_ready.set()
                             logger.info("[CaptureThread] First frame captured - recording active!")
 
-                        # HDR 보정: 사용자가 수동으로 켤 때만 적용 (적응형)
-                        # 단, GDI 백엔드는 Windows가 자동으로 색상 관리를 처리하므로 보정 스킵
+                        # HDR 보정: 사용자가 수동으로 켤 때만 적용 (적응형).
+                        # P1-6: backend.supports_managed_color 로 분기 (레거시 _backend_is_gdi 는 동일 값).
                         t2 = time.perf_counter()
-                        if not self._backend_is_gdi and getattr(self, 'hdr_correction_force', False):
+                        if getattr(self, 'hdr_correction_force', False) and not backend.supports_managed_color:
                             frame = apply_hdr_correction_adaptive(frame)
                         t3 = time.perf_counter()
                         timing_samples['hdr'].append(t3 - t2)
@@ -1097,34 +1030,19 @@ class CaptureThread(threading.Thread):
             # 항상 리소스 정리 (예외 발생해도)
             logger.debug("[CaptureThread] Cleaning up resources...")
 
-            # P0-4: backend.stop() 실패 시 강제 해제 폴백 시도.
-            # FFmpeg 서브프로세스 패턴(process.kill())과 동일한 guarantee 제공.
-            # CaptureBackend ABC에 force_release()가 없어도 duck typing으로 안전하게 호출.
+            # P0-4: backend.stop() 실패 시 강제 해제 폴백.
+            # force_release() 는 CaptureBackend ABC 기본 구현(no-op)을 가지므로
+            # 모든 백엔드에서 안전하게 호출 가능 (P1-4 적용 이후 duck typing 제거).
             if backend:
-                stop_failed = False
                 try:
                     backend.stop()
                 except Exception as exc:
-                    stop_failed = True
                     logger.error(f"[CaptureThread] Backend stop error: {exc}")
-
-                if stop_failed:
-                    force_release = getattr(backend, 'force_release', None)
-                    if callable(force_release):
-                        try:
-                            force_release()
-                            logger.warning("[CaptureThread] Backend force_release() invoked after stop() failure")
-                        except Exception as exc:
-                            logger.error(f"[CaptureThread] Backend force_release error: {exc}")
-                    else:
-                        # ABC에 force_release 미구현 백엔드의 경우: 내부 핸들 해제를 최대한 시도
-                        # (현재 DXCamBackend 구조상 _camera 속성을 None 처리하면 DXGI 핸들 GC 대상)
-                        try:
-                            if hasattr(backend, '_camera'):
-                                backend._camera = None
-                                logger.warning("[CaptureThread] Backend._camera = None fallback applied after stop() failure")
-                        except Exception as exc:
-                            logger.error(f"[CaptureThread] Backend _camera fallback error: {exc}")
+                    try:
+                        backend.force_release()
+                        logger.warning("[CaptureThread] Backend force_release() invoked after stop() failure")
+                    except Exception as exc2:
+                        logger.error(f"[CaptureThread] Backend force_release error: {exc2}")
 
             # P0-2 fix: keyboard/watermark는 facade가 소유하는 인스턴스이므로
             # 워커에서는 stop_listening()만 호출 (인스턴스 자체는 facade가 재사용).
