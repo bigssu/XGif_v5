@@ -5,7 +5,7 @@
 #define MyAppVersion "0.56"
 #define MyAppPublisher "XGif"
 #define MyAppExeName "XGif.exe"
-#define MyAppURL "https://github.com/xgif"
+#define MyAppURL "https://github.com/bigssu/XGif_v5"
 
 [Setup]
 AppId={{B8F3A2E1-7D4C-4E5F-9A1B-2C3D4E5F6A7B}

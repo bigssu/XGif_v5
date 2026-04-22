@@ -2,6 +2,8 @@
 유틸리티 함수 테스트
 """
 
+from contextlib import suppress
+import sys
 import numpy as np
 
 
@@ -118,10 +120,8 @@ class TestAlphaBlend:
     def test_none_background(self):
         from core.utils import apply_alpha_blend
         overlay = np.full((50, 50, 3), 255, dtype=np.uint8)
-        try:
-            result = apply_alpha_blend(None, overlay, 0, 0)
-        except (TypeError, AttributeError):
-            pass  # None 입력 시 예외 허용
+        with suppress(TypeError, AttributeError):
+            apply_alpha_blend(None, overlay, 0, 0)
 
 
 class TestLoadSystemFont:
@@ -153,3 +153,22 @@ class TestSafeDeleteTimer:
     def test_invalid_timer(self):
         from core.utils import safe_delete_timer
         safe_delete_timer("invalid")  # 크래시 안 해야 함
+
+
+class TestRunSubprocessSilent:
+    """서브프로세스 출력 디코드 안전성 테스트"""
+
+    def test_replaces_invalid_utf8_output(self):
+        from core.utils import run_subprocess_silent
+
+        result = run_subprocess_silent(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.stderr.buffer.write(b'\\xc1\\xff\\n')",
+            ]
+        )
+
+        assert result.returncode == 0
+        assert isinstance(result.stderr, str)
+        assert "\ufffd" in result.stderr

@@ -1,5 +1,5 @@
 # XGif Bootstrapper - 최소 요구사항
 # Python 3.11 권장
 
-wxPython>=4.2.0
-pyinstaller>=6.0.0
+wxPython>=4.2.5
+pyinstaller>=6.19.0

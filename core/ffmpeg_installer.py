@@ -5,6 +5,7 @@ FFmpeg 자동 다운로드 및 설치 모듈
 
 import os
 import sys
+import locale
 import zipfile
 import urllib.request
 import shutil
@@ -77,7 +78,11 @@ def check_system_ffmpeg() -> str:
         try:
             result = _sp.run(
                 ['where', 'ffmpeg'],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                encoding=locale.getpreferredencoding(False),
+                errors='replace',
+                timeout=5,
                 creationflags=_sp.CREATE_NO_WINDOW,
             )
             if result.returncode == 0 and result.stdout.strip():

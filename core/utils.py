@@ -423,6 +423,8 @@ def run_subprocess_silent(cmd: list, timeout: int = 60, **kwargs) -> subprocess.
     default_kwargs = {
         'capture_output': True,
         'text': True,
+        'encoding': 'utf-8',
+        'errors': 'replace',
         'timeout': timeout,
         'creationflags': creation_flags
     }

@@ -1,15 +1,15 @@
-wxPython>=4.2.0
-numpy>=2.0.0
-Pillow>=10.0.0
-dxcam>=0.0.5
-nvidia-ml-py>=12.0.0
-imageio>=2.33.0
+wxPython>=4.2.5
+numpy>=2.4.4
+Pillow>=12.2.0
+dxcam>=0.3.0
+nvidia-ml-py>=13.595.45
+imageio>=2.37.3
 # imageio-ffmpeg removed (uses system FFmpeg via IMAGEIO_FFMPEG_EXE)
 # pydub removed (uses FFmpeg subprocess instead)
-psutil>=5.9.0
-sounddevice>=0.4.6
-soundfile>=0.12.0
-pynput>=1.7.6
+psutil>=7.2.2
+sounddevice>=0.5.5
+soundfile>=0.13.1
+pynput>=1.8.1
 # Optional modules (Removed for smaller build size):
 # cupy
 # scipy

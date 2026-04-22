@@ -1,5 +1,5 @@
 # XGif CLI 모드 최소 의존성
 # wxPython은 불필요 (CLI 모드에서는 import하지 않음)
-numpy>=2.0.0
-Pillow>=10.0.0
-imageio>=2.33.0
+numpy>=2.4.4
+Pillow>=12.2.0
+imageio>=2.37.3

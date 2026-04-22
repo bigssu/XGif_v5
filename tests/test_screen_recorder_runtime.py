@@ -162,6 +162,41 @@ def test_dxcam_force_release_preserves_unrelated_shared_camera():
         DXCamBackend._shared_camera = None
 
 
+def test_dxcam_backend_uses_numpy_processor_backend(monkeypatch):
+    import core.capture_backend as cb
+
+    created_kwargs = {}
+
+    class _DummyCamera:
+        def __init__(self):
+            self._frame = np.zeros((4, 4, 3), dtype=np.uint8)
+
+        def start(self, region=None, target_fps=30, video_mode=False):
+            return None
+
+        def stop(self):
+            return None
+
+        def get_latest_frame(self):
+            return self._frame
+
+    def fake_create(**kwargs):
+        created_kwargs.update(kwargs)
+        return _DummyCamera()
+
+    monkeypatch.setattr(cb.dxcam, "create", fake_create)
+    cb.DXCamBackend._shared_camera = None
+
+    backend = cb.DXCamBackend()
+    try:
+        assert backend.start((0, 0, 4, 4), target_fps=30) is True
+        assert created_kwargs["output_color"] == "BGR"
+        assert created_kwargs["processor_backend"] == "numpy"
+    finally:
+        backend.stop()
+        cb.DXCamBackend._shared_camera = None
+
+
 def test_capture_thread_failure_resets_recording_state(monkeypatch):
     import core.screen_recorder as sr
     from core.screen_recorder import ScreenRecorder

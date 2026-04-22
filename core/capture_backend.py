@@ -172,7 +172,9 @@ class DXCamBackend(CaptureBackend):
                 else:
                     # 새 카메라 생성 (처음만 느림)
                     logger.info("[DXCamBackend] Creating new camera (first time, may take ~500ms)")
-                    self._camera = dxcam.create(output_color="BGR")
+                    # dxcam 0.3.x defaults to the cv2 processor extra; force numpy
+                    # backend so the optional OpenCV dependency is not required.
+                    self._camera = dxcam.create(output_color="BGR", processor_backend="numpy")
 
                     if self._camera is None:
                         return False
@@ -332,7 +334,7 @@ class DXCamPool:
             cls._ref_count += 1
             if DXCamBackend._shared_camera is None:
                 try:
-                    DXCamBackend._shared_camera = dxcam.create(output_color="BGR")
+                    DXCamBackend._shared_camera = dxcam.create(output_color="BGR", processor_backend="numpy")
                     logger.info("[DXCamPool] Created new camera (refcount=%d)", cls._ref_count)
                 except Exception as e:
                     logger.error("[DXCamPool] Failed to create camera: %s", e)

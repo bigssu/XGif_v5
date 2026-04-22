@@ -35,7 +35,7 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 
 ```bash
 # 저장소 클론
-git clone https://github.com/your-username/XGif.git
+git clone https://github.com/bigssu/XGif_v5.git
 cd XGif
 
 # 가상환경 생성 (Python 3.11)

@@ -412,6 +412,8 @@ class GifEncoder:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=600,  # 10분 타임아웃
                 env=self._ffmpeg_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -798,6 +800,8 @@ class GifEncoder:
                 cmd_palette,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 env=self._ffmpeg_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
                 timeout=600
@@ -834,6 +838,8 @@ class GifEncoder:
                 cmd_gif,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 env=self._ffmpeg_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
@@ -1216,6 +1222,8 @@ class GifEncoder:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 env=self._ffmpeg_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
                 timeout=600
@@ -1270,6 +1278,8 @@ class GifEncoder:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 env=self._ffmpeg_env,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
                 timeout=600

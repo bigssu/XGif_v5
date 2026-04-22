@@ -63,6 +63,8 @@ STATUS_CHECKING = "검사 중…"
 STATUS_SKIP = "건너뜀"
 
 # ── Download URLs ──────────────────────────────────────────────────
+# Python 3.11 is security-fix-only now, and newer 3.11 releases are source-only.
+# Keep 3.11.9 here because it is the last 3.11 release with Windows embeddable binaries.
 PYTHON_EMBED_URL = (
     "https://www.python.org/ftp/python/3.11.9/"
     "python-3.11.9-embed-amd64.zip"
