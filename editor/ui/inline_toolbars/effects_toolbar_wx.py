@@ -46,20 +46,7 @@ class EffectsToolbar(InlineToolbarBase):
 
         # 적용 대상
         target_tooltip = translations.tr("target_tooltip") if translations else "적용 대상 프레임"
-        self.add_icon_label("target", 20, target_tooltip)
-
-        target_choices = []
-        if translations:
-            target_choices = [translations.tr("target_all"), translations.tr("target_selected"), translations.tr("target_current")]
-        else:
-            target_choices = ["모두", "선택", "현재"]
-
-        self._target_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY, choices=target_choices)
-        self._target_combo.SetSelection(1)
-        self._target_combo.SetMinSize((70, -1))
-        self._target_combo.SetToolTip(target_tooltip)
-        self._target_combo.Bind(wx.EVT_COMBOBOX, lambda e: self._on_effect_changed())
-        self.add_control(self._target_combo)
+        self._target_combo = self.add_target_combo(self._on_effect_changed, tooltip=target_tooltip)
 
         self.add_separator()
 
@@ -153,20 +140,11 @@ class EffectsToolbar(InlineToolbarBase):
                 pass
 
         # 원본 이미지 저장
-        self._original_images = []
-        try:
-            for f in self.frames:
-                if f and hasattr(f, 'image') and f.image:
-                    self._original_images.append(f.image.copy())
-                else:
-                    self._original_images.append(None)
-        except Exception:
-            self._original_images = []
+        self._original_images = self._snapshot_original_images()
 
     def _on_deactivated(self):
         """툴바 비활성화"""
-        self._original_images = []
-        self._preview_timer.Stop()
+        self._clear_original_images()
 
     def _on_effect_changed(self):
         """효과 변경됨"""
@@ -181,35 +159,17 @@ class EffectsToolbar(InlineToolbarBase):
         if not self._original_images:
             return
 
-        target = self._target_combo.GetSelection()
-        selected_indices = getattr(self.frames, 'selected_indices', set())
-        current_idx = getattr(self.frames, 'current_index', 0)
-
-        for i, frame in enumerate(self.frames):
-            if i >= len(self._original_images) or self._original_images[i] is None:
-                continue
-
-            should_apply = False
-            if target == 0:
-                should_apply = True
-            elif target == 1:
-                should_apply = i in selected_indices
-            elif target == 2:
-                should_apply = i == current_idx
-
-            show_preview = should_apply or (i == current_idx)
-
-            try:
-                if show_preview:
-                    processed = self._apply_effects(self._original_images[i])
-                    frame._image = processed
-                else:
-                    frame._image = self._original_images[i].copy()
-            except Exception:
-                pass
+        self._apply_frame_processor(
+            self._target_combo.GetSelection(),
+            self._process_effect_frame,
+            preview_current=True,
+        )
 
         self._safe_canvas_update()
         self.update_preview()
+
+    def _process_effect_frame(self, original: Image.Image, _index: int, _should_apply: bool) -> Image.Image:
+        return self._apply_effects(original)
 
     def _apply_effects(self, image: Image.Image) -> Image.Image:
         """이미지에 효과 적용"""
@@ -266,63 +226,21 @@ class EffectsToolbar(InlineToolbarBase):
         self._saturation_slider.SetValue(0)
         self._filter_combo.SetSelection(0)
 
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
-
+        self._restore_original_images()
         self._safe_canvas_update()
 
     def _on_apply(self, event):
         """적용"""
-        target = self._target_combo.GetSelection()
-        selected_indices = getattr(self.frames, 'selected_indices', set())
-        current_idx = getattr(self.frames, 'current_index', 0)
-
-        for i, frame in enumerate(self.frames):
-            if i >= len(self._original_images) or self._original_images[i] is None:
-                continue
-
-            should_apply = False
-            if target == 0:
-                should_apply = True
-            elif target == 1:
-                should_apply = i in selected_indices
-            elif target == 2:
-                should_apply = i == current_idx
-
-            if should_apply:
-                try:
-                    processed = self._apply_effects(self._original_images[i])
-                    frame._image = processed
-                except Exception:
-                    pass
-            else:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
-
-        if hasattr(self._main_window, '_is_modified'):
-            self._main_window._is_modified = True
-        if hasattr(self._main_window, '_update_info_bar'):
-            self._main_window._update_info_bar()
-        self._safe_canvas_update()
-        super()._on_apply(event)
+        self._apply_frame_processor(
+            self._target_combo.GetSelection(),
+            self._process_effect_frame,
+        )
+        self._finish_apply()
 
     def _on_cancel(self, event):
         """취소"""
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
-
-        self._safe_canvas_update()
-        super()._on_cancel(event)
+        self._restore_original_images()
+        self._finish_cancel()
 
     def reset_to_default(self):
         """기본값으로 초기화"""

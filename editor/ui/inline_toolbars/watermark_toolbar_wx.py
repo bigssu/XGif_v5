@@ -134,23 +134,13 @@ class WatermarkToolbar(InlineToolbarBase):
         if not self.frames or getattr(self.frames, 'is_empty', False):
             return
 
-        # 원본 이미지 저장
-        self._original_images = []
-        try:
-            for f in self.frames:
-                if f and hasattr(f, 'image') and f.image:
-                    self._original_images.append(f.image.copy())
-                else:
-                    self._original_images.append(None)
-        except Exception:
-            self._original_images = []
+        self._original_images = self._snapshot_original_images()
 
         self._update_preview()
 
     def _on_deactivated(self):
         """툴바 비활성화"""
-        self._original_images = []
-        self._preview_timer.Stop()
+        self._clear_original_images()
 
     def _on_type_changed(self, event):
         """워터마크 타입 변경"""
@@ -200,18 +190,13 @@ class WatermarkToolbar(InlineToolbarBase):
         if not self._original_images:
             return
 
-        for i, frame in enumerate(self.frames):
-            if i >= len(self._original_images) or self._original_images[i] is None:
-                continue
-
-            try:
-                processed = self._apply_watermark(self._original_images[i])
-                frame._image = processed
-            except Exception:
-                pass
+        self._apply_frame_processor(0, self._process_watermark_frame)
 
         self._safe_canvas_update()
         self.update_preview()
+
+    def _process_watermark_frame(self, original: Image.Image, _index: int, _should_apply: bool) -> Image.Image:
+        return self._apply_watermark(original)
 
     def _apply_watermark(self, image: Image.Image) -> Image.Image:
         """이미지에 워터마크 적용"""
@@ -351,35 +336,18 @@ class WatermarkToolbar(InlineToolbarBase):
         image_btn_text = translations.tr("watermark_image_btn") if translations else "이미지"
         self._image_btn.SetLabel(f"{image_btn_text} 선택...")
 
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
-
+        self._restore_original_images()
         self._safe_canvas_update()
 
     def _on_apply(self, event):
         """적용"""
         self._on_deactivated()
-        if hasattr(self._main_window, '_is_modified'):
-            self._main_window._is_modified = True
-        if hasattr(self._main_window, '_update_info_bar'):
-            self._main_window._update_info_bar()
-        super()._on_apply(event)
+        self._finish_apply()
 
     def _on_cancel(self, event):
         """취소"""
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
-
-        self._safe_canvas_update()
-        super()._on_cancel(event)
+        self._restore_original_images()
+        self._finish_cancel()
 
     def reset_to_default(self):
         """기본값으로 초기화"""

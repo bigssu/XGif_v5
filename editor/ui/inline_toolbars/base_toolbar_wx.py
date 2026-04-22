@@ -6,9 +6,17 @@ PropertyBar 컨테이너의 자식으로 등록되어 활성 도구에 따라 �
 """
 import wx
 from typing import TYPE_CHECKING, Optional, Callable
+from contextlib import suppress
 from ..style_constants_wx import Colors
 from ...utils.wx_events import (
     ToolbarAppliedEvent, ToolbarCancelledEvent, ToolbarPreviewUpdatedEvent
+)
+from ...utils.frame_targeting import (
+    apply_frame_processor,
+    build_target_choices,
+    restore_current_original_image,
+    restore_original_images,
+    snapshot_original_images,
 )
 
 if TYPE_CHECKING:
@@ -143,14 +151,14 @@ class InlineToolbarBase(wx.Panel):
 
     def add_control(self, widget: wx.Window):
         """컨트롤 영역에 위젯 추가 (다크 테마 자동 적용)"""
-        if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)) or isinstance(widget, wx.ComboBox):
+        if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble, wx.ComboBox)):
             widget.SetBackgroundColour(Colors.BG_TERTIARY)
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
         elif isinstance(widget, wx.Slider):
             widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
-        elif isinstance(widget, wx.StaticText) or isinstance(widget, wx.CheckBox):
+        elif isinstance(widget, (wx.StaticText, wx.CheckBox)):
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        elif isinstance(widget, wx.ToggleButton) or isinstance(widget, wx.Choice):
+        elif isinstance(widget, (wx.ToggleButton, wx.Choice)):
             widget.SetBackgroundColour(Colors.BG_TERTIARY)
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._controls_sizer.Add(widget, 0, wx.ALL, 8)
@@ -185,6 +193,32 @@ class InlineToolbarBase(wx.Panel):
         self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 8)
         return label
 
+    def add_target_combo(
+        self,
+        on_change: Callable[[], None],
+        *,
+        default_selection: int = 1,
+        tooltip: Optional[str] = None,
+    ) -> wx.ComboBox:
+        """Add a normalized target combo shared by multi-frame toolbars."""
+        translations = getattr(self._main_window, '_translations', None)
+        target_tooltip = tooltip or (
+            translations.tr("target_tooltip") if translations else "적용 대상 프레임"
+        )
+        self.add_icon_label("target", 20, target_tooltip)
+
+        combo = wx.ComboBox(
+            self._controls_widget,
+            style=wx.CB_READONLY,
+            choices=build_target_choices(translations),
+        )
+        combo.SetSelection(default_selection)
+        combo.SetMinSize((70, -1))
+        combo.SetToolTip(target_tooltip)
+        combo.Bind(wx.EVT_COMBOBOX, lambda e: on_change())
+        self.add_control(combo)
+        return combo
+
     @property
     def frames(self):
         """프레임 컬렉션 반환"""
@@ -218,6 +252,63 @@ class InlineToolbarBase(wx.Panel):
         except Exception:
             pass
         return None
+
+    def _snapshot_original_images(self):
+        """Capture original frame images for preview/apply/cancel flows."""
+        return snapshot_original_images(self.frames) if self.frames else []
+
+    def _clear_original_images(self):
+        """Release captured originals and stop any pending preview timer."""
+        self._original_images = []
+        self._preview_timer.Stop()
+
+    def _restore_original_images(self):
+        """Restore all tracked frame previews from originals."""
+        if self.frames and getattr(self, '_original_images', None):
+            restore_original_images(self.frames, self._original_images)
+
+    def _restore_current_original_image(self):
+        """Restore only the current frame preview from originals."""
+        if self.frames and getattr(self, '_original_images', None):
+            restore_current_original_image(self.frames, self._original_images)
+
+    def _apply_frame_processor(self, target_mode: int, processor: Callable, *, preview_current: bool = False):
+        """Run a shared frame-processor across toolbar targets."""
+        if self.frames and getattr(self, '_original_images', None):
+            apply_frame_processor(
+                self.frames,
+                self._original_images,
+                target_mode,
+                processor,
+                preview_current=preview_current,
+            )
+
+    def _apply_generated_images(self, images):
+        """Assign a generated image list back to frames."""
+        if not self.frames:
+            return
+        for index, frame in enumerate(self.frames):
+            if index < len(images) and images[index] is not None:
+                with suppress(Exception):
+                    frame._image = images[index]
+
+    def _mark_editor_modified(self):
+        """Mark the editor dirty and refresh shared UI state."""
+        if hasattr(self._main_window, '_is_modified'):
+            self._main_window._is_modified = True
+        if hasattr(self._main_window, '_update_info_bar'):
+            self._main_window._update_info_bar()
+
+    def _finish_apply(self):
+        """Finalize a successful apply with shared editor bookkeeping."""
+        self._mark_editor_modified()
+        self._safe_canvas_update()
+        wx.PostEvent(self, ToolbarAppliedEvent())
+
+    def _finish_cancel(self):
+        """Finalize a cancel after restoring preview state."""
+        self._safe_canvas_update()
+        wx.PostEvent(self, ToolbarCancelledEvent())
 
     # === 공통 유틸리티 메서드 ===
 

@@ -41,15 +41,7 @@ class MosaicToolbar(InlineToolbarBase):
 
         # 적용 대상
         target_tooltip = translations.tr("target_tooltip") if translations else "적용 대상 프레임"
-        self.add_icon_label("target", 20, target_tooltip)
-
-        self._target_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY,
-                                        choices=["모두", "선택", "현재"])
-        self._target_combo.SetSelection(1)  # 기본값: "선택"
-        self._target_combo.SetMinSize((70, -1))
-        self._target_combo.SetToolTip(target_tooltip)
-        self._target_combo.Bind(wx.EVT_COMBOBOX, self._on_setting_changed)
-        self.add_control(self._target_combo)
+        self._target_combo = self.add_target_combo(self._on_setting_changed, tooltip=target_tooltip)
 
         self.add_separator()
 
@@ -90,15 +82,7 @@ class MosaicToolbar(InlineToolbarBase):
             return
 
         # 원본 이미지 저장
-        self._original_images = []
-        try:
-            for f in self.frames:
-                if f and hasattr(f, 'image') and f.image:
-                    self._original_images.append(f.image.copy())
-                else:
-                    self._original_images.append(None)
-        except Exception:
-            self._original_images = []
+        self._original_images = self._snapshot_original_images()
 
         # 기본 영역 설정
         w = getattr(self.frames, 'width', 100)
@@ -126,8 +110,7 @@ class MosaicToolbar(InlineToolbarBase):
 
     def _on_deactivated(self):
         """툴바 비활성화"""
-        self._original_images = []  # 메모리 해제
-        self._preview_timer.Stop()
+        self._clear_original_images()
 
         canvas = self._safe_get_canvas()
         if canvas:
@@ -158,7 +141,7 @@ class MosaicToolbar(InlineToolbarBase):
 
         self._preview_timer.Start(50, wx.TIMER_ONE_SHOT)
 
-    def _on_setting_changed(self, event):
+    def _on_setting_changed(self, event=None):
         """설정 변경됨"""
         self._preview_timer.Start(100, wx.TIMER_ONE_SHOT)
 
@@ -182,37 +165,17 @@ class MosaicToolbar(InlineToolbarBase):
         if not self._original_images:
             return
 
-        target = self._target_combo.GetSelection()
-        selected_indices = getattr(self.frames, 'selected_indices', set())
-        current_idx = getattr(self.frames, 'current_index', 0)
-
-        for i, frame in enumerate(self.frames):
-            if i >= len(self._original_images) or self._original_images[i] is None:
-                continue
-
-            # 적용 대상 확인
-            should_apply = False
-            if target == 0:  # 모든 프레임
-                should_apply = True
-            elif target == 1:  # 선택한 프레임
-                should_apply = i in selected_indices
-            elif target == 2:  # 현재 프레임만
-                should_apply = i == current_idx
-
-            # 현재 보고 있는 프레임은 항상 프리뷰 표시
-            show_preview = should_apply or (i == current_idx)
-
-            try:
-                if show_preview:
-                    processed = self._apply_censor(self._original_images[i])
-                    frame._image = processed
-                else:
-                    frame._image = self._original_images[i].copy()
-            except Exception:
-                pass
+        self._apply_frame_processor(
+            self._target_combo.GetSelection(),
+            self._process_censor_frame,
+            preview_current=True,
+        )
 
         self._safe_canvas_update()
         self.update_preview()
+
+    def _process_censor_frame(self, original: Image.Image, _index: int, _should_apply: bool) -> Image.Image:
+        return self._apply_censor(original)
 
     def _apply_censor(self, image: Image.Image) -> Image.Image:
         """검열 효과 적용"""
@@ -256,65 +219,23 @@ class MosaicToolbar(InlineToolbarBase):
         self._region_y2 = h * 3 // 4
 
         # 원본으로 복원
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
-
+        self._restore_original_images()
         self._safe_canvas_update()
 
     def _on_apply(self, event):
         """적용"""
-        target = self._target_combo.GetSelection()
-        selected_indices = getattr(self.frames, 'selected_indices', set())
-        current_idx = getattr(self.frames, 'current_index', 0)
-
-        for i, frame in enumerate(self.frames):
-            if i >= len(self._original_images) or self._original_images[i] is None:
-                continue
-
-            # 적용 대상 확인
-            should_apply = False
-            if target == 0:  # 모든 프레임
-                should_apply = True
-            elif target == 1:  # 선택한 프레임
-                should_apply = i in selected_indices
-            elif target == 2:  # 현재 프레임만
-                should_apply = i == current_idx
-
-            if should_apply:
-                try:
-                    processed = self._apply_censor(self._original_images[i])
-                    frame._image = processed
-                except Exception:
-                    pass
-            else:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
+        self._apply_frame_processor(
+            self._target_combo.GetSelection(),
+            self._process_censor_frame,
+        )
 
         self._on_deactivated()
-        if hasattr(self._main_window, '_is_modified'):
-            self._main_window._is_modified = True
-        if hasattr(self._main_window, '_update_info_bar'):
-            self._main_window._update_info_bar()
-        self._safe_canvas_update()
-        super()._on_apply(event)
+        self._finish_apply()
 
     def _on_cancel(self, event):
         """취소 - 원본으로 복원"""
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                except Exception:
-                    pass
-
-        self._safe_canvas_update()
-        super()._on_cancel(event)
+        self._restore_original_images()
+        self._finish_cancel()
 
     def reset_to_default(self):
         """기본값으로 초기화"""

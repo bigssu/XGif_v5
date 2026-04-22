@@ -150,14 +150,7 @@ class SpeedToolbar(InlineToolbarBase):
         # 변경사항이 이미 프리뷰에 반영되어 있으므로 원본 딜레이만 업데이트
         if self.frames:
             self._original_delays = [f.delay_ms for f in self.frames]
-
-        # 원본 PyQt6와 동일: 수정 플래그 및 정보 바 업데이트
-        if hasattr(self._main_window, '_is_modified'):
-            self._main_window._is_modified = True
-        if hasattr(self._main_window, '_update_info_bar'):
-            self._main_window._update_info_bar()
-
-        super()._on_apply(event)
+        self._finish_apply()
 
     def reset_to_default(self):
         """기본값으로 초기화"""

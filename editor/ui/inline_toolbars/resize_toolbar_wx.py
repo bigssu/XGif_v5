@@ -96,16 +96,7 @@ class ResizeToolbar(InlineToolbarBase):
         if not frames or getattr(frames, 'is_empty', False):
             return
 
-        # 원본 이미지 저장
-        self._original_images = []
-        try:
-            for f in frames:
-                if f and hasattr(f, 'image') and f.image:
-                    self._original_images.append(f.image.copy())
-                else:
-                    self._original_images.append(None)
-        except Exception:
-            self._original_images = []
+        self._original_images = self._snapshot_original_images()
 
         try:
             self._original_width = getattr(frames, 'width', 1)
@@ -123,8 +114,7 @@ class ResizeToolbar(InlineToolbarBase):
 
     def _on_deactivated(self):
         """툴바 비활성화"""
-        self._original_images = []  # 메모리 해제
-        self._preview_timer.Stop()
+        self._clear_original_images()
 
     def _on_width_changed(self, event):
         """너비 변경"""
@@ -182,27 +172,9 @@ class ResizeToolbar(InlineToolbarBase):
 
         # 크기가 변경되지 않으면 원본으로 복원
         if new_width == self._original_width and new_height == self._original_height:
-            for i, frame in enumerate(self.frames):
-                if i < len(self._original_images) and self._original_images[i] is not None:
-                    try:
-                        frame._image = self._original_images[i].copy()
-                        if hasattr(frame, '_image_size'):
-                            frame._image_size = self._original_images[i].size
-                    except Exception:
-                        pass
+            self._restore_original_images_with_size()
         else:
-            # 프레임에 리사이즈 적용
-            for i, frame in enumerate(self.frames):
-                if i < len(self._original_images) and self._original_images[i] is not None:
-                    try:
-                        resized = self._original_images[i].resize(
-                            (new_width, new_height), resample
-                        )
-                        frame._image = resized
-                        if hasattr(frame, '_image_size'):
-                            frame._image_size = resized.size
-                    except Exception:
-                        pass
+            self._apply_resized_images(new_width, new_height, resample)
 
         self._safe_canvas_update()
         self.update_preview()
@@ -214,16 +186,7 @@ class ResizeToolbar(InlineToolbarBase):
         self._height_spin.SetValue(self._original_height)
         self._updating = False
 
-        # 원본으로 복원
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                    if hasattr(frame, '_image_size'):
-                        frame._image_size = self._original_images[i].size
-                except Exception:
-                    pass
-
+        self._restore_original_images_with_size()
         self._safe_canvas_update()
 
     def _on_apply(self, event):
@@ -234,47 +197,17 @@ class ResizeToolbar(InlineToolbarBase):
 
         # 크기가 변경되지 않으면 원본 복원 후 종료
         if new_width == self._original_width and new_height == self._original_height:
-            for i, frame in enumerate(self.frames):
-                if i < len(self._original_images) and self._original_images[i] is not None:
-                    try:
-                        frame._image = self._original_images[i].copy()
-                        if hasattr(frame, '_image_size'):
-                            frame._image_size = self._original_images[i].size
-                    except Exception:
-                        pass
-            super()._on_apply(event)
+            self._restore_original_images_with_size()
+            self._finish_apply()
             return
 
-        # 모든 프레임에 실제 리사이즈 적용
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images):
-                resized = self._original_images[i].resize(
-                    (new_width, new_height), resample
-                )
-                frame._image = resized
-                frame._image_size = resized.size
-
-        if hasattr(self._main_window, '_is_modified'):
-            self._main_window._is_modified = True
-        self._safe_canvas_update()
-        if hasattr(self._main_window, '_update_info_bar'):
-            self._main_window._update_info_bar()
-
-        super()._on_apply(event)
+        self._apply_resized_images(new_width, new_height, resample)
+        self._finish_apply()
 
     def _on_cancel(self, event):
         """취소 - 원본으로 복원"""
-        for i, frame in enumerate(self.frames):
-            if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                    if hasattr(frame, '_image_size'):
-                        frame._image_size = self._original_images[i].size
-                except Exception:
-                    pass
-
-        self._safe_canvas_update()
-        super()._on_cancel(event)
+        self._restore_original_images_with_size()
+        self._finish_cancel()
 
     def get_new_size(self) -> Tuple[int, int]:
         """새 크기 반환"""
@@ -288,3 +221,24 @@ class ResizeToolbar(InlineToolbarBase):
     def reset_to_default(self):
         """기본값으로 초기화"""
         self._on_clear(None)
+
+    def _restore_original_images_with_size(self):
+        for i, frame in enumerate(self.frames):
+            if i < len(self._original_images) and self._original_images[i] is not None:
+                try:
+                    frame._image = self._original_images[i].copy()
+                    if hasattr(frame, '_image_size'):
+                        frame._image_size = self._original_images[i].size
+                except Exception:
+                    pass
+
+    def _apply_resized_images(self, width: int, height: int, resample: Image.Resampling):
+        for i, frame in enumerate(self.frames):
+            if i < len(self._original_images) and self._original_images[i] is not None:
+                try:
+                    resized = self._original_images[i].resize((width, height), resample)
+                    frame._image = resized
+                    if hasattr(frame, '_image_size'):
+                        frame._image_size = resized.size
+                except Exception:
+                    pass
