@@ -25,6 +25,23 @@ except ImportError:
     HAS_DXCAM = False
 
 
+def _create_dxcam_camera() -> Optional["dxcam.DXCamera"]:
+    """Create a dxcam camera with a backward-compatible signature.
+
+    dxcam 0.3.x adds `processor_backend`. Older 0.0.x releases reject that
+    keyword, so retry with the legacy signature to avoid breaking environments
+    that upgraded the repo without rebuilding the venv yet.
+    """
+    try:
+        return dxcam.create(output_color="BGR", processor_backend="numpy")
+    except TypeError as exc:
+        logger.info(
+            "[DXCamBackend] Legacy dxcam detected; retrying without processor_backend: %s",
+            exc,
+        )
+        return dxcam.create(output_color="BGR")
+
+
 
 class CaptureBackend(ABC):
     """캡처 백엔드 추상 클래스"""
@@ -172,9 +189,7 @@ class DXCamBackend(CaptureBackend):
                 else:
                     # 새 카메라 생성 (처음만 느림)
                     logger.info("[DXCamBackend] Creating new camera (first time, may take ~500ms)")
-                    # dxcam 0.3.x defaults to the cv2 processor extra; force numpy
-                    # backend so the optional OpenCV dependency is not required.
-                    self._camera = dxcam.create(output_color="BGR", processor_backend="numpy")
+                    self._camera = _create_dxcam_camera()
 
                     if self._camera is None:
                         return False
@@ -208,7 +223,7 @@ class DXCamBackend(CaptureBackend):
 
             return True
 
-        except (RuntimeError, OSError, AttributeError) as e:
+        except (RuntimeError, OSError, AttributeError, TypeError) as e:
             logger.error(f"[DXCamBackend] 시작 실패: {e}")
             self._running = False
             return False
@@ -334,7 +349,7 @@ class DXCamPool:
             cls._ref_count += 1
             if DXCamBackend._shared_camera is None:
                 try:
-                    DXCamBackend._shared_camera = dxcam.create(output_color="BGR", processor_backend="numpy")
+                    DXCamBackend._shared_camera = _create_dxcam_camera()
                     logger.info("[DXCamPool] Created new camera (refcount=%d)", cls._ref_count)
                 except Exception as e:
                     logger.error("[DXCamPool] Failed to create camera: %s", e)
