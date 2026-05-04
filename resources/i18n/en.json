@@ -299,6 +299,8 @@
     "speed_playback_speed": "Playback Speed",
     "speed_speed": "Speed",
     "speed_result_time": "Result Time",
+    "rotate_tooltip": "Rotate",
+    "rotate_angle": "Rotation Angle",
     "crop_size": "Crop Size",
     "crop_width": "Width",
     "crop_height": "Height",

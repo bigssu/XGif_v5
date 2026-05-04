@@ -299,6 +299,8 @@
     "speed_playback_speed": "재생 속도",
     "speed_speed": "속도",
     "speed_result_time": "결과 시간",
+    "rotate_tooltip": "회전",
+    "rotate_angle": "회전 각도",
     "crop_size": "자르기 크기",
     "crop_width": "너비",
     "crop_height": "높이",

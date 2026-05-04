@@ -49,6 +49,17 @@ class Colors:
     ICON_BTN_HOVER = wx.Colour(55, 55, 55)
     ICON_BTN_PRESSED = wx.Colour(42, 42, 42)
     ICON_BTN_ACTIVE = wx.Colour(0, 120, 212, 60)
+    ICON_BTN_DISABLED = BG_PRIMARY
+
+    # 에디터 액션 버튼
+    ACTION_BUTTON_BG = BG_TERTIARY
+    ACTION_BUTTON_PRIMARY_BG = ACCENT
+    ACTION_BUTTON_TEXT = TEXT_PRIMARY
+
+    # 에디터 특정 액션 semantic token
+    LANG_TOGGLE_FG = SUCCESS
+    LANG_TOGGLE_BG = BG_SECONDARY
+    SAVE_PRIMARY = ACTION_BUTTON_PRIMARY_BG
 
     # 헥스 색상 문자열 (DC 그리기용)
     BG_PRIMARY_HEX = "#202020"
@@ -204,11 +215,10 @@ class Fonts:
 def apply_button_style(button: wx.Button, primary=False):
     """버튼에 다크 테마 스타일 적용"""
     if primary:
-        button.SetBackgroundColour(Colors.ACCENT)
-        button.SetForegroundColour(Colors.TEXT_PRIMARY)
+        button.SetBackgroundColour(Colors.ACTION_BUTTON_PRIMARY_BG)
     else:
-        button.SetBackgroundColour(Colors.BG_TERTIARY)
-        button.SetForegroundColour(Colors.TEXT_PRIMARY)
+        button.SetBackgroundColour(Colors.ACTION_BUTTON_BG)
+    button.SetForegroundColour(Colors.ACTION_BUTTON_TEXT)
 
 
 def apply_panel_style(panel: wx.Panel, bg_color=None):
@@ -286,13 +296,13 @@ def _apply_child_theme(widget: wx.Window):
     sys_bg = _is_system_bg(widget)
 
     # 입력 위젯: bg + fg
-    if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble)) or isinstance(widget, (wx.ComboBox, wx.Choice)):
+    if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble, wx.ComboBox, wx.Choice)):
         if sys_bg:
             widget.SetBackgroundColour(Colors.BG_TERTIARY)
         if unstyled:
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
     # 텍스트/라벨: fg만
-    elif isinstance(widget, wx.StaticText) or isinstance(widget, wx.StaticBox):
+    elif isinstance(widget, (wx.StaticText, wx.StaticBox)):
         if unstyled:
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
     elif isinstance(widget, (wx.CheckBox, wx.RadioButton)):

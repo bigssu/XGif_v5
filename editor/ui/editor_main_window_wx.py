@@ -1,6 +1,7 @@
 """
 MainWindow - Honeycam 스타일 GIF 에디터 메인 윈도우 (wxPython 버전)
 """
+import contextlib
 import wx
 import wx.adv
 from pathlib import Path
@@ -24,7 +25,7 @@ from .canvas_widget_wx import CanvasWidget
 from .frame_list_widget_wx import FrameListWidget
 from .icon_toolbar_wx import IconToolbar
 from .icon_utils_wx import IconFactory
-from .style_constants_wx import Colors, Fonts
+from .style_constants_wx import Colors, Fonts, apply_button_style
 
 # ── 다이얼로그 (wxPython 버전) ──────────────────────────────
 from .dialogs.target_frame_hint_dialog_wx import TargetFrameHintDialog
@@ -364,12 +365,9 @@ class MainWindow(wx.Frame):
         initial_lang_text = "En" if self._is_korean else "한"
         self._lang_toggle_btn = wx.Button(self._info_bar, label=initial_lang_text, size=(30, 20))
         self._lang_toggle_btn.SetToolTip(self._translations.tr("lang_toggle_tooltip"))
-        self._lang_toggle_btn.SetForegroundColour(wx.Colour(0, 255, 0))
-        self._lang_toggle_btn.SetBackgroundColour(Colors.BG_SECONDARY)
-        font = self._lang_toggle_btn.GetFont()
-        font.SetPointSize(8)
-        font.SetWeight(wx.FONTWEIGHT_BOLD)
-        self._lang_toggle_btn.SetFont(font)
+        self._lang_toggle_btn.SetForegroundColour(Colors.LANG_TOGGLE_FG)
+        self._lang_toggle_btn.SetBackgroundColour(Colors.LANG_TOGGLE_BG)
+        self._lang_toggle_btn.SetFont(Fonts.get_font(Fonts.SIZE_SMALL, bold=True))
         self._lang_toggle_btn.Bind(wx.EVT_BUTTON, lambda e: self._toggle_language())
         info_sizer.Add(self._lang_toggle_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
@@ -431,28 +429,23 @@ class MainWindow(wx.Frame):
         # 공유 액션 버튼 (도구 활성 시만 표시)
         translations = self._translations
 
-        self._action_clear_btn = wx.Button(self._bottom_controls, label=translations.tr("toolbar_clear") if translations else "초기화")
-        self._action_clear_btn.SetBackgroundColour(Colors.BG_TERTIARY)
-        self._action_clear_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._action_clear_btn.SetMinSize((70, 32))
-        self._action_clear_btn.Bind(wx.EVT_BUTTON, self._on_action_clear)
-        self._action_clear_btn.Hide()
+        self._action_clear_btn = self._create_action_button(
+            translations.tr("toolbar_clear") if translations else "초기화",
+            self._on_action_clear,
+        )
         controls_sizer.Add(self._action_clear_btn, 0, wx.ALL, 5)
 
-        self._action_apply_btn = wx.Button(self._bottom_controls, label=translations.tr("toolbar_apply") if translations else "적용")
-        self._action_apply_btn.SetBackgroundColour(Colors.ACCENT)
-        self._action_apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._action_apply_btn.SetMinSize((70, 32))
-        self._action_apply_btn.Bind(wx.EVT_BUTTON, self._on_action_apply)
-        self._action_apply_btn.Hide()
+        self._action_apply_btn = self._create_action_button(
+            translations.tr("toolbar_apply") if translations else "적용",
+            self._on_action_apply,
+            primary=True,
+        )
         controls_sizer.Add(self._action_apply_btn, 0, wx.ALL, 5)
 
-        self._action_cancel_btn = wx.Button(self._bottom_controls, label=translations.tr("toolbar_cancel") if translations else "취소")
-        self._action_cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
-        self._action_cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._action_cancel_btn.SetMinSize((70, 32))
-        self._action_cancel_btn.Bind(wx.EVT_BUTTON, self._on_action_cancel)
-        self._action_cancel_btn.Hide()
+        self._action_cancel_btn = self._create_action_button(
+            translations.tr("toolbar_cancel") if translations else "취소",
+            self._on_action_cancel,
+        )
         controls_sizer.Add(self._action_cancel_btn, 0, wx.ALL, 5)
 
         self._bottom_controls.SetSizer(controls_sizer)
@@ -838,10 +831,7 @@ class MainWindow(wx.Frame):
         if result == wx.ID_YES:
             self.save_file()
             return True
-        elif result == wx.ID_NO:
-            return True
-        else:
-            return False
+        return result == wx.ID_NO
 
     # ==================== UI 업데이트 ====================
 
@@ -896,9 +886,8 @@ class MainWindow(wx.Frame):
                     self._memory_value.Refresh()
 
                     # 저사양 모드 라벨 표시/숨기기
-                    if hasattr(self, '_memory_info') and self._memory_info:
-                        if self._is_low_end_mode:
-                            self._memory_info.Show()
+                    if hasattr(self, '_memory_info') and self._memory_info and self._is_low_end_mode:
+                        self._memory_info.Show()
                         # 라벨은 숨기지 않음 - 값은 항상 표시
 
                 # 프레임 수가 많으면 자동으로 저사양 모드 활성화
@@ -2282,8 +2271,20 @@ class MainWindow(wx.Frame):
         if hasattr(self, '_action_save_as'):
             self._action_save_as.Enable(enabled)
 
+    def _create_action_button(self, label: str, handler, *, primary: bool = False) -> wx.Button:
+        """하단 공유 액션 버튼 생성"""
+        button = wx.Button(self._bottom_controls, label=label)
+        apply_button_style(button, primary=primary)
+        button.SetMinSize((70, 32))
+        button.Bind(wx.EVT_BUTTON, handler)
+        button.Hide()
+        return button
+
     def _show_action_buttons(self, toolbar):
         """공유 액션 버튼 표시"""
+        if not getattr(toolbar, 'has_action_buttons', True):
+            self._hide_action_buttons()
+            return
         if hasattr(toolbar, 'has_clear_button') and toolbar.has_clear_button:
             self._action_clear_btn.Show()
         else:
@@ -2462,18 +2463,14 @@ class MainWindow(wx.Frame):
 
     def _on_delay_changed(self, event):
         """프레임 딜레이 변경 이벤트 핸들러"""
-        try:
+        with contextlib.suppress(Exception):
             self._update_info_bar()
-        except Exception:
-            pass
 
     def _on_frames_deleted(self, event):
         """프레임 삭제 이벤트 핸들러"""
-        try:
+        with contextlib.suppress(Exception):
             self._update_info_bar()
             self._refresh_all()
-        except Exception:
-            pass
 
     # ==================== 언어 전환 ====================
 

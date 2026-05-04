@@ -42,6 +42,7 @@ class InlineToolbarBase(wx.Panel):
 
     # 서브클래스에서 False로 설정하면 Clear 버튼 비표시
     _has_clear_button = True
+    _has_action_buttons = True
 
     def __init__(self, main_window: 'MainWindow', parent: Optional[wx.Window] = None):
         if parent is None:
@@ -116,6 +117,11 @@ class InlineToolbarBase(wx.Panel):
     def has_clear_button(self):
         """Clear 버튼 표시 여부"""
         return self._has_clear_button
+
+    @property
+    def has_action_buttons(self):
+        """Apply/Cancel 공유 액션 버튼 표시 여부"""
+        return self._has_action_buttons
 
     # === 서브클래스에서 오버라이드할 메서드 ===
 

@@ -5,6 +5,7 @@ SaveDialog (wxPython) - 양자화 설정 및 실시간 프리뷰가 있는 저�
 다이얼로그를 구현합니다.
 """
 import wx
+import contextlib
 from PIL import Image
 from typing import Optional, Dict, List
 from pathlib import Path
@@ -35,8 +36,8 @@ class SaveDialog(ThemedDialog):
     COLOR_PREVIEW_BG = Colors.BG_SECONDARY
     COLOR_WHITE = Colors.TEXT_PRIMARY
     COLOR_LABEL = Colors.TEXT_SECONDARY
-    COLOR_BUTTON_BG = Colors.BG_HOVER
-    COLOR_BUTTON_SAVE = wx.Colour(211, 47, 47)
+    COLOR_BUTTON_BG = Colors.ACTION_BUTTON_BG
+    COLOR_BUTTON_SAVE = Colors.SAVE_PRIMARY
     COLOR_SIZE_TEXT = Colors.INFO
     COLOR_SUBTEXT = Colors.TEXT_MUTED
 
@@ -724,10 +725,8 @@ class SaveDialog(ThemedDialog):
             # 경로 저장
             self._main_window._last_directory = str(Path(file_path).parent)
             if hasattr(self._main_window, '_settings'):
-                try:
+                with contextlib.suppress(AttributeError):
                     self._main_window._settings.Write("last_directory", self._main_window._last_directory)
-                except AttributeError:
-                    pass  # wx.Config API가 다를 수 있음
 
             self.EndModal(wx.ID_OK)
 

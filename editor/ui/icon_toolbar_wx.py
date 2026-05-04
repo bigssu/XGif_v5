@@ -44,8 +44,8 @@ class FlatIconButton(wx.Control):
         self._bg_normal = Colors.BG_PRIMARY if Colors else wx.Colour(32, 32, 32)
         self._bg_hover = Colors.ICON_BTN_HOVER if Colors else wx.Colour(55, 55, 55)
         self._bg_pressed = Colors.ICON_BTN_PRESSED if Colors else wx.Colour(42, 42, 42)
-        self._bg_active = wx.Colour(0, 120, 212, 60)
-        self._bg_disabled = wx.Colour(32, 32, 32)
+        self._bg_active = Colors.ICON_BTN_ACTIVE if Colors else wx.Colour(0, 120, 212, 60)
+        self._bg_disabled = Colors.ICON_BTN_DISABLED if Colors else wx.Colour(32, 32, 32)
 
         self.SetToolTip(tooltip)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
