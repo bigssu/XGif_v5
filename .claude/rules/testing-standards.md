@@ -30,10 +30,10 @@
 | 테스트 파일 | 대상 |
 |------------|------|
 | `tests/unit/cli/test_arg_parsing.py` | CLI 인자 파싱 |
-| `tests/unit/core/test_encoder_presets.py` | 인코더 프리셋 |
 | `tests/unit/core/test_events.py` | 이벤트 시스템 |
 | `tests/unit/core/test_overlay_pipeline.py` | 오버레이 파이프라인 |
 | `tests/unit/core/test_settings.py` | 설정 로더 |
+| `tests/unit/editor/test_frame_targeting.py` | 에디터 프레임 대상 선택 |
 | `tests/unit/editor/test_undo_manager.py` | 에디터 Undo/Redo |
 
 ## 작성 원칙

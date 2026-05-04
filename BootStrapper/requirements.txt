@@ -2,4 +2,4 @@
 # Python 3.11 권장
 
 wxPython>=4.2.5
-pyinstaller>=6.19.0
+pyinstaller>=6.20.0,<7.0.0

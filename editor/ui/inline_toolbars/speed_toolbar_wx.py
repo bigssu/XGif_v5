@@ -152,6 +152,11 @@ class SpeedToolbar(InlineToolbarBase):
             self._original_delays = [f.delay_ms for f in self.frames]
         self._finish_apply()
 
+    def _on_cancel(self, event):
+        """취소 버튼 클릭 - 프리뷰 딜레이 복원"""
+        self.reset_to_default()
+        self._finish_cancel()
+
     def reset_to_default(self):
         """기본값으로 초기화"""
         # 원본 딜레이 복원

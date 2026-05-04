@@ -7,7 +7,7 @@
 
 param(
     [string]$CertName = "XGif Code Signing",
-    [string]$Password = "XGif2024!",
+    [string]$Password = "",
     [string]$OutputDir = (Join-Path $PSScriptRoot "..\signing"),
     [int]$ValidYears = 3
 )
@@ -58,7 +58,11 @@ try {
 
 # PFX로 내보내기
 try {
-    $securePassword = ConvertTo-SecureString -String $Password -Force -AsPlainText
+    if ([string]::IsNullOrWhiteSpace($Password)) {
+        $securePassword = Read-Host "PFX password" -AsSecureString
+    } else {
+        $securePassword = ConvertTo-SecureString -String $Password -Force -AsPlainText
+    }
     Export-PfxCertificate -Cert $cert -FilePath $PfxPath -Password $securePassword | Out-Null
     Write-Host "[OK] PFX exported: $PfxPath"
 } catch {
@@ -77,7 +81,7 @@ try {
 Write-Host ""
 Write-Host "=== Done ==="
 Write-Host "  PFX: $PfxPath"
-Write-Host "  Password: $Password"
+Write-Host "  Password: [hidden]"
 Write-Host ""
 Write-Host "NOTE: This is a self-signed certificate for local testing only."
 Write-Host "      It will NOT bypass SmartScreen warnings."

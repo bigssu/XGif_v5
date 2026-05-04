@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import os
 import subprocess
 import sys
@@ -13,6 +14,8 @@ BUILD_VENV = os.path.join(PROJECT_DIR, "build_venv")
 DOT_VENV = os.path.join(PROJECT_DIR, ".venv")
 REQ_MINIMAL = os.path.join(PROJECT_DIR, "requirements_minimal.txt")
 MAIN_SCRIPT = os.path.join(PROJECT_DIR, "main.py")
+PYINSTALLER_MIN_VERSION = "6.20.0"
+PYINSTALLER_SPEC = f"pyinstaller>={PYINSTALLER_MIN_VERSION},<7.0.0"
 
 
 def _get_python_exe(venv_dir):
@@ -153,12 +156,12 @@ def _is_valid_venv(venv_dir):
         return False
 
 
-def setup_venv():
+def setup_venv(reuse_project_venv=True, clean_build_venv=False):
     """Build를 위한 가상환경 구축 (기존 venv 재사용 우선)"""
     global BUILD_VENV
 
     # Strategy 1: Try reusing existing .venv
-    if _is_valid_venv(DOT_VENV):
+    if reuse_project_venv and _is_valid_venv(DOT_VENV):
         print(f"\nFound existing .venv at {DOT_VENV}")
         python_exe = _get_python_exe(DOT_VENV)
         all_ok, missing, found = check_dependencies(python_exe)
@@ -173,6 +176,10 @@ def setup_venv():
             install_missing_only(pip_exe, missing)
             BUILD_VENV = DOT_VENV
             return
+
+    if clean_build_venv and os.path.exists(BUILD_VENV):
+        print(f"\nRemoving build_venv for clean build: {BUILD_VENV}")
+        shutil.rmtree(BUILD_VENV)
 
     # Strategy 2: Try reusing existing build_venv
     if _is_valid_venv(BUILD_VENV):
@@ -202,16 +209,14 @@ def setup_venv():
     pip_exe = _get_pip_exe(BUILD_VENV)
 
     # pip upgrade (optional, non-fatal)
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run([pip_exe, "install", "--upgrade", "pip"], check=False)
-    except Exception:
-        pass
 
     print("Installing all dependencies...")
     subprocess.run([pip_exe, "install", "-r", REQ_MINIMAL], check=True)
 
 
-def _ensure_build_tool(tool_name, pip_packages):
+def _ensure_build_tool(tool_name, pip_packages, min_version=None):
     """Ensure a build tool is installed, skip if already present."""
     python_exe = _get_python_exe(BUILD_VENV)
 
@@ -223,12 +228,14 @@ def _ensure_build_tool(tool_name, pip_packages):
         )
         if result.returncode == 0:
             version = result.stdout.strip()
-            print(f"  [OK] {tool_name} {version} already installed")
-            return
+            if min_version is None or _version_tuple(version) >= _version_tuple(min_version):
+                print(f"  [OK] {tool_name} {version} already installed")
+                return
+            print(f"  [OLD] {tool_name} {version} (need >={min_version})")
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
 
-    print(f"  Installing {', '.join(pip_packages)}...")
+    print(f"  Installing/upgrading {', '.join(pip_packages)}...")
     pip_exe = _get_pip_exe(BUILD_VENV)
     subprocess.run([pip_exe, "install"] + pip_packages, check=True)
 
@@ -347,13 +354,20 @@ def _scan_cupy_hidden_imports(venv_dir):
     return modules
 
 
-def _generate_spec_file(icon_ico, version_file, onefile=False):
+def _generate_spec_file(icon_ico, version_file, onefile=False, use_upx=False):
     """PyInstaller spec 파일 생성 (바이너리 필터링 포함)"""
     resources_data = os.path.join(PROJECT_ROOT, "resources")
     requirements_txt = os.path.join(PROJECT_ROOT, "requirements.txt")
 
     icon_line = f"icon=r'{icon_ico}'," if icon_ico and os.path.exists(icon_ico) else ""
     version_line = f"version=r'{version_file}'," if version_file and os.path.exists(version_file) else ""
+
+    upx_exclude = [
+        'vcruntime*.dll',
+        'msvcp*.dll',
+        'wx*.dll',
+    ]
+    upx_exclude_text = "[" + ", ".join(repr(item) for item in upx_exclude) + "]"
 
     # VC++ 런타임 DLL 경로 탐색 (대상 PC에 VC++ Redist 없어도 실행되도록 번들)
     python_dir = os.path.dirname(sys.executable)
@@ -372,9 +386,15 @@ def _generate_spec_file(icon_ico, version_file, onefile=False):
 import os
 from PyInstaller.utils.hooks import copy_metadata, collect_submodules
 
-# 제외할 바이너리 패턴 (wx html DLL ~0.7MB)
+# 제외할 바이너리 패턴
 EXCLUDE_BINARIES = [
-    'wxmsw32u_html',
+    # Pillow AVIF support is large and not part of XGif's documented import/export formats.
+    '_avif',
+    # Guard against wx optional modules being collected by hook changes or polluted build envs.
+    'wxmsw32u_html', 'wxmsw32u_richtext', 'wxmsw32u_stc',
+    'wxmsw32u_propgrid', 'wxmsw32u_aui', 'wxmsw32u_ribbon', 'wxmsw32u_xrc',
+    '_html.', '_html2.', '_richtext.', '_stc.', '_propgrid.', '_aui.',
+    '_ribbon.', '_dataview.', '_xrc.',
 ]
 
 a = Analysis(
@@ -405,6 +425,12 @@ a = Analysis(
         'wx.html', 'wx.html2', 'wx.xml', 'wx.richtext',
         'wx.stc', 'wx.media', 'wx.glcanvas',
         'wx.dataview', 'wx.ribbon', 'wx.propgrid', 'wx.aui',
+        # 선택 이미지/비디오/AI 가속 패키지는 공식 빌드 요구사항이 아니므로
+        # 빌드 환경에 설치돼 있어도 패키징하지 않음.
+        'cv2', 'skimage', 'skimage.restoration', 'skimage.morphology',
+        'cucim', 'cucim.skimage', 'pyvips', 'pygifsicle',
+        'rawpy', 'tifffile', 'SimpleITK', 'itk', 'osgeo', 'astropy',
+        'imagecodecs', 'pillow_heif', 'lxml',
         # 미사용 numpy 서브패키지
         'numpy.f2py', 'numpy.testing', 'numpy.tests',
         'numpy.distutils', 'numpy.polynomial', 'numpy.ma.tests',
@@ -419,7 +445,7 @@ a = Analysis(
         # NOTE: email, http are needed by urllib (used by ffmpeg_installer)
     ],
     noarchive=False,
-    optimize=0,
+    optimize=1,
 )
 
 # 바이너리 필터링 — OpenBLAS, wx html DLL 제거
@@ -443,7 +469,8 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,
+    upx={use_upx!r},
+    upx_exclude={upx_exclude_text},
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -465,7 +492,8 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,
+    upx={use_upx!r},
+    upx_exclude={upx_exclude_text},
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -481,7 +509,8 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=False,
+    upx={use_upx!r},
+    upx_exclude={upx_exclude_text},
     name='XGif',
 )
 """
@@ -492,19 +521,22 @@ coll = COLLECT(
     return spec_path
 
 
-def run_pyinstaller_build(onefile=False):
+def run_pyinstaller_build(onefile=False, use_upx=False, upx_dir=None):
     """PyInstaller를 사용한 빌드 (spec 파일 기반, 바이너리 필터링 포함)"""
     print("\n=== Build Tool Check ===")
-    _ensure_build_tool("PyInstaller", ["pyinstaller"])
+    _ensure_build_tool("PyInstaller", [PYINSTALLER_SPEC], min_version=PYINSTALLER_MIN_VERSION)
 
     icon_ico = create_ico_from_png()
     version_file = create_version_file()
 
-    spec_path = _generate_spec_file(icon_ico, version_file, onefile=onefile)
+    spec_path = _generate_spec_file(icon_ico, version_file, onefile=onefile, use_upx=use_upx)
     print(f"  Spec file: {spec_path} ({'onefile' if onefile else 'onedir'})")
+    print(f"  UPX: {'enabled' if use_upx else 'disabled'}")
 
     python_exe = _get_python_exe(BUILD_VENV)
     cmd = [python_exe, "-m", "PyInstaller", "--noconfirm", spec_path]
+    if use_upx and upx_dir:
+        cmd.extend(["--upx-dir", upx_dir])
 
     print("Starting PyInstaller build process...")
     env = os.environ.copy()
@@ -520,7 +552,7 @@ def _find_iscc():
             return candidate
 
     # 기본 설치 경로
-    for prog in [os.environ.get("ProgramFiles(x86)", ""), os.environ.get("ProgramFiles", "")]:
+    for prog in [os.environ.get("PROGRAMFILES(X86)", ""), os.environ.get("PROGRAMFILES", "")]:
         if not prog:
             continue
         for name in ("Inno Setup 6", "Inno Setup 5"):
@@ -599,6 +631,22 @@ def _parse_args():
         help="Build as single EXE file (PyInstaller onefile mode)"
     )
     parser.add_argument(
+        "--isolated-venv", action="store_true",
+        help="Use build_venv instead of reusing the project .venv for a more reproducible small build"
+    )
+    parser.add_argument(
+        "--clean-venv", action="store_true",
+        help="Delete build_venv before installing dependencies (use with --isolated-venv for size audits)"
+    )
+    parser.add_argument(
+        "--use-upx", action="store_true",
+        help="Enable UPX compression when UPX is installed; compare runtime/AV false positives before release"
+    )
+    parser.add_argument(
+        "--upx-dir", default=None,
+        help="Directory containing upx.exe when --use-upx is set"
+    )
+    parser.add_argument(
         "--installer", action="store_true",
         help="Create Inno Setup installer after build (requires ISCC.exe)"
     )
@@ -609,8 +657,6 @@ if __name__ == "__main__":
     args = _parse_args()
 
     try:
-        setup_venv()
-
         # 빌드 도구 결정: CLI 인자 > 환경 변수 > 기본값
         if args.tool:
             build_tool = "2" if args.tool == "nuitka" else "1"
@@ -618,6 +664,12 @@ if __name__ == "__main__":
             build_tool = os.environ.get("XGIF_BUILD_TOOL", "1").strip()
             if build_tool not in ["1", "2"]:
                 build_tool = "1"
+
+        if args.installer and build_tool == "1" and not args.onefile:
+            print("\n[INFO] --installer requires dist/XGif.exe; enabling --onefile for PyInstaller.")
+            args.onefile = True
+
+        setup_venv(reuse_project_venv=not args.isolated_venv, clean_build_venv=args.clean_venv)
 
         print("\nBuild system comparison:")
         print("1. PyInstaller: Faster build, medium size")
@@ -629,7 +681,7 @@ if __name__ == "__main__":
             _ensure_build_tool("nuitka", ["nuitka", "zstandard"])
             run_nuitka_build()
         else:
-            run_pyinstaller_build(onefile=args.onefile)
+            run_pyinstaller_build(onefile=args.onefile, use_upx=args.use_upx, upx_dir=args.upx_dir)
 
         print("\nBuild finished successfully!")
 
