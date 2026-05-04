@@ -9,6 +9,7 @@ import time
 import logging
 import threading
 from abc import ABC, abstractmethod
+from contextlib import suppress
 from typing import Callable, List, Optional, Tuple
 import numpy as np
 
@@ -120,7 +121,7 @@ class CaptureBackend(ABC):
 
 class DXCamBackend(CaptureBackend):
     """dxcam 기반 고성능 캡처 백엔드 (DXGI Desktop Duplication)
-    
+
     GPU 가속 사용: DXGI Desktop Duplication API (DirectX)
     - Windows 8 이상에서 가장 빠른 캡처 방법
     - GPU 복사 사용으로 CPU 부하 최소화
@@ -136,14 +137,10 @@ class DXCamBackend(CaptureBackend):
         """앱 종료 시 공유 카메라 명시적 정리 (메모리 누수 방지)"""
         with cls._camera_lock:
             if cls._shared_camera is not None:
-                try:
+                with suppress(Exception):
                     cls._shared_camera.stop()
-                except Exception:
-                    pass
-                try:
+                with suppress(Exception):
                     del cls._shared_camera
-                except Exception:
-                    pass
                 cls._shared_camera = None
                 logger.info("[DXCamBackend] Shared camera cleaned up")
 
@@ -329,50 +326,6 @@ class DXCamBackend(CaptureBackend):
 
 # 앱 종료 시 공유 DXCam 카메라 자동 정리 (리소스 누수 방지)
 atexit.register(DXCamBackend.cleanup_shared_camera)
-
-
-class DXCamPool:
-    """DXCam 인스턴스 풀 — 레퍼런스 카운팅 기반.
-
-    DXCamBackend의 기존 _shared_camera 로직을 정리한 래퍼.
-    """
-
-    _ref_count: int = 0
-    _lock = threading.Lock()
-
-    @classmethod
-    def acquire(cls) -> Optional["dxcam.DXCamera"]:
-        """DXCam 카메라 인스턴스를 획득. 없으면 생성."""
-        if not HAS_DXCAM:
-            return None
-        with cls._lock:
-            cls._ref_count += 1
-            if DXCamBackend._shared_camera is None:
-                try:
-                    DXCamBackend._shared_camera = _create_dxcam_camera()
-                    logger.info("[DXCamPool] Created new camera (refcount=%d)", cls._ref_count)
-                except Exception as e:
-                    logger.error("[DXCamPool] Failed to create camera: %s", e)
-                    cls._ref_count -= 1
-                    return None
-            else:
-                logger.debug("[DXCamPool] Reusing camera (refcount=%d)", cls._ref_count)
-            return DXCamBackend._shared_camera
-
-    @classmethod
-    def release(cls) -> None:
-        """레퍼런스 카운트 감소. 0이 되면 카메라 해제."""
-        with cls._lock:
-            cls._ref_count = max(0, cls._ref_count - 1)
-            if cls._ref_count == 0:
-                DXCamBackend.cleanup_shared_camera()
-                logger.info("[DXCamPool] Camera released (refcount=0)")
-            else:
-                logger.debug("[DXCamPool] Release (refcount=%d)", cls._ref_count)
-
-    @classmethod
-    def ref_count(cls) -> int:
-        return cls._ref_count
 
 
 class FastGdiBackend(CaptureBackend):
@@ -647,13 +600,13 @@ class GdiBackend(CaptureBackend):
 
 def create_capture_backend(preferred: str = "auto") -> CaptureBackend:
     """캡처 백엔드 생성
-    
+
     Args:
         preferred: "auto", "dxcam", "gdi" 중 선택
-        
+
     Returns:
         CaptureBackend: 사용 가능한 캡처 백엔드
-        
+
     Raises:
         RuntimeError: 사용 가능한 백엔드가 없을 때
     """
@@ -678,11 +631,11 @@ def create_capture_backend(preferred: str = "auto") -> CaptureBackend:
 
 def test_capture_backend(backend: CaptureBackend, region: Tuple[int, int, int, int]) -> bool:
     """캡처 백엔드 테스트
-    
+
     Args:
         backend: 테스트할 백엔드
         region: 테스트 영역
-        
+
     Returns:
         bool: 테스트 성공 여부
     """
@@ -700,10 +653,8 @@ def test_capture_backend(backend: CaptureBackend, region: Tuple[int, int, int, i
         logger.debug(f"[test_capture_backend] 테스트 실패: {e}")
         return False
     finally:
-        try:
+        with suppress(RuntimeError, OSError):
             backend.stop()
-        except (RuntimeError, OSError):
-            pass
 
 
 def get_available_backends() -> list:

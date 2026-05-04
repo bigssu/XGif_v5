@@ -8,12 +8,15 @@
 ```
 
 ## 테스트 파일 위치
-- 모든 테스트: `tests/` 디렉터리
+- 루트 테스트: `tests/` — E2E/런타임/정적 검사
+- 서브 테스트: `tests/unit/{cli,core,editor}/` — 모듈별 단위 테스트 (wx 의존 여부로 분리)
 - 파일명: `test_*.py` 접두사
 - 클래스명: `Test*` 접두사
 - 함수명: `test_*` 접두사
 
 ## 테스트 대상 모듈
+
+### 루트 (`tests/`)
 | 테스트 파일 | 대상 |
 |------------|------|
 | `test_config.py` | 설정 파일 I/O (`cli/config.py`) |
@@ -21,7 +24,17 @@
 | `test_utils.py` | 유틸 함수 (`core/utils.py`) |
 | `test_version.py` | 버전 모듈 (`core/version.py`) |
 | `test_encoder_e2e.py` | GIF 인코딩 E2E |
-| `test_screen_recorder_runtime.py` | 스크린 레코더 |
+| `test_screen_recorder_runtime.py` | 스크린 레코더 런타임 |
+
+### 서브 (`tests/unit/`)
+| 테스트 파일 | 대상 |
+|------------|------|
+| `tests/unit/cli/test_arg_parsing.py` | CLI 인자 파싱 |
+| `tests/unit/core/test_encoder_presets.py` | 인코더 프리셋 |
+| `tests/unit/core/test_events.py` | 이벤트 시스템 |
+| `tests/unit/core/test_overlay_pipeline.py` | 오버레이 파이프라인 |
+| `tests/unit/core/test_settings.py` | 설정 로더 |
+| `tests/unit/editor/test_undo_manager.py` | 에디터 Undo/Redo |
 
 ## 작성 원칙
 - wx 없이 실행 가능한 테스트만 `tests/`에 배치 (wx 의존 테스트는 별도 표시)

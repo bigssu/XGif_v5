@@ -9,6 +9,7 @@ import shutil
 import warnings
 import threading
 import logging
+from contextlib import suppress
 from typing import Optional
 from dataclasses import dataclass
 
@@ -46,21 +47,6 @@ class GpuInfo:
     driver_version: Optional[str] = None
 
 
-@dataclass
-class DetailedGpuInfo:
-    """상세 GPU 정보 데이터 클래스"""
-    gpu_name: Optional[str] = None
-    gpu_memory_total_mb: int = 0
-    gpu_memory_used_mb: int = 0
-    gpu_memory_free_mb: int = 0
-    gpu_utilization: int = 0
-    memory_utilization: int = 0
-    temperature: int = 0
-    power_usage: float = 0.0
-    encoder_sessions: int = 0
-    driver_version: Optional[str] = None
-
-
 # 전역 GPU 정보 캐시 (dataclass 정의 후)
 _gpu_info: Optional[GpuInfo] = None
 
@@ -93,18 +79,6 @@ def _init_pynvml() -> bool:
     except (pynvml.NVMLError, OSError, AttributeError) as e:
         logger.debug(f"[gpu_utils] pynvml 초기화 실패: {e}")
         return False
-
-
-def _shutdown_pynvml():
-    """pynvml 종료"""
-    global _pynvml_initialized
-
-    if HAS_PYNVML and _pynvml_initialized:
-        try:
-            pynvml.nvmlShutdown()
-        except Exception:
-            pass  # pynvml 종료 실패 무시
-        _pynvml_initialized = False
 
 
 _cupy_check_lock = threading.Lock()
@@ -172,9 +146,8 @@ def detect_gpu(skip_cupy: bool = False) -> GpuInfo:
 
     # 빠른 캐시 확인 (락 없이)
     cached = _gpu_info
-    if cached is not None:
-        if skip_cupy or cached.has_cupy or not cached.has_cuda:
-            return cached
+    if cached is not None and (skip_cupy or cached.has_cupy or not cached.has_cuda):
+        return cached
 
     with _gpu_lock:
         # 이중 체크 (락 획득 후)
@@ -220,10 +193,8 @@ def detect_gpu(skip_cupy: bool = False) -> GpuInfo:
                     if len(parts) >= 2:
                         info.has_cuda = True
                         info.gpu_name = parts[0].strip()
-                        try:
+                        with suppress(ValueError):
                             info.gpu_memory_mb = int(parts[1].strip())
-                        except ValueError:
-                            pass
                         if len(parts) >= 3:
                             info.driver_version = parts[2].strip()
             except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
@@ -289,7 +260,7 @@ def _check_ffmpeg_nvenc() -> bool:
 def get_array_module():
     """
     GPU 사용 가능하면 cupy, 아니면 numpy 반환
-    
+
     CuPy와 NumPy는 대부분의 API가 호환되므로,
     이 함수로 반환된 모듈을 사용하면 동일한 코드로
     CPU/GPU 모두 지원할 수 있습니다.
@@ -340,121 +311,3 @@ def to_cpu(array) -> np.ndarray:
             return np.array([])
 
     return array if isinstance(array, np.ndarray) else np.array([])
-
-
-def get_gpu_info_string() -> str:
-    """GPU 정보를 사람이 읽을 수 있는 문자열로 반환"""
-    info = detect_gpu()
-
-    if not info.has_cuda:
-        return "GPU 없음 (CPU 모드)"
-
-    parts = []
-    if info.gpu_name:
-        parts.append(info.gpu_name)
-    if info.gpu_memory_mb:
-        parts.append(f"{info.gpu_memory_mb}MB")
-    if info.has_cupy:
-        parts.append("CuPy 활성")
-    if info.ffmpeg_nvenc:
-        parts.append("NVENC 지원")
-
-    return ' | '.join(parts) if parts else "GPU 감지됨"
-
-
-def get_detailed_gpu_info() -> DetailedGpuInfo:
-    """
-    상세 GPU 정보 반환 (실시간, 캐싱 안 함)
-    pynvml 사용 가능 시 추가 정보 제공
-    
-    Returns:
-        DetailedGpuInfo: 상세 GPU 정보 데이터 클래스
-    """
-    info = DetailedGpuInfo()
-
-    if not HAS_PYNVML or not _init_pynvml():
-        # pynvml 없으면 기본 정보만 반환
-        basic = detect_gpu()
-        info.gpu_name = basic.gpu_name
-        info.gpu_memory_total_mb = basic.gpu_memory_mb
-        info.driver_version = basic.driver_version
-        return info
-
-    try:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-
-        # GPU 이름
-        gpu_name = pynvml.nvmlDeviceGetName(handle)
-        info.gpu_name = gpu_name.decode('utf-8') if isinstance(gpu_name, bytes) else gpu_name
-
-        # 메모리 정보
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        info.gpu_memory_total_mb = mem_info.total // (1024 * 1024)
-        info.gpu_memory_used_mb = mem_info.used // (1024 * 1024)
-        info.gpu_memory_free_mb = mem_info.free // (1024 * 1024)
-
-        # 사용률
-        try:
-            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-            info.gpu_utilization = util.gpu
-            info.memory_utilization = util.memory
-        except (pynvml.NVMLError, AttributeError):
-            pass
-
-        # 온도
-        try:
-            info.temperature = pynvml.nvmlDeviceGetTemperature(
-                handle, pynvml.NVML_TEMPERATURE_GPU
-            )
-        except (pynvml.NVMLError, AttributeError):
-            pass
-
-        # 전력 사용량
-        try:
-            power_mw = pynvml.nvmlDeviceGetPowerUsage(handle)
-            info.power_usage = power_mw / 1000.0  # mW -> W
-        except (pynvml.NVMLError, AttributeError):
-            pass
-
-        # 인코더 세션 수
-        try:
-            encoder_sessions = pynvml.nvmlDeviceGetEncoderSessions(handle)
-            info.encoder_sessions = len(encoder_sessions) if encoder_sessions else 0
-        except (pynvml.NVMLError, AttributeError):
-            pass
-
-        # 드라이버 버전
-        try:
-            driver_ver = pynvml.nvmlSystemGetDriverVersion()
-            info.driver_version = driver_ver.decode('utf-8') if isinstance(driver_ver, bytes) else driver_ver
-        except (pynvml.NVMLError, AttributeError):
-            pass
-
-    except Exception as e:
-        logger.warning("[gpu_utils] 상세 GPU 정보 조회 실패: %s", e)
-
-    return info
-
-
-def reset_gpu_cache():
-    """GPU 정보 캐시 초기화 (재감지 필요 시 호출)"""
-    global _gpu_info
-    with _gpu_lock:
-        _gpu_info = None
-
-
-# 최소 프레임 크기 (이 크기 이하면 GPU 오버헤드가 더 클 수 있음)
-MIN_GPU_FRAME_SIZE = 640 * 480
-
-
-def should_use_gpu(width: int, height: int) -> bool:
-    """
-    주어진 프레임 크기에서 GPU 사용이 효율적인지 판단
-    
-    작은 프레임에서는 CPU-GPU 데이터 전송 오버헤드가
-    GPU 연산 이득보다 클 수 있습니다.
-    """
-    if not _check_cupy():
-        return False
-
-    return (width * height) >= MIN_GPU_FRAME_SIZE

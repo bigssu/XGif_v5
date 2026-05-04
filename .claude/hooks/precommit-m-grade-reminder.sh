@@ -49,15 +49,15 @@ if [ "$TRIGGERED" -eq 0 ]; then
   fi
 fi
 
-# 4) Touches GOD_OBJECTS or editor/ui/
+# 4) Touches GOD_OBJECTS / CRITICAL_FILES / CRITICAL_DIRS
 if [ "$TRIGGERED" -eq 0 ]; then
   STAGED_FILES=$(git diff --cached --name-only 2>/dev/null)
   GOD_MATCH=$(printf '%s\n' "$STAGED_FILES" | grep -E \
-    '^(ui/main_window\.py|core/screen_recorder\.py|core/capture_backend\.py|core/gif_encoder\.py|editor/ui/)' \
+    '^(ui/main_window\.py|core/capture_backend\.py|core/gif_encoder\.py|core/screen_recorder\.py|core/capture_worker\.py|editor/ui/)' \
     2>/dev/null || true)
   if [ -n "$GOD_MATCH" ]; then
     TRIGGERED=1
-    REASON="${REASON}touches GOD_OBJECTS/CRITICAL_DIRS ($(printf '%s' "$GOD_MATCH" | head -1 | tr -d '\n')...); "
+    REASON="${REASON}touches GOD_OBJECTS/CRITICAL_FILES/CRITICAL_DIRS ($(printf '%s' "$GOD_MATCH" | head -1 | tr -d '\n')...); "
   fi
 fi
 

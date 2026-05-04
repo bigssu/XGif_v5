@@ -3,7 +3,7 @@
 ## 프로젝트 개요
 - **앱**: XGif — Windows용 GIF/MP4 화면 녹화 프로그램 (PyInstaller 단일 실행 파일로 배포)
 - **Python**: 3.11.9 (venv: `.venv/Scripts/python.exe`)
-- **UI**: wxPython 4.2 (tkinter, PyQt 사용 금지)
+- **UI**: wxPython 4.2.5 floor (tkinter, PyQt 사용 금지)
 - **실행**: `.venv/Scripts/python.exe main.py`
 - **빌드**: `.venv/Scripts/python.exe build_optimized.py`
 - **테스트**: `.venv/Scripts/python.exe -m pytest tests/ -v`
@@ -56,8 +56,11 @@
 
 ## 협업 규약
 - 작업 중 결정이 모호하거나 합리적인 선택지가 둘 이상이면, 가정하지 말고
-  `AskUserQuestion` 도구로 먼저 사용자에게 확인한다. 코드나 명시적 답변에서 확인된
-  사실에만 근거하여 진행한다.
+  **메인 세션에 한해** `AskUserQuestion` 도구로 먼저 사용자에게 확인한다.
+  서브에이전트(`Task` 호출) 내부에서는 `AskUserQuestion`을 사용하지 않으며,
+  결정 사항을 산출물의 `Escalations` 섹션에 `[ASK]`/`[BLOCK]`/`[NOTE]` 태그로
+  기록하여 오케스트레이터에게 반환한다. 코드나 명시적 답변에서 확인된 사실에만
+  근거하여 진행한다.
 - 커밋 메시지: 한국어 허용, 형식 `{타입}: {설명}` (예: `fix: FFmpeg 경로 오류 수정`)
 - TODO 주석 형식: `# TODO: {이유}` (빈 TODO 금지)
 
@@ -66,7 +69,7 @@
 - line-length: 120, target: Python 3.11
 - `E402` (모듈 import 위치) 경고 무시 — CLI 조기 분기에 필요한 패턴
 
-## 설치된 에이전트 하네스 (from harness-100)
+## 설치된 에이전트 하네스
 
 네 개의 도메인 하네스가 설치되어 있다. 각 하네스는 오케스트레이터 스킬 1개 + 전문 에이전트 5명 + 확장 스킬 2개로 구성된다.
 
@@ -75,13 +78,13 @@
 | **code-reviewer** | `/code-reviewer` | style-inspector, security-analyst, performance-analyst, architecture-reviewer, review-synthesizer | ban-list(bare except, `self.Bind(wx.EVT_MENU)`, DPI 2) 검출, `core/` wx import 금지 검증 |
 | **performance-optimizer** | `/performance-optimizer` | profiler, bottleneck-analyst, optimization-engineer, perf-reviewer, benchmark-manager | 화면 캡처 파이프라인, `multiprocessing.SharedMemory`, GPU/CPU 폴백 경로 분석 |
 | **test-automation** | `/test-automation` | test-strategist, unit-tester, integration-tester, coverage-analyst, qa-reviewer | `tests/` 하위 pytest 확장, wx 없이 `core/` 단위 테스트 |
-| **cli-tool-builder** | `/cli-tool-builder` | command-designer, core-developer, test-engineer, release-engineer, docs-writer | `record/convert/config/doctor` 서브커맨드 유지·확장 |
+| **cli-tool-builder** | `/cli-tool-builder` | command-designer, core-developer, test-engineer, release-engineer, docs-writer | `record/convert/config/doctor` 서브커맨드 유지·확장 (**XGif는 2-agent subset — release-engineer + docs-writer만 활성, 나머지 3명 소환 금지. 상세: rules/harness-invocation.md**) |
 
 ### 사용 시 XGif 고유 컨텍스트
 
-하네스 에이전트는 범용 도메인 지식을 가지므로, 소환 시 다음 XGif-특수 사실을 함께 전달하여야 한다:
+각 에이전트는 범용 도메인 지식을 가지므로, 소환 시 다음 XGif-특수 사실을 함께 전달하여야 한다:
 
-- **UI 프레임워크**: wxPython 4.2 (tkinter/PyQt 금지) — GUI 관련 제안은 반드시 wx 기준
+- **UI 프레임워크**: wxPython 4.2.5 floor (tkinter/PyQt 금지) — GUI 관련 제안은 반드시 wx 기준
 - **실행 환경**: Windows 전용, `.venv/Scripts/python.exe`로 실행 (POSIX 가정 금지)
 - **아키텍처 경계**: `cli/`와 `core/`는 wx import 금지, `BootStrapper/`는 독립 프로세스
 - **성능 가정**: 이미지 전송은 `multiprocessing.SharedMemory`, pickling 금지

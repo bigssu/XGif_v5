@@ -7,9 +7,13 @@ advisor_status: pending
 
 # Workflow Design — XGif
 
+> Maintenance note (2026-04-22): 현재 저장소는 여전히 Complexity Gate 상향 조건
+> (`40,000+ LOC`, `130+ source files`)을 만족한다. 또한 `XGif.spec`는 저장소에 커밋된
+> 정적 파일이 아니라 `build_optimized.py`가 빌드 시점에 동적 생성한다.
+
 ## Summary
 
-XGif is a Windows desktop app (~39,000 LOC, 137 source files) spanning three distinct
+XGif is a Windows desktop app (40,000+ LOC, 130+ source files) spanning three distinct
 development domains: screen-recording (core capture/encoding pipeline), gif-editor
 (editor/ subsystem), and bootstrapper-installer (BootStrapper/ independent app).
 The workflow adopts a 7-step sequence — Explore → Implement → Test → Review → Optimize
@@ -25,7 +29,7 @@ steps the user enters once are meant to self-chain from there.
 ## STEP -1: Complexity Gate (태스크 크기 분류)
 
 **Applicability trigger**: XGif's codebase exceeds both Complexity Gate thresholds
-(LOC ~39,000 > 5,000; source files 137 > 100). This gate MUST precede every
+(LOC 40,000+ > 5,000; source files 130+ > 100). This gate MUST precede every
 implementation task.
 
 작업 시작 전 다음 기준으로 경로를 선택한다.
@@ -286,7 +290,7 @@ and verify the package boots correctly.
 **Inputs**:
 - Clean source tree (no uncommitted changes)
 - `core/version.py` (Single Source of Truth — version bumped before this step)
-- `XGif.spec`, `build_optimized.py`, `installer/xgif_setup.iss`
+- `build_optimized.py` (`XGif.spec` dynamic generation), `installer/xgif_setup.iss`
 
 **Outputs**:
 - `dist/XGif_{version}.exe`

@@ -7,6 +7,9 @@ advisor_status: pending
 
 # Pipeline Design — XGif
 
+> Maintenance note (2026-04-22): 이 설계 문서에서 말하는 `XGif.spec`는 현재 저장소에
+> 커밋된 파일이 아니라 `build_optimized.py`가 빌드 시점에 생성하는 동적 spec을 뜻한다.
+
 ## Summary
 
 Phase 3의 7-스텝 워크플로우를 구체적 에이전트 실행 체인과 라우팅 로직으로 옮긴 설계
@@ -274,7 +277,7 @@ XGif는 CLI가 아닌 GUI + 배포 인스톨러이므로 cli-tool-builder의 **�
 Phase 2 (에이전트 체인, 순차):
   1. release-engineer
      입력: 변경 없는 clean source tree, core/version.py (bumped),
-           XGif.spec, build_optimized.py, installer/xgif_setup.iss
+           build_optimized.py (dynamic XGif.spec), installer/xgif_setup.iss
            + **주입 컨텍스트 (Advisor NOTE Dim 1):
               "배포 대상은 PyPI/npm이 아니라 PyInstaller + Inno Setup.
                산출물: dist/XGif_{version}.exe, installer/XGif_Setup_{version}.exe.
@@ -383,7 +386,7 @@ Advisor NOTE(Dim 1, Dim 7)에 따라, Phase 5(agent-team)가 기존 하네스 �
 - 배포 대상: **PyPI/npm/Homebrew가 아닙니다**. PyInstaller + Inno Setup 기반 Windows
   전용 인스톨러입니다.
 - 빌드 진입점: `build_optimized.py` (PyInstaller 래퍼, 982 LOC)
-- PyInstaller spec: `XGif.spec`
+- PyInstaller spec: `build_optimized.py`가 런타임에 생성하는 동적 `XGif.spec`
 - Inno Setup 스크립트: `installer/xgif_setup.iss`
 - 출력 산출물:
   - `dist/XGif_{version}.exe`  (단일 exe, smoke-test 부팅 필수)

@@ -7,6 +7,10 @@ advisor_status: pending
 
 # Agent Team — XGif
 
+> Maintenance note (2026-04-22): 이 문서는 Phase 5 시점의 팀 구성 스냅샷을 보존한다.
+> 최신 프로젝트 상태와 문서 drift 정정 사항은 `README.md`, `docs/TODO.md`,
+> `docs/xgif-setup/10-audit-fix-applied.md`를 우선 기준으로 본다.
+
 ## Summary
 
 XGif는 사전 설치된 harness-100의 20개 에이전트 중 **17개를 활성 재사용**하고, **3개는 본 프로젝트에서 비활성**(`command-designer`, `core-developer`, `test-engineer`)으로 분류한다. 본 Phase 5는 **신규 에이전트 프로비저닝을 수행하지 않으며**, 기존 에이전트 `.md` 파일도 수정하지 않는다(공유 설치 리소스 원칙 — 다른 프로젝트와 `.claude/agents/` 디렉토리를 공유해 upstream harness-100 업데이트와 호환 유지). 메인 세션은 D-1 오케스트레이터 패턴(라우터-only)이며, 사용자의 슬래시 커맨드(`/code-reviewer`, `/test-automation`, `/performance-optimizer`, `/cli-tool-builder`) 진입마다 ①진입 클린업(`_workspace/` → `_workspace.prev-{ts}/`로 리네임 후 빈 `_workspace/` 재생성), ②5종 XGif 컨텍스트 프리루드 주입, ③하네스 스킬 소환을 수행한다. 하네스 내부 SendMessage 그래프는 기존 skill.md가 이미 정의하고 있어 재정의하지 않고 참조만 한다. Phase 6(skill-forge)은 본 산출물의 소환 컨트랙트 전체를 `.claude/rules/workflow-orchestrator.md` 한 파일로 인코딩해야 하며, 산출물은 Phase 어휘(`Phase 1..9`, `harness-architect`, `Advisor` 등)를 포함하지 않는다.

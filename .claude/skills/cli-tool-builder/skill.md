@@ -3,6 +3,12 @@ name: cli-tool-builder
 description: "CLI 도구를 에이전트 팀이 협업하여 개발하는 풀 파이프라인. 'CLI 만들어줘', '커맨드라인 도구 개발', 'CLI 유틸리티', '터미널 도구', '명령줄 프로그램', 'CLI 앱 빌드', '셸 도구 개발' 등 CLI 도구 개발 전반에 이 스킬을 사용한다. 명령 설계만 필요한 경우에도 설계 모드로 지원한다. 단, GUI 앱 개발, 웹 대시보드 구축, IDE 플러그인 개발은 이 스킬의 범위가 아니다."
 ---
 
+> **XGif override (2026-04-21)**: 이 프로젝트에서는 `.claude/rules/harness-invocation.md`가
+> `/cli-tool-builder`를 **2-agent subset**(release-engineer + docs-writer)으로 축소한다.
+> 아래 5-agent 파이프라인은 harness-100 기본값이며, XGif에서는 **STEP 6 release cut**
+> 또는 **BootStrapper 도메인 전용**으로만 적용된다. 일반 CLI 확장 작업에는
+> `command-designer`·`core-developer`·`test-engineer`를 소환하지 않는다.
+
 # CLI Tool Builder — CLI 도구 개발 파이프라인
 
 CLI 도구의 명령설계→파서구현→핸들러→테스트→문서→배포를 에이전트 팀이 협업하여 개발한다.

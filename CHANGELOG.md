@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### 변경
+- 의존성 최소 버전을 현재 설치 가능한 조합으로 갱신 (`wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.19.0` 등)
+- 프로젝트 문서를 현재 저장소 상태 기준으로 재정렬
+
+### 수정
+- 최신 `dxcam` 0.3.x가 OpenCV extra 없이 동작하도록 `processor_backend="numpy"` 경로 고정
+- 기존 가상환경에 구버전 `dxcam`이 남아 있어도 레거시 시그니처로 자동 재시도되도록 호환 가드 추가
+- Windows `where ffmpeg` 출력 디코딩 경고 제거
+
+### 삭제
+- 무참조 `core/encoder/` 패키지 제거
+- 무참조 `DXCamPool`, GPU helper 일부, `tests/unit/core/test_encoder_presets.py` 제거
+
 ## [0.56] - 2026-02-08
 
 ### 추가

@@ -2,12 +2,14 @@
 
 리뷰에서 surfaced 된 추후 작업 항목 추적. 우선순위 + 지연 사유 명시.
 
-Last updated: 2026-04-21 (크로스 리뷰 Action Plan 전량 수행 완료).
+Last updated: 2026-04-22 (의존성 최신화 + dead-code cleanup + 문서 refresh 반영).
 
 ## 2026-04-21 현황
 
 2026-04-20 리뷰에서 deferred 됐던 모든 P1 항목 + 2026-04-21 크로스
-리뷰 Action Plan 12개 항목을 전부 실행. 현재 남은 활성 deferred 는 없음.
+리뷰 Action Plan 12개 항목을 전부 실행했다. 2026-04-22에는 무참조
+`core/encoder/` 패키지, `DXCamPool`, `tests/unit/core/test_encoder_presets.py`
+를 제거했고, 현재도 남은 활성 deferred 는 없다.
 
 ### 완료된 2026-04-21 리팩터 요약
 
@@ -68,13 +70,15 @@ Low 3 + 문서 1 을 아래와 같이 모두 반영:
 
 | File | Role | Approx LOC |
 |------|------|------------|
-| `core/capture_backend.py` | ABC + DXCam/FastGDI/GDI + pool + fallback 헬퍼 + `cleanup_shared_cameras()` 파사드 | ~745 |
+| `core/capture_backend.py` | ABC + DXCam/FastGDI/GDI + fallback 헬퍼 + `cleanup_shared_cameras()` 파사드 | ~748 |
 | `core/capture_worker.py` | `CaptureThread` + 드로잉 헬퍼 (P1-1 분리) | ~465 |
-| `core/screen_recorder.py` | `ScreenRecorder` 파사드 + collector loop | ~680 |
+| `core/screen_recorder.py` | `ScreenRecorder` 파사드 + collector loop | ~688 |
 
 `core/screen_recorder.py` 는 `CaptureThread` / `draw_cursor_internal` /
 `draw_click_highlight_internal` / `CLICK_HIGHLIGHT_DURATION` 을 re-export
 하여 기존 `monkeypatch.setattr(sr, "CaptureThread", ...)` 테스트 호환.
+
+`core/encoder/` 패키지는 2026-04-22 dead-code cleanup에서 완전히 제거됐다.
 
 ---
 
@@ -94,19 +98,26 @@ Low 3 + 문서 1 을 아래와 같이 모두 반영:
 
 ## 유지된 Known-issue (문서 전용)
 
-### 프로젝트 전반 ruff 경고 (~396 건)
+### 프로젝트 전반 ruff 경고 (~372 건)
 
 | Code    | Count | Meaning |
 |---------|-------|---------|
-| W293    | 235   | Blank line contains whitespace |
-| SIM105  | 85    | `contextlib.suppress` preference |
-| SIM102  | 17    | Collapsible `if` |
-| F841    | 13    | Unused local |
+| W293    | 223   | Blank line contains whitespace |
+| SIM105  | 75    | `contextlib.suppress` preference |
+| SIM102  | 16    | Collapsible `if` |
+| F841    | 12    | Unused local |
 | F401    | 10    | Unused imports |
 | E741    | 9     | Ambiguous variable name |
 | B007    | 7     | Loop control unused |
-| SIM101  | 5     | Merge isinstance |
 | E731    | 5     | lambda assignment |
+| SIM101  | 5     | Merge isinstance |
+| SIM112  | 2     | Windows env var casing |
+| SIM103  | 2     | Direct return simplification |
+| B023    | 2     | Loop variable binding |
+| B904    | 1     | Explicit exception chaining |
+| E701    | 1     | Multiple statements on one line |
+| F821    | 1     | Undefined name |
+| B905    | 1     | Explicit `zip(..., strict=...)` |
 
 - **이유:** 프로젝트 전반 산재. 일괄 auto-fix 금지 (F841 은 진짜 버그 은폐 가능).
 - **정책:** 모듈별 작업 중 targeted cleanup 으로 소진.

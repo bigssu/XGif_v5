@@ -7,6 +7,11 @@ advisor_status: pending
 
 # Skill Specs — XGif (Phase 6 Internal Handoff)
 
+> Maintenance note (2026-04-22): 2026-04-21 audit 이후
+> `.claude/skills/cli-tool-builder/skill.md`에는 XGif 전용 override note가 추가됐다.
+> 아래 본문은 원 설계 산출물을 보존하되, 해당 project-local override가 현재 적용 중임을
+> 전제로 읽어야 한다.
+
 ## Summary
 
 Phase 6 (skill-forge) produced the orchestrator rule files that encode every
@@ -88,10 +93,11 @@ alternative #6). Phase 7-8 should not reverse this unless the user requests it.
 
 ## Final Agent-Skill Mapping
 
-Unchanged from Phase 5. The 17 active agents in the pre-installed harness-100
-installation keep their existing `skill.md` associations. No XGif-specific
-skill.md changes were made. The Agent-Skill Ownership Table in
-`04-agent-team.md` remains authoritative.
+The 17 active agents in the pre-installed harness-100 installation keep their
+existing `skill.md` associations. 이후 audit 수정으로
+`cli-tool-builder/skill.md`에는 XGif-specific override note가 추가됐고, 현재는
+그 project-local override까지 포함한 상태가 최신이다. The Agent-Skill
+Ownership Table in `04-agent-team.md` remains authoritative.
 
 ## Meta-Term Filter Audit
 

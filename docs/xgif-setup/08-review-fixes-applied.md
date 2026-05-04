@@ -1,5 +1,9 @@
 # Review Fixes Applied — core/screen_recorder.py (2026-04-20)
 
+> Maintenance note (2026-04-22): 아래 본문은 2026-04-20 fix wave 스냅샷을 보존한다.
+> 현재 repo-wide `ruff check .` baseline은 `372`건이며, 전체 테스트 상태는
+> `pytest tests/ -v` 기준 `130 passed, 4 skipped`다.
+
 This document tracks which findings from the code-review workflow were
 applied vs. deferred. Reports live in `_workspace/`:
 
@@ -149,7 +153,7 @@ $ ruff check core/screen_recorder.py
 All checks passed!
 
 $ ruff check .
-Found 396 errors (remaining).  # All pre-existing in non-target files;
+Found 396 errors (remaining at 2026-04-20).  # All pre-existing in non-target files;
                                 # safe fixes applied by ruff --fix sweep.
                                 # Hidden fixes require --unsafe-fixes,
                                 # out of scope for this review wave.

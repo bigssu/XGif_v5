@@ -6,6 +6,10 @@ status: done
 
 # Hooks & MCP Setup — XGif
 
+> Maintenance note (2026-04-22): 현재 pre-commit hook 문서 기준 trigger에는
+> `core/capture_worker.py`도 포함된다. 또한 wx 관련 버전 언급은 현재 floor인
+> `wxPython 4.2.5` 기준으로 읽는다.
+
 ## Summary
 
 Phase 7-8 installed one non-blocking PreToolUse hook
@@ -31,8 +35,8 @@ Trigger criteria (any one sufficient):
 - New `def ` lines in staged diff >= 3
 - New `import` / `from ... import` lines in staged diff >= 1
 - Staged files touch `ui/main_window.py`, `core/screen_recorder.py`,
-  `core/capture_backend.py`, `core/gif_encoder.py`, or any path under
-  `editor/ui/`
+  `core/capture_backend.py`, `core/capture_worker.py`, `core/gif_encoder.py`,
+  or any path under `editor/ui/`
 
 ## Hooks Skipped
 
@@ -50,7 +54,7 @@ Rationale by candidate:
 | Candidate | Decision | Rationale |
 |-----------|----------|-----------|
 | `chrome-devtools-mcp` | SKIP | XGif has no web UI. Not applicable. |
-| `context7` | SKIP | Python/wxPython docs lookups are already handled by the `get-api-docs` skill (global CLAUDE.md). Adding a second lookup mechanism for the same purpose creates redundancy. Revisit only if `get-api-docs` proves insufficient for wxPython 4.2 specifics. |
+| `context7` | SKIP | Python/wxPython docs lookups are already handled by the `get-api-docs` skill (global CLAUDE.md). Adding a second lookup mechanism for the same purpose creates redundancy. Revisit only if `get-api-docs` proves insufficient for wxPython 4.2.5 specifics. |
 | `firecrawl` / `exa` | SKIP | No web-crawling requirement in the XGif workflow. |
 | `@anthropic/mcp-server-github` | SKIP | Solo developer, no PR review workflow, no CI integration. |
 | `mcp-server-sqlite` / `-postgres` | SKIP | XGif uses `config.ini`, not a database. |

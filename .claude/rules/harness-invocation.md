@@ -128,7 +128,9 @@ summoned. Re-inject every time.
 당신은 XGif 프로젝트의 릴리스 엔지니어입니다.
 - 배포 대상은 PyPI/npm/Homebrew가 아닙니다. PyInstaller + Inno Setup 기반 Windows 전용 인스톨러.
 - 빌드 진입점: `build_optimized.py` (PyInstaller 래퍼, 982 LOC).
-- PyInstaller spec: `XGif.spec` / Inno Setup 스크립트: `installer/xgif_setup.iss`.
+- PyInstaller 빌드 설정: `build_optimized.py` 가 런타임에 spec 파일
+  (`$PROJECT_DIR/XGif.spec`) 을 동적 생성한다. 별도 커스텀 spec 파일은 저장소에 커밋돼 있지 않다.
+- Inno Setup 스크립트: `installer/xgif_setup.iss` (커밋됨).
 - 산출물: `dist/XGif_{version}.exe` (smoke-test 부팅 필수),
   `installer/XGif_Setup_{version}.exe`.
 - 버전 관리: `core/version.py` 가 Single Source of Truth. 빌드 전 수동 bump.
@@ -174,10 +176,12 @@ Flask/FastAPI/Django 가정으로 mock DB/API를 제안하지 마세요.
 - cli/ → wx import 금지
 - editor/ → 독립 wxPython 서브시스템, core/ 호출 허용, ui/와 공유 모듈 최소화
 - BootStrapper/ → 독립 앱, XGif 본체 모듈 import 금지
-GOD_OBJECTS (3개 파일, 2026-04-21 갱신): `ui/main_window.py` (1,983 LOC),
-`core/capture_backend.py` (~733 LOC), `core/gif_encoder.py`. 수정 시 책임 범위 확장 여부 평가 필요.
-`core/screen_recorder.py` 는 P1 refactor 이후 680 LOC 파사드로 축소되어 GOD_OBJECT 에서 제외되었고,
-CaptureThread 는 `core/capture_worker.py` 로 분리됨.
+GOD_OBJECTS (3개 파일, 2026-04-21 갱신): `ui/main_window.py` (1,957 LOC),
+`core/capture_backend.py` (~780 LOC), `core/gif_encoder.py` (1,323 LOC). 수정 시 책임 범위 확장 여부 평가 필요.
+`core/screen_recorder.py` 는 P1 refactor 이후 ~688 LOC **파사드**로 축소되어 GOD_OBJECT 에서 제외되었고,
+CaptureThread 는 `core/capture_worker.py` (~452 LOC) 로 분리됨. **파사드인 이 파일은 책임을
+직접 추가하기보다 이미 분리된 collaborator(capture_worker, gif_encoder, capture_backend 등)로 위임해야 한다**
+— 파사드의 역할을 과도하게 확장하는 리팩토링 제안은 반려.
 CRITICAL_DIRS: `editor/ui/` — 디렉터리 단위. GOD_OBJECT와 구별. 두 분류 모두 최소 M-grade
 승격 대상이며, 개별 파일 risk 등급만 다르다.
 CRITICAL_FILES (권고 ≥ M): `core/screen_recorder.py`, `core/capture_worker.py` — 책임 밀도는 여전히 높음.

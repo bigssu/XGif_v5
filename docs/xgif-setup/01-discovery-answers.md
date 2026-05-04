@@ -7,12 +7,19 @@ advisor_status: pending
 
 # Phase 1-2 — Discovery & Base Harness
 
+> Maintenance note (2026-04-22): 현재 저장소 기준 핵심 차이는 다음과 같다. 의존성 floor는
+> `wxPython 4.2.5` / `dxcam 0.3.0` / `PyInstaller 6.19.0` 조합으로 올라갔고,
+> `build_optimized.py`가 `XGif.spec`를 빌드 시점에 동적 생성한다. 테스트 파일은
+> `11`개이며, repo-wide `ruff check .` baseline은 `372`건이다. 또한 2026-04-22
+> dead-code cleanup에서 `core/encoder/`와
+> `tests/unit/core/test_encoder_presets.py`가 제거됐다.
+
 ## Summary
 
-XGif는 Python 3.11.9 / wxPython 4.2 기반 Windows 전용 GIF/MP4 화면 녹화 앱이다.
+XGif는 Python 3.11.9 / wxPython 4.2.5 기반 Windows 전용 GIF/MP4 화면 녹화 앱이다.
 v2.0.0 리셋으로 `BootStrapper/`, `installer/`, `scripts/` 3개 최상위 디렉터리가 추가됐다.
 기존 CLAUDE.md는 Feb 2026 작성으로 v2.0.0 신규 디렉터리(`BootStrapper/`, `installer/`)를
-포함하지 않았다 — 업데이트 완료. 소스 파일 137개(BootStrapper 제외), 최대 디렉터리 깊이 4레벨로
+포함하지 않았다 — 업데이트 완료. 소스 파일 133개(BootStrapper 제외), 최대 디렉터리 깊이 4레벨로
 풀 트랙 규모 신호가 있으나 에이전트 프로젝트가 아니고 CI 없음, 단일 서비스 구조이다.
 `pytest` + `ruff` 설정이 `pyproject.toml`에 존재한다.
 `.gitignore`의 `.claude/` 전체 무시 패턴을 `.claude/settings.local.json`만 무시하도록 수정했다
@@ -27,16 +34,16 @@ v2.0.0 리셋으로 `BootStrapper/`, `installer/`, `scripts/` 3개 최상위 디
 [Target Project Scan Results]
 - Path: D:\ProjectX\XGif_v5
 - Key files: pyproject.toml, requirements.txt, requirements_cli.txt, requirements_minimal.txt,
-             main.py, build_optimized.py, XGif.spec
+             main.py, build_optimized.py (`XGif.spec` dynamic at build time)
 - Language: Python (primary), BAT (BootStrapper 배포)
-- Framework: wxPython 4.2 (GUI), pytest (test), ruff (lint)
+- Framework: wxPython 4.2.5 (GUI), pytest (test), ruff (lint)
 - Build tool: build_optimized.py (PyInstaller wrapper), Inno Setup (installer/xgif_setup.iss)
-- Test setup: pytest (pyproject.toml 설정), 7개 테스트 파일
+- Test setup: pytest (pyproject.toml 설정), 11개 테스트 파일
 - Linter: ruff (target py311, line-length 120)
 - Git: .git 존재, branch=main, 최신 커밋=8290bfa v2.0.0
 - .gitignore: 존재 (109줄, 수정됨)
 - Existing Claude/Cursor: CLAUDE.md 존재 (Feb 2026), .claude/ 없었음
-- 소스 파일 수: 137개 Python 파일 (BootStrapper, .venv 제외)
+- 소스 파일 수: 133개 Python 파일 (BootStrapper, .venv 제외)
 - 최대 디렉터리 깊이: 4레벨
 - 환경 파일(.env*): 없음
 - CI 워크플로우 수: 0개 (.github/ 없음)
@@ -47,13 +54,13 @@ v2.0.0 리셋으로 `BootStrapper/`, `installer/`, `scripts/` 3개 최상위 디
 ```
 
 **모듈별 규모 (Architecture Review 기준)**:
-- `core/`: 18파일, 6,484 LOC (캡처 엔진)
-- `cli/`: 9파일, 1,413 LOC
-- `ui/`: 10파일, 15,273 LOC
-- `editor/`: 68파일, 15,563 LOC
-- `BootStrapper/`: 11파일 (독립 앱)
-- `tests/`: 7파일
-- 전체 소스: 약 39,000+ LOC
+- `core/`: 26파일, 7,381 LOC (캡처 엔진)
+- `cli/`: 8파일, 1,589 LOC
+- `ui/`: 16파일, 6,934 LOC
+- `editor/`: 63파일, 23,523 LOC
+- `BootStrapper/`: 10파일 (독립 앱)
+- `tests/`: 11개 테스트 파일
+- 전체 소스: 약 42,000+ LOC
 
 ## Pre-collected Answers
 
@@ -72,14 +79,14 @@ Windows 데스크톱 앱 (Python/wxPython GUI + CLI 겸용, PyInstaller 배포)
 
 ### 기술 스택
 - 언어: Python 3.11.9
-- UI 프레임워크: wxPython 4.2
+- UI 프레임워크: wxPython 4.2.5
 - 화면 캡처: DXCam (DXGI), FastGDI, GDI (추상화 레이어)
 - 인코딩: FFmpeg 서브프로세스, imageio
 - GPU: pynvml (NVIDIA/AMD 모니터링), CuPy (선택, CUDA 가속)
 - 오디오: sounddevice + soundfile
 - 이미지: Pillow, numpy
 - 빌드: PyInstaller + build_optimized.py (982 LOC), Inno Setup
-- 테스트: pytest (7개 파일, pyproject.toml 설정)
+- 테스트: pytest (11개 테스트 파일, pyproject.toml 설정)
 - 린터: ruff (target py311, line-length 120, pyproject.toml 설정)
 
 ### 솔로/팀
@@ -98,13 +105,13 @@ XGif_v5/
 ├── BootStrapper/ — 독립 설치 앱 (11파일)
 ├── installer/  — Inno Setup 배포
 ├── scripts/    — 빌드 유틸
-├── tests/      — pytest (7파일)
+├── tests/      — pytest (11개 테스트 파일)
 ├── resources/  — 앱 리소스
 ├── main.py     — 진입점
 ├── build_optimized.py — PyInstaller 빌드
 └── pyproject.toml / requirements*.txt
 ```
-- **소스 파일 수**: 137개 (BootStrapper, .venv 제외)
+- **소스 파일 수**: 133개 (BootStrapper, .venv 제외)
 - **최대 디렉터리 깊이**: 4레벨
 
 ### 기존 설정 존재 여부
@@ -166,7 +173,7 @@ Phase 2.5 스킵 후 Phase 3로 직행도 합리적이다.
 
 [NOTE] `.gitignore` 수정 사항 — 기존 `.claude/` 전체 무시 패턴을 `.claude/settings.local.json`만 무시로 변경했다. 이로 인해 `.claude/settings.json`과 `.claude/rules/*.md`가 git 추적 대상이 된다. 의도한 동작인지 확인 권장.
 
-[NOTE] Strict Coding 6-Step 신호 — 감지: 소스 파일 137개(>100), LOC ~39,000(>5,000), pytest 설정(2/7 신호). ASK 승격 임계값(2개 이상)에 해당하나, 솔로 데스크톱 앱으로 팀 협업 필요성이 낮고 기존 코딩 표준이 CLAUDE.md에 잘 정의되어 있어 [NOTE]로 기록. Phase 3에서 사용자가 원하면 Strict Coding 6-Step 채택 가능.
+[NOTE] Strict Coding 6-Step 신호 — 감지: 소스 파일 133개(>100), LOC ~42,000(>5,000), pytest 설정(2/7 신호). ASK 승격 임계값(2개 이상)에 해당하나, 솔로 데스크톱 앱으로 팀 협업 필요성이 낮고 기존 코딩 표준이 CLAUDE.md에 잘 정의되어 있어 [NOTE]로 기록. Phase 3에서 사용자가 원하면 Strict Coding 6-Step 채택 가능.
 
 [NOTE] code-navigation 규칙 채택 고려 — `XGif_Architecture_Review.txt` (73KB)가 사실상 코드맵 역할을 하나, `.claude/rules/code-navigation.md` 공식 채택 시 research/implement 작업 시 이 파일을 체계적으로 활용할 수 있음. Phase 3에서 사용자 판단에 따라 채택 가능.
 
@@ -176,8 +183,8 @@ Phase 2.5 스킵 후 Phase 3로 직행도 합리적이다.
 
 Phase 1-2 완료. 다음 Phase 진행 방향:
 
-**풀 트랙 권장** (경량 트랙 8개 조건 중 코드베이스 규모 조건 불충족: 소스 파일 137개 > 100개 기준):
-- 소스 파일 137개, 약 39,000 LOC — 경량 트랙 상한(100개) 초과
+**풀 트랙 권장** (경량 트랙 8개 조건 중 코드베이스 규모 조건 불충족: 소스 파일 133개 > 100개 기준):
+- 소스 파일 133개, 약 42,000 LOC — 경량 트랙 상한(100개) 초과
 - 에이전트 프로젝트 아님, CI 없음, 단일 서비스 → 나머지 7개 조건은 충족
 
 **권장 순서**:

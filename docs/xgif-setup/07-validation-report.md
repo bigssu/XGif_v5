@@ -1,5 +1,9 @@
 # Harness Validation Report — XGif
 
+> Maintenance note (2026-04-22): 이 문서는 Phase 7-8 검증 시점의 결과를 보존한다.
+> 이후 의존성 최신화, dead-code cleanup, 문서 refresh로 일부 라인 수와 테스트/ruff
+> baseline은 달라졌으며, 최신 상태는 `README.md`와 `docs/TODO.md`를 우선 기준으로 본다.
+
 ## Summary
 
 The XGif harness build (standard track, D-1 orchestrator, solo developer, 고성능형 tier)

@@ -1,20 +1,30 @@
 # XGif Bootstrapper
 
-Python 3.11 + wxPython을 내장한 의존성 설치 부트스트래퍼
+Python 3.11 embed + wxPython 기반 의존성 설치 부트스트래퍼
+
+## 현재 기준
+
+- 문서 검증 기준일: `2026-04-22`
+- 현재 커밋된 의존성 floor: `wxPython 4.2.5`, `PyInstaller 6.19.0`
+- 저장소에서 바로 재현 가능한 빌드 경로: `build_simple.bat` 또는 수동 `pyinstaller ... app_entry.py`
+- `build.bat`는 로컬 `XGif_Bootstrapper.spec`가 있을 때만 동작한다. 해당 spec 파일은 현재 저장소에 커밋돼 있지 않다.
 
 ## 구조
 
-```
-bootstrap/
+```text
+BootStrapper/
 ├── app_entry.py          # 메인 진입점
 ├── ui_main.py            # wxPython UI
+├── deps_*.py             # 의존성 검사/설치/정의
+├── download_utils.py     # 다운로드 유틸
+├── extract_utils.py      # 압축 해제 유틸
 ├── logging_setup.py      # 로깅 설정
 ├── paths.py              # 경로 관리
-├── requirements.txt      # 의존성
-├── build.bat             # 전체 빌드 스크립트
-├── build_simple.bat      # 간단 빌드
-├── XGif_Bootstrapper.spec # PyInstaller spec
-└── icon.ico              # (선택) 앱 아이콘
+├── requirements.txt      # 실행 + 빌드 의존성
+├── requirements_min.txt  # 최소 실행 의존성
+├── build.bat             # spec 기반 빌드(로컬 spec 필요)
+├── build_simple.bat      # 저장소 기준 재현 가능한 간단 빌드
+└── XGif_Setup.bat        # 배포용 설치 배치
 ```
 
 ## 빌드 환경 설정
@@ -22,7 +32,7 @@ bootstrap/
 ### 1. Python 3.11 가상환경 생성 (권장)
 
 ```powershell
-cd C:\Users\su\Downloads\bootstrap
+cd D:\ProjectX\XGif_v5\BootStrapper
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
@@ -45,9 +55,11 @@ pip install -r requirements.txt
 .\build.bat
 ```
 
-**방법 C: spec 파일 사용**
+주의: 이 경로는 `XGif_Bootstrapper.spec`가 로컬에 있을 때만 동작합니다. 현재 저장소에는 spec 파일이 없습니다.
+
+**방법 C: 수동 PyInstaller 빌드**
 ```powershell
-pyinstaller XGif_Bootstrapper.spec
+pyinstaller --noconfirm --clean --onedir --windowed --name "XGif_Bootstrapper" --collect-all wx app_entry.py
 ```
 
 ## 빌드 결과
@@ -109,7 +121,7 @@ pip install wxPython --force-reinstall
 
 ### 빌드 파일 크기가 너무 큼
 
-spec 파일의 `excludes` 섹션에 불필요한 모듈 추가
+`build_simple.bat` 기준으로 필요한 숨김 import만 유지하고, 추가 최적화가 필요하면 별도 spec 파일을 로컬에서 관리
 
 ### 콘솔 창이 표시됨
 

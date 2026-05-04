@@ -265,14 +265,12 @@ class CaptureThread(threading.Thread):
             consecutive_shape_mismatch = 0
             SHAPE_MISMATCH_THRESHOLD = 10
 
-            # P3-3 (2026-04-21 리뷰): hot path 캐싱. run() 진입 후 값이 바뀌지 않는
-            # 분기 조건은 로컬 bool 로 미리 계산해 매 프레임 attribute/property 조회를 절약.
-            hdr_correction_force = bool(self.hdr_correction_force)
+            # 루프 불변 분기 값을 한 번만 계산 (매 프레임 attribute/property 조회 회피).
+            hdr_correction_force = self.hdr_correction_force
             backend_needs_hdr_gate = not backend.supports_managed_color
-            cursor_enabled = bool(self.include_cursor and HAS_WIN32)
-            click_highlight_enabled = bool(self.show_click_highlight)
-            # watermark / keyboard 는 run() 중 set 될 수 있는 위 변수라 True/False 는 매 프레임 평가.
-            needs_overlay_base = cursor_enabled or click_highlight_enabled
+            cursor_enabled = self.include_cursor and HAS_WIN32
+            click_highlight_enabled = self.show_click_highlight
+            needs_overlay = bool(cursor_enabled or click_highlight_enabled or watermark or keyboard)
 
             # 성능 프로파일링용 타이밍 추적
             timing_samples = {
@@ -308,7 +306,6 @@ class CaptureThread(threading.Thread):
                             logger.info("[CaptureThread] First frame captured - recording active!")
 
                         # HDR 보정: 사용자가 수동으로 켤 때만 적용 (적응형).
-                        # P3-3: hot path 에서 property getter / attr lookup 회피.
                         t2 = time.perf_counter()
                         if hdr_correction_force and backend_needs_hdr_gate:
                             frame = apply_hdr_correction_adaptive(frame)
@@ -316,8 +313,6 @@ class CaptureThread(threading.Thread):
                         timing_samples['hdr'].append(t3 - t2)
 
                         # 오버레이 필요 시 단일 writable 복사 (이후 모든 처리 in-place).
-                        # P3-3: cursor/click_highlight 는 불변, watermark/keyboard 는 런타임 변화 가능.
-                        needs_overlay = needs_overlay_base or bool(watermark) or bool(keyboard)
                         if needs_overlay and not frame.flags.writeable:
                             frame = frame.copy()
 

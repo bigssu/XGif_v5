@@ -32,16 +32,16 @@ any agent.
 
 ```
 GOD_OBJECTS = {
-    "ui/main_window.py",            # 1,983 LOC, UI entry point
-    "core/capture_backend.py",       # DXCam/FastGDI/GDI ABC + pool + fallback (~733 LOC)
-    "core/gif_encoder.py",           # FFmpeg pipe control
+    "ui/main_window.py",            # 1,957 LOC, UI entry point (2026-04-21 측정)
+    "core/capture_backend.py",       # DXCam/FastGDI/GDI ABC + pool + fallback + warm-up (~780 LOC, 2026-04-21)
+    "core/gif_encoder.py",           # FFmpeg pipe control + GPU fallback (1,323 LOC, 2026-04-21)
 }
 ```
 
 > `core/screen_recorder.py` 는 2026-04-21 P1 refactor (커밋 `d29aabf`) 이후
-> 680 LOC 의 파사드로 축소되었고 CaptureThread 는 `core/capture_worker.py`
+> 파사드로 축소되었고 CaptureThread 는 `core/capture_worker.py`
 > 로 분리되었다. GOD_OBJECT 목록에서 제외. 다만 `core/capture_worker.py`
-> (~450 LOC) 와 `core/screen_recorder.py` 는 여전히 **CRITICAL_FILES** 로
+> (~452 LOC) 와 `core/screen_recorder.py` (~688 LOC) 는 여전히 **CRITICAL_FILES** 로
 > 간주하여 수정 시 M-grade 승격을 권고한다 (책임 밀도는 여전히 높음).
 
 **CRITICAL_DIRS (auto-promote to ≥ M):** `editor/ui/`

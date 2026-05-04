@@ -2,6 +2,14 @@
 
 Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 
+## 현재 기준
+
+- 문서 검증 기준일: `2026-04-22`
+- 검증 환경: Python 3.11 fresh `.venv`
+- 주요 의존성 floor: `wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.19.0`
+- 테스트 상태: `pytest tests/ -v` → `130 passed, 4 skipped`
+- 빌드 참고: `build_optimized.py`가 `XGif.spec`를 빌드 시점에 동적 생성
+
 ## 주요 기능
 
 - **화면 녹화**: GIF 및 MP4 형식으로 화면의 전체 또는 특정 영역 녹화
@@ -25,9 +33,9 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 
 | 패키지 | 용도 |
 |--------|------|
-| `dxcam` | 고성능 화면 캡처 (DXGI) |
-| `cupy-cuda12x` | GPU 가속 프레임 처리 |
-| `scipy` | 고급 오디오 믹싱 |
+| `dxcam` | 고성능 화면 캡처 (현재 floor: `0.3.0`) |
+| `cupy-cuda12x` | GPU 가속 프레임 처리 (권장: `14.x`) |
+| `scipy` | 고급 오디오 믹싱 (권장: `1.17.x`) |
 
 ## 설치
 
