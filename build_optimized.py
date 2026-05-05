@@ -267,11 +267,12 @@ def create_version_file():
     parts = APP_VERSION.split(".")
     major = int(re.match(r'\d+', parts[0]).group()) if len(parts) > 0 else 0
     minor = int(re.match(r'\d+', parts[1]).group()) if len(parts) > 1 else 0
+    patch = int(re.match(r'\d+', parts[2]).group()) if len(parts) > 2 else 0
     version_file = os.path.join(PROJECT_DIR, "file_version_info.txt")
     content = f"""VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=({major}, {minor}, 0, 0),
-    prodvers=({major}, {minor}, 0, 0),
+    filevers=({major}, {minor}, {patch}, 0),
+    prodvers=({major}, {minor}, {patch}, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
