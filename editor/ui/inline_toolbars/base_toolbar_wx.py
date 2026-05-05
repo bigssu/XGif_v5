@@ -71,9 +71,10 @@ class InlineToolbarBase(wx.Panel):
         self._main_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 컨트롤 영역 (전체 너비 사용)
-        self._controls_widget = wx.Panel(self)
+        self._controls_widget = wx.ScrolledWindow(self, style=wx.HSCROLL | wx.BORDER_NONE)
+        self._controls_widget.SetScrollRate(12, 0)
         self._controls_widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
-        self._controls_sizer = wx.WrapSizer(wx.HORIZONTAL)
+        self._controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self._controls_widget.SetSizer(self._controls_sizer)
 
         self._main_sizer.Add(self._controls_widget, 1, wx.EXPAND | wx.ALL, 16)

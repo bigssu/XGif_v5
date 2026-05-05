@@ -172,6 +172,9 @@ def test_inline_toolbar_icon_labels_use_shared_icon_factory():
     assert icon_types <= draw_methods
     assert "IconFactory.create_bitmap(icon_type, size)" in base_toolbar
     assert "wx.Bitmap(size, size)" not in base_toolbar
+    assert "wx.WrapSizer" not in base_toolbar
+    assert "wx.ScrolledWindow" in base_toolbar
+    assert "wx.BoxSizer(wx.HORIZONTAL)" in base_toolbar
 
 
 def test_inline_toolbar_icon_label_renders_a_real_transparent_icon():
