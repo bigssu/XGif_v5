@@ -378,6 +378,32 @@ def apply_dark_theme(window: wx.Window):
 
 # ── 테마 베이스 클래스 ──
 
+def fit_dialog_to_content(dialog, min_width=300, min_height=150, margin=40, center=True):
+    """Sizer content must remain visible and clickable before a dialog is shown."""
+    dialog.Layout()
+    sizer = dialog.GetSizer()
+    if not sizer:
+        return
+
+    best = sizer.ComputeFittingWindowSize(dialog)
+    cur = dialog.GetSize()
+    new_w = max(cur.width, best.width + margin, min_width)
+    new_h = max(cur.height, best.height + margin, min_height)
+
+    display_idx = wx.Display.GetFromWindow(dialog)
+    display = wx.Display(display_idx if display_idx >= 0 else 0)
+    screen = display.GetClientArea()
+    max_w = max(min_width, screen.width - 40)
+    max_h = max(min_height, screen.height - 40)
+    new_w = min(new_w, max_w)
+    new_h = min(new_h, max_h)
+
+    dialog.SetSize(new_w, new_h)
+    dialog.SetMinSize((new_w, new_h))
+    dialog.Layout()
+    if center:
+        dialog.CenterOnParent()
+
 class ThemedDialog(wx.Dialog):
     """다크 테마 자동 적용 Dialog 베이스 클래스
 
@@ -410,31 +436,17 @@ class ThemedDialog(wx.Dialog):
         Sizer가 계산한 최적 크기를 기준으로, 지정 size=()보다
         콘텐츠가 클 경우 자동으로 확장합니다.
         """
-        self.Layout()
-        sizer = self.GetSizer()
-        if not sizer:
-            return
-        best = sizer.ComputeFittingWindowSize(self)
-        cur = self.GetSize()
-        new_w = max(cur.width, best.width + margin, min_width)
-        new_h = max(cur.height, best.height + margin, min_height)
-        # 화면 크기 제한
-        display_idx = wx.Display.GetFromWindow(self)
-        display = wx.Display(display_idx if display_idx >= 0 else 0)
-        screen = display.GetClientArea()
-        new_w = min(new_w, screen.width - 40)
-        new_h = min(new_h, screen.height - 40)
-        self.SetSize(new_w, new_h)
+        fit_dialog_to_content(self, min_width, min_height, margin)
 
     def ShowModal(self):
         if not self._theme_applied:
-            apply_dark_theme(self)
+            self.apply_theme()
         self.fit_to_content()
         return super().ShowModal()
 
     def Show(self, show=True):
         if show and not self._theme_applied:
-            apply_dark_theme(self)
+            self.apply_theme()
         if show:
             self.fit_to_content()
         return super().Show(show)

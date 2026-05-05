@@ -159,7 +159,7 @@ class FlatButton(wx.Control):
             self.GetEventHandler().ProcessEvent(evt)
 
     def _on_paint(self, event):
-        dc = wx.PaintDC(self)
+        dc = wx.AutoBufferedPaintDC(self)
         w, h = self.GetSize()
         if w <= 0 or h <= 0:
             return
@@ -330,7 +330,7 @@ class CustomToggleSwitch(wx.Panel):
         self.SetChecked(not self._checked)
 
     def OnPaint(self, event):
-        dc = wx.PaintDC(self)
+        dc = wx.AutoBufferedPaintDC(self)
         width, height = self.GetSize()
 
         bitmap = wx.Bitmap(width, height)

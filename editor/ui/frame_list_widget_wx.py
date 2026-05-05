@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, List
 import wx
 import wx.grid as grid
 from .icon_utils_wx import IconFactory
-from .style_constants_wx import Colors
+from .style_constants_wx import Colors, ThemedDialog, fit_dialog_to_content
 from ..utils.wx_events import (
     FrameSelectedEvent, FrameDeletedEvent, FrameDelayChangedEvent
 )
@@ -594,11 +594,7 @@ class FrameListWidget(wx.Panel):
 
         # 다이얼로그 생성
         dialog_title = translations.tr("frame_list_time_dialog_title") if translations else "프레임 시간 설정"
-        dialog = wx.Dialog(self, title=dialog_title, size=(210, 110),
-                          style=wx.DEFAULT_DIALOG_STYLE)
-
-        # 스타일 설정
-        dialog.SetBackgroundColour(Colors.BG_PRIMARY)
+        dialog = ThemedDialog(self, title=dialog_title, style=wx.DEFAULT_DIALOG_STYLE)
 
         # 레이아웃
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -617,7 +613,7 @@ class FrameListWidget(wx.Panel):
         spin = wx.SpinCtrlDouble(dialog, value=str(current_delay_s),
                                  min=0.01, max=10.0, initial=current_delay_s, inc=0.01)
         spin.SetDigits(2)
-        spin.SetSize((70, -1))
+        spin.SetMinSize((90, -1))
         input_sizer.Add(spin, 0, wx.ALIGN_CENTER_VERTICAL)
 
         input_sizer.AddSpacer(12)
@@ -630,16 +626,18 @@ class FrameListWidget(wx.Panel):
         button_sizer.AddStretchSpacer()
 
         apply_text = translations.tr("frame_list_apply") if translations else "적용"
-        ok_btn = wx.Button(dialog, label=apply_text, size=(60, -1))
+        ok_btn = wx.Button(dialog, wx.ID_OK, label=apply_text)
         ok_btn.SetBackgroundColour(Colors.ACCENT)
         ok_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        ok_btn.SetMinSize((80, 32))
         ok_btn.Bind(wx.EVT_BUTTON, lambda e: dialog.EndModal(wx.ID_OK))
         button_sizer.Add(ok_btn, 0, wx.RIGHT, 5)
 
         cancel_text = translations.tr("frame_list_cancel") if translations else "취소"
-        cancel_btn = wx.Button(dialog, label=cancel_text, size=(60, -1))
+        cancel_btn = wx.Button(dialog, wx.ID_CANCEL, label=cancel_text)
         cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        cancel_btn.SetMinSize((80, 32))
         cancel_btn.Bind(wx.EVT_BUTTON, lambda e: dialog.EndModal(wx.ID_CANCEL))
         button_sizer.Add(cancel_btn, 0, wx.RIGHT, 12)
 
@@ -647,13 +645,15 @@ class FrameListWidget(wx.Panel):
         main_sizer.AddSpacer(12)
 
         dialog.SetSizer(main_sizer)
+        fit_dialog_to_content(dialog, min_width=270, min_height=150, margin=20)
 
         # 다이얼로그 실행
-        if dialog.ShowModal() == wx.ID_OK:
-            delay_ms = int(spin.GetValue() * 1000)
-            self._set_selected_delay(delay_ms)
-
-        dialog.Destroy()
+        try:
+            if dialog.ShowModal() == wx.ID_OK:
+                delay_ms = int(spin.GetValue() * 1000)
+                self._set_selected_delay(delay_ms)
+        finally:
+            dialog.Destroy()
 
     def select_frame(self, index: int):
         """특정 프레임 선택"""

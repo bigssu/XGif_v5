@@ -127,7 +127,7 @@ class FlatIconButton(wx.Control):
             self.GetEventHandler().ProcessEvent(evt)
 
     def _on_paint(self, event):
-        dc = wx.PaintDC(self)
+        dc = wx.AutoBufferedPaintDC(self)
         w, h = self.GetSize()
         if w <= 0 or h <= 0:
             return
@@ -193,7 +193,7 @@ class ToolSeparator(wx.Control):
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
 
     def _on_paint(self, event):
-        dc = wx.PaintDC(self)
+        dc = wx.AutoBufferedPaintDC(self)
         w, h = self.GetSize()
         if w <= 0 or h <= 0:
             return
@@ -222,6 +222,29 @@ class ToolSeparator(wx.Control):
         dc.DrawBitmap(bmp, 0, 0, False)
 
 
+class ToolbarScrollPanel(wx.ScrolledWindow):
+    """Scrolled toolbar background that fully repaints during live resize."""
+
+    def __init__(self, parent=None):
+        super().__init__(
+            parent,
+            style=wx.HSCROLL | wx.BORDER_NONE | wx.FULL_REPAINT_ON_RESIZE,
+        )
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
+        self.Bind(wx.EVT_SIZE, self._on_size)
+
+    def _on_size(self, event):
+        self.Refresh(True)
+        event.Skip()
+
+    def _on_paint(self, event):
+        dc = wx.AutoBufferedPaintDC(self)
+        dc.SetBackground(wx.Brush(self.GetBackgroundColour()))
+        dc.Clear()
+
+
 class IconToolbar(wx.Panel):
     """모던 플랫 아이콘 툴바"""
 
@@ -230,26 +253,33 @@ class IconToolbar(wx.Panel):
         self._main_window = main_window
         self._all_buttons = []
         self._active_button: Optional[FlatIconButton] = None
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
+        self.Bind(wx.EVT_SIZE, self._on_size)
         self._setup_ui()
+
+    def _on_size(self, event):
+        self.Refresh(True)
+        event.Skip()
 
     def _setup_ui(self):
         """UI 초기화"""
         self.Freeze()
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        # 스크롤 영역
-        scroll_panel = wx.ScrolledWindow(self, style=wx.HSCROLL)
-        scroll_panel.SetScrollRate(5, 0)
-        scroll_panel.ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)
-        scroll_panel.Freeze()
-
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
         # 배경색
         bg = Colors.BG_PRIMARY if Colors else wx.Colour(32, 32, 32)
         self.SetBackgroundColour(bg)
+
+        # 스크롤 영역
+        scroll_panel = ToolbarScrollPanel(self)
+        scroll_panel.SetScrollRate(5, 0)
+        scroll_panel.ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)
+        scroll_panel.Freeze()
         scroll_panel.SetBackgroundColour(bg)
         self.SetMinSize((-1, 78))
+
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 번역
         translations = getattr(self._main_window, '_translations', None)

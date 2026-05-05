@@ -267,6 +267,36 @@ def test_inline_toolbar_icon_labels_use_shared_icon_factory():
     assert "self._bind_toolbar_drag_scroll(separator)" in base_toolbar
 
 
+def test_dialogs_fit_to_content_before_showing():
+    theme = Path("ui/theme.py").read_text(encoding="utf-8")
+    frame_list = Path("editor/ui/frame_list_widget_wx.py").read_text(encoding="utf-8")
+
+    assert "def fit_dialog_to_content" in theme
+    assert "ComputeFittingWindowSize" in theme
+    assert "dialog.SetMinSize((new_w, new_h))" in theme
+    assert "self.apply_theme()" in theme
+    assert "self.fit_to_content()" in theme
+
+    assert "size=(210, 110)" not in frame_list
+    assert "ThemedDialog(self, title=dialog_title" in frame_list
+    assert "fit_dialog_to_content(dialog, min_width=270, min_height=150" in frame_list
+    assert "spin.SetMinSize((90, -1))" in frame_list
+    assert "ok_btn.SetMinSize((80, 32))" in frame_list
+    assert "cancel_btn.SetMinSize((80, 32))" in frame_list
+
+
+def test_owner_draw_toolbars_fully_repaint_on_resize():
+    icon_toolbar = Path("editor/ui/icon_toolbar_wx.py").read_text(encoding="utf-8")
+    capture_bar = Path("ui/capture_control_bar.py").read_text(encoding="utf-8")
+
+    assert "class ToolbarScrollPanel(wx.ScrolledWindow):" in icon_toolbar
+    assert "wx.FULL_REPAINT_ON_RESIZE" in icon_toolbar
+    assert "wx.AutoBufferedPaintDC(self)" in icon_toolbar
+    assert "self.Bind(wx.EVT_SIZE, self._on_size)" in icon_toolbar
+    assert "self.Refresh(True)" in icon_toolbar
+    assert "wx.AutoBufferedPaintDC(self)" in capture_bar
+
+
 def test_inline_toolbar_icon_label_renders_a_real_transparent_icon():
     import wx
     from editor.ui.inline_toolbars.base_toolbar_wx import InlineToolbarBase
