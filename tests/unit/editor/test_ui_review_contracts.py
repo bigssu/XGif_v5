@@ -87,7 +87,7 @@ def test_editor_theme_follows_design_md_tokens():
     design = Path("DESIGN.md").read_text(encoding="utf-8")
     theme = Path("ui/theme.py").read_text(encoding="utf-8")
     icon_toolbar = Path("editor/ui/icon_toolbar_wx.py").read_text(encoding="utf-8")
-    icon_utils = Path("editor/ui/icon_utils_wx.py").read_text(encoding="utf-8")
+    app_icons = Path("app_icons_wx.py").read_text(encoding="utf-8")
 
     assert "Figma-inspired" in design
     assert "FIGMA_LILAC = wx.Colour(197, 176, 244)" in theme
@@ -96,7 +96,7 @@ def test_editor_theme_follows_design_md_tokens():
     assert "BORDER = wx.Colour(230, 230, 230)" in theme
     assert "VERSION_ACCENT = FIGMA_MAGENTA" in theme
     assert "gc.SetPen(wx.Pen(border, 1))" in icon_toolbar
-    assert 'OPEN_FILE = "#ff3d8b"' in icon_utils
+    assert 'OPEN_FILE = ACCENT' in app_icons
 
 
 def test_icon_factory_bitmaps_keep_transparent_backgrounds():
@@ -123,6 +123,78 @@ def test_icon_factory_bitmaps_keep_transparent_backgrounds():
 
         assert image.GetAlpha(0, 0) == 0, icon_type
         assert opaque_pixels > 0, icon_type
+
+
+def test_editor_icons_use_tabler_subset_with_limited_semantic_colors():
+    from editor.ui.icon_utils_wx import IconFactory
+
+    draw_methods = sorted(name.removeprefix("_draw_") for name in dir(IconFactory) if name.startswith("_draw_"))
+    icon_dir = Path("resources/icons/tabler-outline")
+    required_assets = set(IconFactory.TABLER_ICON_BY_TYPE.values())
+
+    assert set(draw_methods) <= set(IconFactory.TABLER_ICON_BY_TYPE)
+    assert required_assets
+    assert (icon_dir / "LICENSE").exists()
+    assert (icon_dir / "README.md").exists()
+    assert all((icon_dir / f"{asset}.svg").exists() for asset in required_assets)
+    assert len(set(IconFactory.ICON_COLOR_BY_TYPE.values())) <= 4
+
+
+def test_shared_tabler_icons_cover_editor_and_capture_controls():
+    from app_icons_wx import TABLER_ICON_BY_TYPE, create_icon_bitmap
+    import wx
+
+    _app = wx.App.Get() or wx.App(False)
+    icon_dir = Path("resources/icons/tabler-outline")
+    required_types = {
+        "add",
+        "cursor",
+        "delete",
+        "help",
+        "pause",
+        "play",
+        "record",
+        "region",
+        "settings",
+        "stop",
+        "time",
+    }
+
+    assert required_types <= set(TABLER_ICON_BY_TYPE)
+    for icon_type in required_types:
+        assert (icon_dir / f"{TABLER_ICON_BY_TYPE[icon_type]}.svg").exists()
+        image = create_icon_bitmap(icon_type, 20).ConvertToImage()
+        assert image.HasAlpha(), icon_type
+        assert image.GetAlpha(0, 0) == 0, icon_type
+        assert any(
+            image.GetAlpha(x, y)
+            for y in range(image.GetHeight())
+            for x in range(image.GetWidth())
+        ), icon_type
+
+
+def test_toolbar_icon_surfaces_do_not_use_emoji_or_manual_glyph_buttons():
+    frame_list = Path("editor/ui/frame_list_widget_wx.py").read_text(encoding="utf-8")
+    capture_bar = Path("ui/capture_control_bar.py").read_text(encoding="utf-8")
+    forbidden = [
+        chr(0x1F5D1),
+        chr(0x23F1),
+        chr(0x2795),
+        chr(0x2699),
+        chr(0x2196),
+        chr(0x2B1A),
+        "\u25cf REC",
+        "\u25a0 STOP",
+        "\u25b6 REC",
+        "\u275a\u275a",
+    ]
+
+    assert all(glyph not in frame_list for glyph in forbidden)
+    assert all(glyph not in capture_bar for glyph in forbidden)
+    assert "IconFactory.create_bitmap(icon_type, 18)" in frame_list
+    assert "create_icon_bitmap(self._icon_type, self._icon_size, icon_color)" in capture_bar
+    assert 'self.rec_button.SetIcon("stop")' in capture_bar
+    assert 'self.rec_button.SetIcon("record")' in capture_bar
 
 
 def test_text_toolbar_icon_is_centered_in_its_bitmap():

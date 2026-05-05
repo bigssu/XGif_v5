@@ -7,41 +7,19 @@ import math
 import os
 from typing import Optional
 
+from app_icons_wx import (
+    ICON_COLOR_BY_TYPE as APP_ICON_COLOR_BY_TYPE,
+    TABLER_ICON_BY_TYPE as APP_TABLER_ICON_BY_TYPE,
+    TABLER_ICON_DIR as APP_TABLER_ICON_DIR,
+    AppIconColors as IconColors,
+    create_tabler_bitmap,
+    create_transparent_bitmap,
+)
+
 try:
     from .style_constants_wx import Colors
 except ImportError:
     Colors = None
-
-
-class IconColors:
-    """통일된 아이콘 색상 팔레트"""
-
-    # 액션 색상
-    APPLY = "#1ea64a"       # 녹색 - 적용/확인
-    CANCEL = "#1f1d3d"      # 네이비 - 취소/닫기
-    DELETE = "#d32f2f"      # 빨강 - 삭제/지우기
-
-    # 기능별 색상
-    CROP = "#1f1d3d"        # 네이비 - 자르기
-    RESIZE = "#ff3d8b"      # 마젠타 - 크기조절
-    EFFECTS = "#b76447"     # 코랄 잉크 - 효과
-    TEXT = "#1ea64a"        # 초록 - 텍스트
-    STICKER = "#6c7f23"     # 라임 잉크 - 스티커
-    SPEED = "#ff3d8b"       # 마젠타 - 속도
-    PENCIL = "#6e56cf"      # 라일락 잉크 - 펜슬
-
-    # 기타 색상
-    OPEN_FILE = "#ff3d8b"   # 마젠타 - 파일 열기
-    FRAME = "#1f1d3d"       # 네이비 - 프레임
-    ROTATE = "#6e56cf"      # 라일락 잉크 - 회전
-    FLIP = "#000000"        # 잉크 - 뒤집기
-    REVERSE = "#ff3d8b"     # 마젠타 - 역재생
-    YOYO = "#b76447"        # 코랄 잉크 - 요요
-    REDUCE = "#2e7d48"      # 민트 잉크 - 줄이기
-    TIME = "#1f1d3d"        # 네이비 - 시간
-    ADD = "#1ea64a"         # 녹색 - 추가
-    PLAY = "#1ea64a"        # 녹색 - 재생
-    PAUSE = "#b17600"       # 골드 - 일시정지
 
 
 class IconFactory:
@@ -58,6 +36,10 @@ class IconFactory:
     # 비트맵 캐시 — (icon_type, size, color) → wx.Bitmap
     _cache: dict = {}
 
+    TABLER_ICON_DIR = APP_TABLER_ICON_DIR
+    TABLER_ICON_BY_TYPE = APP_TABLER_ICON_BY_TYPE
+    ICON_COLOR_BY_TYPE = APP_ICON_COLOR_BY_TYPE
+
     @classmethod
     def _create_transparent_bitmap(cls, width: int, height: int) -> wx.Bitmap:
         """알파 채널이 완전 투명으로 초기화된 비트맵 생성
@@ -66,7 +48,15 @@ class IconFactory:
         사라져 검은 아이콘 배경으로 합성될 수 있다. FromRGBA는 wx.Bitmap
         자체에 32비트 알파를 가진 투명 버퍼를 직접 만들어준다.
         """
-        return wx.Bitmap.FromRGBA(width, height, 0, 0, 0, 0)
+        return create_transparent_bitmap(width, height)
+
+    @classmethod
+    def _icon_color(cls, icon_type: str, color: Optional[str] = None) -> str:
+        return color or cls.ICON_COLOR_BY_TYPE.get(icon_type, IconColors.COMMAND)
+
+    @classmethod
+    def _create_tabler_bitmap(cls, icon_type: str, size: int, color: Optional[str] = None) -> Optional[wx.Bitmap]:
+        return create_tabler_bitmap(icon_type, size, color)
 
     @classmethod
     def create_bitmap(cls, icon_type: str, size: Optional[int] = None, color: Optional[str] = None) -> wx.Bitmap:
@@ -87,6 +77,11 @@ class IconFactory:
         cached = cls._cache.get(cache_key)
         if cached is not None:
             return cached
+
+        tabler_bitmap = cls._create_tabler_bitmap(icon_type, size, color)
+        if tabler_bitmap is not None and tabler_bitmap.IsOk():
+            cls._cache[cache_key] = tabler_bitmap
+            return tabler_bitmap
 
         # 알파가 투명으로 초기화된 비트맵 생성
         bitmap = cls._create_transparent_bitmap(size, size)

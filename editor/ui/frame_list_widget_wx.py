@@ -1,11 +1,13 @@
-"""
-FrameListWidget - Honeycam 스타일 프레임 목록 (wxPython 버전)
+"""FrameListWidget - Honeycam 스타일 프레임 목록 (wxPython 버전)
 
 PyQt6 QTableWidget를 wx.grid.Grid로 마이그레이션
 """
+import contextlib
+from typing import TYPE_CHECKING, List
+
 import wx
 import wx.grid as grid
-from typing import TYPE_CHECKING, List
+from .icon_utils_wx import IconFactory
 from .style_constants_wx import Colors
 from ..utils.wx_events import (
     FrameSelectedEvent, FrameDeletedEvent, FrameDelayChangedEvent
@@ -104,21 +106,21 @@ class FrameListWidget(wx.Panel):
         # 하단 버튼 영역
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        # 삭제 버튼 (휴지통 아이콘)
+        # 삭제 버튼
         delete_tooltip = translations.tr("frame_list_delete_tooltip") if translations else "선택한 프레임 삭제 (Delete)"
-        self._delete_btn = self._create_icon_button("🗑️", delete_tooltip)
+        self._delete_btn = self._create_icon_button("delete", delete_tooltip)
         self._delete_btn.Bind(wx.EVT_BUTTON, self._on_delete_clicked)
         button_sizer.Add(self._delete_btn, 0, wx.ALL, 5)
 
-        # 시간 설정 버튼 (시계 아이콘)
+        # 시간 설정 버튼
         time_tooltip = translations.tr("frame_list_time_tooltip") if translations else "선택한 프레임 시간 일괄 설정"
-        self._time_btn = self._create_icon_button("⏱️", time_tooltip)
+        self._time_btn = self._create_icon_button("time", time_tooltip)
         self._time_btn.Bind(wx.EVT_BUTTON, self._on_time_clicked)
         button_sizer.Add(self._time_btn, 0, wx.ALL, 5)
 
-        # 프레임 추가 버튼 (플러스 아이콘)
+        # 프레임 추가 버튼
         add_tooltip = translations.tr("frame_list_add_tooltip") if translations else "프레임 복제"
-        self._add_btn = self._create_icon_button("➕", add_tooltip)
+        self._add_btn = self._create_icon_button("add", add_tooltip)
         self._add_btn.Bind(wx.EVT_BUTTON, self._on_add_clicked)
         button_sizer.Add(self._add_btn, 0, wx.ALL, 5)
 
@@ -133,15 +135,14 @@ class FrameListWidget(wx.Panel):
     def _on_frame_list_destroy(self, event):
         """윈도우 파괴 시 타이머 정리 (PyDeadObjectError 방지)"""
         if event.GetEventObject() is self:
-            try:
+            with contextlib.suppress(Exception):
                 self._selection_timer.Stop()
-            except Exception:
-                pass
         event.Skip()
 
-    def _create_icon_button(self, icon_text: str, tooltip: str) -> wx.Button:
-        """아이콘 버튼 생성 (임시: 텍스트 기반)"""
-        btn = wx.Button(self, label=icon_text, size=(32, 32))
+    def _create_icon_button(self, icon_type: str, tooltip: str) -> wx.Button:
+        """아이콘 버튼 생성"""
+        btn = wx.Button(self, size=(32, 32))
+        btn.SetBitmap(IconFactory.create_bitmap(icon_type, 18))
         btn.SetToolTip(tooltip)
         btn.SetBackgroundColour(Colors.BG_TERTIARY)
         btn.SetForegroundColour(Colors.TEXT_PRIMARY)
@@ -375,7 +376,6 @@ class FrameListWidget(wx.Panel):
 
     def _on_cell_double_clicked(self, event):
         """셀 더블클릭 처리"""
-        row = event.GetRow()
         col = event.GetCol()
 
         if col == 1:
@@ -458,7 +458,7 @@ class FrameListWidget(wx.Panel):
         blocks = self._grid.GetSelectionBlockTopLeft()
         if blocks:
             bottom_rights = self._grid.GetSelectionBlockBottomRight()
-            for (top_left, bottom_right) in zip(blocks, bottom_rights):
+            for (top_left, bottom_right) in zip(blocks, bottom_rights, strict=False):
                 for row in range(top_left[0], bottom_right[0] + 1):
                     selected.add(row)
 
