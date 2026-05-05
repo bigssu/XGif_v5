@@ -6,7 +6,7 @@ import contextlib
 import logging
 
 import wx
-from app_icons_wx import color_to_css, create_icon_bitmap
+from app_icons_wx import color_to_css, create_icon_bitmap, icon_size_class_for_nominal, optical_icon_size
 from ui.i18n import tr, get_trans_manager
 from ui.theme import Colors, Fonts
 from core.utils import parse_resolution, validate_resolution
@@ -26,12 +26,13 @@ class FlatButton(wx.Control):
                  bg_color=None, fg_color=None,
                  hover_color=None, pressed_color=None,
                  corner_radius=4, icon_type=None, icon_size=16,
-                 icon_color=None, id=wx.ID_ANY):
+                 icon_color=None, icon_size_class=None, id=wx.ID_ANY):
         super().__init__(parent, id, pos=wx.DefaultPosition, size=size,
                          style=wx.BORDER_NONE)
         self._label = label
         self._icon_type = icon_type
-        self._icon_size = icon_size
+        self._icon_nominal_size = icon_size
+        self._icon_size_class = icon_size_class or icon_size_class_for_nominal(icon_size)
         self._icon_color = icon_color
         self._corner_radius = corner_radius
         self._enabled = True
@@ -172,7 +173,8 @@ class FlatButton(wx.Control):
             self._enabled,
             self._label,
             self._icon_type,
-            self._icon_size,
+            self._icon_nominal_size,
+            self._icon_size_class,
             color_to_css(self._icon_color) if self._icon_color is not None else None,
         )
         if self._cached_bmp is not None and self._cached_state == state_key:
@@ -209,22 +211,36 @@ class FlatButton(wx.Control):
             fg = self._disabled_fg if not self._enabled else self._fg_color
             gc.SetFont(self.GetFont(), fg)
             tw, th = gc.GetTextExtent(self._label)[:2] if self._label else (0, 0)
+            icon_size = (
+                optical_icon_size(
+                    self._icon_type,
+                    size_class=self._icon_size_class,
+                    nominal_size=self._icon_nominal_size,
+                )
+                if self._icon_type
+                else 0
+            )
             gap = 4 if self._icon_type and self._label else 0
-            content_w = (self._icon_size if self._icon_type else 0) + gap + tw
-            start_x = (w - content_w) / 2
+            content_w = icon_size + gap + tw
+            start_x = round((w - content_w) / 2)
             center_y = h / 2
 
             if self._icon_type:
                 icon_color = self._icon_color if self._icon_color is not None else fg
-                icon = create_icon_bitmap(self._icon_type, self._icon_size, icon_color)
+                icon = create_icon_bitmap(
+                    self._icon_type,
+                    self._icon_nominal_size,
+                    icon_color,
+                    size_class=self._icon_size_class,
+                )
                 gc.DrawBitmap(
                     icon,
                     start_x,
-                    center_y - self._icon_size / 2,
-                    self._icon_size,
-                    self._icon_size,
+                    center_y - icon_size / 2,
+                    icon_size,
+                    icon_size,
                 )
-                start_x += self._icon_size + gap
+                start_x += icon_size + gap
 
             if self._label:
                 gc.DrawText(self._label, start_x, center_y - th / 2)
@@ -495,7 +511,7 @@ class CaptureControlBar(wx.Panel):
 
         # REC 버튼
         self.rec_button = FlatButton(self, label="REC", size=(76, 28),
-                                     icon_type="record", icon_size=14,
+                                     icon_type="record", icon_size=14, icon_size_class="xs",
                                      bg_color=Colors.REC_READY.Get()[:3],
                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                      hover_color=Colors.REC_READY_HOVER.Get()[:3],
@@ -506,7 +522,7 @@ class CaptureControlBar(wx.Panel):
 
         # Pause 버튼
         self.pause_btn = FlatButton(self, size=(34, 28),
-                                    icon_type="pause", icon_size=15,
+                                    icon_type="pause", icon_size=15, icon_size_class="xs",
                                     bg_color=Colors.PAUSE_BG.Get()[:3],
                                     fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                     hover_color=Colors.PAUSE_HOVER.Get()[:3],
@@ -518,7 +534,7 @@ class CaptureControlBar(wx.Panel):
 
         # 설정 버튼
         self.settings_button = FlatButton(self, size=(48, 40),
-                                          icon_type="settings", icon_size=21,
+                                          icon_type="settings", icon_size=21, icon_size_class="md",
                                           bg_color=Colors.BG_TERTIARY.Get()[:3],
                                           fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                           hover_color=Colors.BG_HOVER.Get()[:3])
@@ -528,7 +544,7 @@ class CaptureControlBar(wx.Panel):
 
         # 도움말 버튼
         self.help_button = FlatButton(self, size=(40, 40),
-                                      icon_type="help", icon_size=20,
+                                      icon_type="help", icon_size=20, icon_size_class="md",
                                       bg_color=Colors.BG_TERTIARY.Get()[:3],
                                       fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                       hover_color=Colors.BG_HOVER.Get()[:3])
@@ -559,7 +575,10 @@ class CaptureControlBar(wx.Panel):
         combo.SetForegroundColour(Colors.TEXT_PRIMARY)
 
     def _create_static_icon(self, icon_type: str, tooltip: str) -> wx.StaticBitmap:
-        icon = wx.StaticBitmap(self, bitmap=create_icon_bitmap(icon_type, 18, Colors.TEXT_SECONDARY))
+        icon = wx.StaticBitmap(
+            self,
+            bitmap=create_icon_bitmap(icon_type, 18, Colors.TEXT_SECONDARY, size_class="sm"),
+        )
         icon.SetBackgroundColour(Colors.BG_TOOLBAR)
         icon.SetToolTip(tooltip)
         return icon

@@ -141,7 +141,12 @@ def test_editor_icons_use_tabler_subset_with_limited_semantic_colors():
 
 
 def test_shared_tabler_icons_cover_editor_and_capture_controls():
-    from app_icons_wx import TABLER_ICON_BY_TYPE, create_icon_bitmap
+    from app_icons_wx import (
+        ICON_SIZE_CLASS_TARGETS,
+        OPTICAL_ICON_SIZE_BY_CLASS,
+        TABLER_ICON_BY_TYPE,
+        create_icon_bitmap,
+    )
     import wx
 
     _app = wx.App.Get() or wx.App(False)
@@ -163,7 +168,7 @@ def test_shared_tabler_icons_cover_editor_and_capture_controls():
     assert required_types <= set(TABLER_ICON_BY_TYPE)
     for icon_type in required_types:
         assert (icon_dir / f"{TABLER_ICON_BY_TYPE[icon_type]}.svg").exists()
-        image = create_icon_bitmap(icon_type, 20).ConvertToImage()
+        image = create_icon_bitmap(icon_type, 20, size_class="md").ConvertToImage()
         assert image.HasAlpha(), icon_type
         assert image.GetAlpha(0, 0) == 0, icon_type
         assert any(
@@ -171,6 +176,12 @@ def test_shared_tabler_icons_cover_editor_and_capture_controls():
             for y in range(image.GetHeight())
             for x in range(image.GetWidth())
         ), icon_type
+
+    assert set(OPTICAL_ICON_SIZE_BY_CLASS) == set(ICON_SIZE_CLASS_TARGETS)
+    assert all(
+        set(class_sizes) == set(TABLER_ICON_BY_TYPE)
+        for class_sizes in OPTICAL_ICON_SIZE_BY_CLASS.values()
+    )
 
 
 def test_toolbar_icon_surfaces_do_not_use_emoji_or_manual_glyph_buttons():
@@ -191,8 +202,8 @@ def test_toolbar_icon_surfaces_do_not_use_emoji_or_manual_glyph_buttons():
 
     assert all(glyph not in frame_list for glyph in forbidden)
     assert all(glyph not in capture_bar for glyph in forbidden)
-    assert "IconFactory.create_bitmap(icon_type, 18)" in frame_list
-    assert "create_icon_bitmap(self._icon_type, self._icon_size, icon_color)" in capture_bar
+    assert 'IconFactory.create_bitmap(icon_type, 18, size_class="sm")' in frame_list
+    assert "size_class=self._icon_size_class" in capture_bar
     assert 'self.rec_button.SetIcon("stop")' in capture_bar
     assert 'self.rec_button.SetIcon("record")' in capture_bar
 
@@ -242,7 +253,8 @@ def test_inline_toolbar_icon_labels_use_shared_icon_factory():
 
     assert icon_types
     assert icon_types <= draw_methods
-    assert "IconFactory.create_bitmap(icon_type, size)" in base_toolbar
+    assert "IconFactory.optical_size(icon_type, size, size_class)" in base_toolbar
+    assert "IconFactory.create_bitmap(icon_type, size, size_class=size_class)" in base_toolbar
     assert "wx.Bitmap(size, size)" not in base_toolbar
     assert "wx.WrapSizer" not in base_toolbar
     assert "wx.ScrolledWindow" in base_toolbar
@@ -277,9 +289,34 @@ def test_inline_toolbar_icon_label_renders_a_real_transparent_icon():
         frame.Destroy()
 
 
+def test_all_icon_size_classes_are_optically_sized():
+    import wx
+    from app_icons_wx import ICON_SIZE_CLASS_TARGETS, OPTICAL_ICON_SIZE_BY_CLASS, create_icon_bitmap
+
+    _app = wx.App.Get() or wx.App(False)
+
+    for size_class, class_sizes in OPTICAL_ICON_SIZE_BY_CLASS.items():
+        target = ICON_SIZE_CLASS_TARGETS[size_class]
+        for icon_type, nominal_size in class_sizes.items():
+            bitmap = create_icon_bitmap(icon_type, nominal_size, size_class=size_class)
+            image = bitmap.ConvertToImage()
+            pixels = [
+                (x, y)
+                for y in range(image.GetHeight())
+                for x in range(image.GetWidth())
+                if image.GetAlpha(x, y) > 24
+            ]
+            assert pixels, (size_class, icon_type)
+            width = max(x for x, _y in pixels) - min(x for x, _y in pixels) + 1
+            height = max(y for _x, y in pixels) - min(y for _x, y in pixels) + 1
+            visual_size = max(width, height)
+            assert target - 2 <= visual_size <= target, (size_class, icon_type, width, height)
+
+
 def test_main_toolbar_icons_are_pixel_aligned_and_optically_sized():
     import wx
-    from editor.ui.icon_toolbar_wx import FlatIconButton, _OPTICAL_ICON_SIZES
+    from app_icons_wx import OPTICAL_ICON_SIZE_BY_CLASS
+    from editor.ui.icon_toolbar_wx import FlatIconButton
 
     toolbar_icons = {
         "open_file",
@@ -301,13 +338,14 @@ def test_main_toolbar_icons_are_pixel_aligned_and_optically_sized():
     _app = wx.App.Get() or wx.App(False)
     frame = wx.Frame(None)
     try:
-        assert toolbar_icons <= set(_OPTICAL_ICON_SIZES)
-        assert all(size % 2 == 0 for size in _OPTICAL_ICON_SIZES.values())
+        assert toolbar_icons <= set(OPTICAL_ICON_SIZE_BY_CLASS["toolbar"])
+        assert all(size % 2 == 0 for size in OPTICAL_ICON_SIZE_BY_CLASS["toolbar"].values())
 
         for icon_type in sorted(toolbar_icons):
             button = FlatIconButton(icon_type, "", frame)
             bitmap = button._bitmap
             assert bitmap is not None and bitmap.IsOk(), icon_type
+            assert bitmap.GetWidth() == OPTICAL_ICON_SIZE_BY_CLASS["toolbar"][icon_type]
             assert (button.GetSize().width - bitmap.GetWidth()) % 2 == 0, icon_type
             assert (button.GetSize().height - bitmap.GetHeight()) % 2 == 0, icon_type
 

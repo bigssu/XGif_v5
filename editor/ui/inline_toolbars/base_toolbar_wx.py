@@ -218,15 +218,17 @@ class InlineToolbarBase(wx.Panel):
 
     def add_icon_label(self, icon_type: str, size: int = 20, tooltip: str = None) -> wx.StaticBitmap:
         """아이콘 라벨 추가"""
-        slot_size = size + 8
+        size_class = "lg" if size >= 28 else "md"
+        render_size = IconFactory.optical_size(icon_type, size, size_class)
+        slot_size = max(size, render_size) + 8
         bitmap = wx.Bitmap.FromRGBA(slot_size, slot_size, 0, 0, 0, 0)
-        icon = IconFactory.create_bitmap(icon_type, size)
+        icon = IconFactory.create_bitmap(icon_type, size, size_class=size_class)
 
         dc = wx.MemoryDC(bitmap)
         gc = wx.GraphicsContext.Create(dc)
         if gc and icon.IsOk():
-            offset = (slot_size - size) / 2
-            gc.DrawBitmap(icon, offset, offset, size, size)
+            offset = (slot_size - render_size) / 2
+            gc.DrawBitmap(icon, offset, offset, render_size, render_size)
         if gc:
             del gc
         dc.SelectObject(wx.NullBitmap)

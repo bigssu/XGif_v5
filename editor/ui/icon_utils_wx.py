@@ -14,6 +14,7 @@ from app_icons_wx import (
     AppIconColors as IconColors,
     create_tabler_bitmap,
     create_transparent_bitmap,
+    optical_icon_size,
 )
 
 try:
@@ -59,7 +60,18 @@ class IconFactory:
         return create_tabler_bitmap(icon_type, size, color)
 
     @classmethod
-    def create_bitmap(cls, icon_type: str, size: Optional[int] = None, color: Optional[str] = None) -> wx.Bitmap:
+    def optical_size(cls, icon_type: str, size: int, size_class: Optional[str] = None) -> int:
+        return optical_icon_size(icon_type, size_class=size_class, nominal_size=size)
+
+    @classmethod
+    def create_bitmap(
+        cls,
+        icon_type: str,
+        size: Optional[int] = None,
+        color: Optional[str] = None,
+        *,
+        size_class: Optional[str] = None,
+    ) -> wx.Bitmap:
         """아이콘 비트맵 생성 (캐시 지원)
 
         Args:
@@ -72,8 +84,10 @@ class IconFactory:
         """
         if size is None:
             size = cls.DEFAULT_SIZE
+        if size_class is not None:
+            size = cls.optical_size(icon_type, size, size_class)
 
-        cache_key = (icon_type, size, color)
+        cache_key = (icon_type, size, color, size_class)
         cached = cls._cache.get(cache_key)
         if cached is not None:
             return cached
@@ -907,7 +921,7 @@ def create_icon_button(icon_type: str, tooltip: str, size: int = 40,
 
     # 아이콘 생성
     icon_size = size - 8
-    bitmap = IconFactory.create_bitmap(icon_type, icon_size)
+    bitmap = IconFactory.create_bitmap(icon_type, icon_size, size_class="lg" if icon_size >= 28 else "md")
     btn.SetBitmap(bitmap)
 
     # 스타일 적용

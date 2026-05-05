@@ -142,7 +142,7 @@ class FrameListWidget(wx.Panel):
     def _create_icon_button(self, icon_type: str, tooltip: str) -> wx.Button:
         """아이콘 버튼 생성"""
         btn = wx.Button(self, size=(32, 32))
-        btn.SetBitmap(IconFactory.create_bitmap(icon_type, 18))
+        btn.SetBitmap(IconFactory.create_bitmap(icon_type, 18, size_class="sm"))
         btn.SetToolTip(tooltip)
         btn.SetBackgroundColour(Colors.BG_TERTIARY)
         btn.SetForegroundColour(Colors.TEXT_PRIMARY)

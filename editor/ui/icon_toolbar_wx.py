@@ -22,23 +22,6 @@ except ImportError:
 # Figma-inspired circular tool buttons on soft product chrome.
 _CORNER_RADIUS = 18
 _DISABLED_ICON_COLOR = "#9a9a9a"
-_DEFAULT_TOOLBAR_ICON_SIZE = 36
-_OPTICAL_ICON_SIZES = {
-    "open_file": 32,
-    "text": 36,
-    "sticker": 32,
-    "pencil": 38,
-    "crop": 40,
-    "resize": 36,
-    "effects": 34,
-    "rotate": 36,
-    "flip_h": 34,
-    "flip_v": 34,
-    "reverse": 40,
-    "yoyo": 38,
-    "speed": 34,
-    "reduce": 36,
-}
 
 
 class FlatIconButton(wx.Control):
@@ -86,9 +69,13 @@ class FlatIconButton(wx.Control):
     def _create_icon(self):
         """아이콘 비트맵 생성"""
         if IconFactory:
-            icon_size = _OPTICAL_ICON_SIZES.get(self._icon_type, _DEFAULT_TOOLBAR_ICON_SIZE)
-            self._bitmap = IconFactory.create_bitmap(self._icon_type, icon_size)
-            self._disabled_bitmap = IconFactory.create_bitmap(self._icon_type, icon_size, _DISABLED_ICON_COLOR)
+            self._bitmap = IconFactory.create_bitmap(self._icon_type, 36, size_class="toolbar")
+            self._disabled_bitmap = IconFactory.create_bitmap(
+                self._icon_type,
+                36,
+                _DISABLED_ICON_COLOR,
+                size_class="toolbar",
+            )
 
     # --- 공개 API ---
 

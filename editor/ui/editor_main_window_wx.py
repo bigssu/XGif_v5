@@ -935,7 +935,7 @@ class MainWindow(wx.Frame):
         """재생 버튼 아이콘 업데이트"""
         if IconFactory:
             icon_type = "pause" if is_playing else "play"
-            bitmap = IconFactory.create_bitmap(icon_type, 24)
+            bitmap = IconFactory.create_bitmap(icon_type, 24, size_class="md")
             self._play_btn.SetBitmap(bitmap)
 
     def _update_gpu_status(self, event=None):
