@@ -21,6 +21,24 @@ except ImportError:
 
 # Figma-inspired circular tool buttons on soft product chrome.
 _CORNER_RADIUS = 18
+_DISABLED_ICON_COLOR = "#9a9a9a"
+_DEFAULT_TOOLBAR_ICON_SIZE = 36
+_OPTICAL_ICON_SIZES = {
+    "open_file": 32,
+    "text": 36,
+    "sticker": 32,
+    "pencil": 38,
+    "crop": 40,
+    "resize": 36,
+    "effects": 34,
+    "rotate": 36,
+    "flip_h": 34,
+    "flip_v": 34,
+    "reverse": 40,
+    "yoyo": 38,
+    "speed": 34,
+    "reduce": 36,
+}
 
 
 class FlatIconButton(wx.Control):
@@ -39,6 +57,7 @@ class FlatIconButton(wx.Control):
         self._pressed = False
         self._enabled = True
         self._bitmap: Optional[wx.Bitmap] = None
+        self._disabled_bitmap: Optional[wx.Bitmap] = None
 
         # 색상
         self._bg_normal = Colors.BG_PRIMARY if Colors else wx.Colour(32, 32, 32)
@@ -66,9 +85,10 @@ class FlatIconButton(wx.Control):
 
     def _create_icon(self):
         """아이콘 비트맵 생성"""
-        self._disabled_bitmap_cache = None  # 캐시 무효화
         if IconFactory:
-            self._bitmap = IconFactory.create_bitmap(self._icon_type, 39)
+            icon_size = _OPTICAL_ICON_SIZES.get(self._icon_type, _DEFAULT_TOOLBAR_ICON_SIZE)
+            self._bitmap = IconFactory.create_bitmap(self._icon_type, icon_size)
+            self._disabled_bitmap = IconFactory.create_bitmap(self._icon_type, icon_size, _DISABLED_ICON_COLOR)
 
     # --- 공개 API ---
 
@@ -163,18 +183,11 @@ class FlatIconButton(wx.Control):
             # 아이콘 그리기 (중앙)
             if self._bitmap and self._bitmap.IsOk():
                 bw, bh = self._bitmap.GetWidth(), self._bitmap.GetHeight()
-                ix = (w - bw) / 2
-                iy = (h - bh) / 2
+                ix = (w - bw) // 2
+                iy = (h - bh) // 2
                 if not self._enabled:
-                    # 비활성화: 반투명 처리 (캐시하여 매 paint마다 재계산 방지)
-                    if not hasattr(self, '_disabled_bitmap_cache') or self._disabled_bitmap_cache is None:
-                        img = self._bitmap.ConvertToImage()
-                        if img.HasAlpha():
-                            alpha_data = bytearray(img.GetAlpha())
-                            alpha_data = bytes(a // 3 for a in alpha_data)
-                            img.SetAlpha(alpha_data)
-                        self._disabled_bitmap_cache = wx.Bitmap(img)
-                    gc.DrawBitmap(self._disabled_bitmap_cache, ix, iy, bw, bh)
+                    disabled_bitmap = self._disabled_bitmap if self._disabled_bitmap and self._disabled_bitmap.IsOk() else self._bitmap
+                    gc.DrawBitmap(disabled_bitmap, ix, iy, bw, bh)
                 else:
                     gc.DrawBitmap(self._bitmap, ix, iy, bw, bh)
 

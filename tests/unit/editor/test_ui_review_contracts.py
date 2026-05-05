@@ -277,6 +277,64 @@ def test_inline_toolbar_icon_label_renders_a_real_transparent_icon():
         frame.Destroy()
 
 
+def test_main_toolbar_icons_are_pixel_aligned_and_optically_sized():
+    import wx
+    from editor.ui.icon_toolbar_wx import FlatIconButton, _OPTICAL_ICON_SIZES
+
+    toolbar_icons = {
+        "open_file",
+        "text",
+        "sticker",
+        "pencil",
+        "crop",
+        "resize",
+        "effects",
+        "rotate",
+        "flip_h",
+        "flip_v",
+        "reverse",
+        "yoyo",
+        "speed",
+        "reduce",
+    }
+
+    _app = wx.App.Get() or wx.App(False)
+    frame = wx.Frame(None)
+    try:
+        assert toolbar_icons <= set(_OPTICAL_ICON_SIZES)
+        assert all(size % 2 == 0 for size in _OPTICAL_ICON_SIZES.values())
+
+        for icon_type in sorted(toolbar_icons):
+            button = FlatIconButton(icon_type, "", frame)
+            bitmap = button._bitmap
+            assert bitmap is not None and bitmap.IsOk(), icon_type
+            assert (button.GetSize().width - bitmap.GetWidth()) % 2 == 0, icon_type
+            assert (button.GetSize().height - bitmap.GetHeight()) % 2 == 0, icon_type
+
+            image = bitmap.ConvertToImage()
+            pixels = [
+                (x, y)
+                for y in range(image.GetHeight())
+                for x in range(image.GetWidth())
+                if image.GetAlpha(x, y) > 24
+            ]
+            assert pixels, icon_type
+            width = max(x for x, _y in pixels) - min(x for x, _y in pixels) + 1
+            height = max(y for _x, y in pixels) - min(y for _x, y in pixels) + 1
+            assert 26 <= max(width, height) <= 32, (icon_type, width, height)
+    finally:
+        frame.Destroy()
+
+
+def test_main_toolbar_disabled_icons_are_not_alpha_blurred():
+    source = Path("editor/ui/icon_toolbar_wx.py").read_text(encoding="utf-8")
+
+    assert "a // 3" not in source
+    assert "_disabled_bitmap" in source
+    assert "(w - bw) // 2" in source
+    assert "(h - bh) // 2" in source
+
+
 def test_text_inline_toolbar_controls_share_a_vertical_centerline():
     import wx
     from editor.ui.inline_toolbars.text_toolbar_wx import TextToolbar
