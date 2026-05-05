@@ -214,7 +214,7 @@ class InlineToolbarBase(wx.Panel):
         elif isinstance(widget, (wx.ToggleButton, wx.Choice)):
             widget.SetBackgroundColour(Colors.BG_TERTIARY)
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._controls_sizer.Add(widget, 0, wx.ALL, 8)
+        self._controls_sizer.Add(widget, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 6)
 
     def add_icon_label(self, icon_type: str, size: int = 20, tooltip: str = None) -> wx.StaticBitmap:
         """아이콘 라벨 추가"""
@@ -253,7 +253,7 @@ class InlineToolbarBase(wx.Panel):
         label = wx.StaticText(self._controls_widget, label=text)
         label.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._bind_toolbar_drag_scroll(label)
-        self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 8)
+        self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 6)
         return label
 
     def add_target_combo(

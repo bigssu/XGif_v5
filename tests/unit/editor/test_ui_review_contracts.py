@@ -247,6 +247,8 @@ def test_inline_toolbar_icon_labels_use_shared_icon_factory():
     assert "wx.WrapSizer" not in base_toolbar
     assert "wx.ScrolledWindow" in base_toolbar
     assert "wx.BoxSizer(wx.HORIZONTAL)" in base_toolbar
+    assert "wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT" in base_toolbar
+    assert "self._controls_sizer.Add(widget, 0, wx.ALL, 8)" not in base_toolbar
     assert "ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)" in base_toolbar
     assert "_bind_toolbar_drag_scroll(self._controls_widget)" in base_toolbar
     assert "self._bind_toolbar_drag_scroll(label)" in base_toolbar
@@ -271,5 +273,45 @@ def test_inline_toolbar_icon_label_renders_a_real_transparent_icon():
             for y in range(image.GetHeight())
             for x in range(image.GetWidth())
         )
+    finally:
+        frame.Destroy()
+
+
+def test_text_inline_toolbar_controls_share_a_vertical_centerline():
+    import wx
+    from editor.ui.inline_toolbars.text_toolbar_wx import TextToolbar
+
+    class _FakeMainWindow(wx.Frame):
+        def __init__(self):
+            super().__init__(None)
+            self._translations = None
+            self._is_low_end_mode = False
+            self._preview_delay = 100
+            self._frames = None
+            self._canvas = None
+
+    _app = wx.App.Get() or wx.App(False)
+    frame = _FakeMainWindow()
+    try:
+        frame.SetSize((1100, 200))
+        toolbar = TextToolbar(frame, frame)
+        toolbar.SetSize((1080, 88))
+        frame.Show()
+        frame.Layout()
+        toolbar.Layout()
+        toolbar._controls_widget.Layout()
+
+        centers = []
+        for child in toolbar._controls_widget.GetChildren():
+            if not child.IsShown():
+                continue
+            size = child.GetSize()
+            if size.width <= 1 or size.height <= 1:
+                continue
+            pos = child.GetPosition()
+            centers.append(pos.y + size.height / 2)
+
+        assert centers
+        assert max(centers) - min(centers) <= 1
     finally:
         frame.Destroy()
