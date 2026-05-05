@@ -97,3 +97,29 @@ def test_editor_theme_follows_design_md_tokens():
     assert "VERSION_ACCENT = FIGMA_MAGENTA" in theme
     assert "gc.SetPen(wx.Pen(border, 1))" in icon_toolbar
     assert 'OPEN_FILE = "#ff3d8b"' in icon_utils
+
+
+def test_icon_factory_bitmaps_keep_transparent_backgrounds():
+    import wx
+    from editor.ui.icon_utils_wx import IconFactory
+
+    _app = wx.App.Get() or wx.App(False)
+    IconFactory._cache.clear()
+
+    icon_types = sorted(name.removeprefix("_draw_") for name in dir(IconFactory) if name.startswith("_draw_"))
+    assert "play" in icon_types
+
+    for icon_type in icon_types:
+        bitmap = IconFactory.create_bitmap(icon_type, 39)
+        image = bitmap.ConvertToImage()
+
+        assert image.HasAlpha(), icon_type
+        opaque_pixels = sum(
+            1
+            for y in range(image.GetHeight())
+            for x in range(image.GetWidth())
+            if image.GetAlpha(x, y)
+        )
+
+        assert image.GetAlpha(0, 0) == 0, icon_type
+        assert opaque_pixels > 0, icon_type

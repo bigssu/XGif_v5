@@ -62,17 +62,11 @@ class IconFactory:
     def _create_transparent_bitmap(cls, width: int, height: int) -> wx.Bitmap:
         """알파 채널이 완전 투명으로 초기화된 비트맵 생성
 
-        Windows에서 wx.MemoryDC.Clear()는 알파를 0으로 설정하지 않으므로
-        wx.Image를 통해 명시적으로 알파를 초기화합니다.
+        Windows에서 wx.Image -> wx.Bitmap 변환은 일부 wx 빌드에서 알파가
+        사라져 검은 아이콘 배경으로 합성될 수 있다. FromRGBA는 wx.Bitmap
+        자체에 32비트 알파를 가진 투명 버퍼를 직접 만들어준다.
         """
-        img = wx.Image(width, height)
-        img.InitAlpha()
-        # 알파 전체를 0(투명)으로 초기화 — b'\x00' * n 은 리스트 생성 없이 즉시 할당
-        pixel_count = width * height
-        img.SetAlpha(b'\x00' * pixel_count)
-        # RGB도 0으로 (pre-multiplied alpha 환경에서 안전)
-        img.SetData(b'\x00' * (pixel_count * 3))
-        return wx.Bitmap(img, 32)
+        return wx.Bitmap.FromRGBA(width, height, 0, 0, 0, 0)
 
     @classmethod
     def create_bitmap(cls, icon_type: str, size: Optional[int] = None, color: Optional[str] = None) -> wx.Bitmap:
@@ -428,13 +422,12 @@ class IconFactory:
         """텍스트 아이콘 (A)"""
         c = wx.Colour(color or IconColors.TEXT)
         font = wx.Font(int(size * 0.55), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, faceName="Arial")
-        dc.SetFont(font)
-        dc.SetTextForeground(c)
+        gc.SetFont(font, c)
 
         text_w, text_h = dc.GetTextExtent("A")
         x = (size - text_w) // 2
         y = (size - text_h) // 2
-        dc.DrawText("A", x, y)
+        gc.DrawText("A", x, y)
 
     @classmethod
     def _draw_sticker(cls, gc: wx.GraphicsContext, dc: wx.DC, size: int, color: Optional[str] = None):
@@ -698,10 +691,9 @@ class IconFactory:
 
         # T 문자
         font = wx.Font(int(size * 0.4), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, faceName="Arial")
-        dc.SetFont(font)
-        dc.SetTextForeground(c)
+        gc.SetFont(font, c)
         text_w, text_h = dc.GetTextExtent("T")
-        dc.DrawText("T", 2, (size - text_h) // 2)
+        gc.DrawText("T", 2, (size - text_h) // 2)
 
         # 위아래 화살표
         arrow_x = size - 6
