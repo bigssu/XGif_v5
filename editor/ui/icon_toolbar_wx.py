@@ -19,8 +19,8 @@ except ImportError:
     Sizes = None
     Spacing = None
 
-# 라운디드 코너 반경
-_CORNER_RADIUS = 8
+# Figma-inspired circular tool buttons on soft product chrome.
+_CORNER_RADIUS = 18
 
 
 class FlatIconButton(wx.Control):
@@ -151,7 +151,13 @@ class FlatIconButton(wx.Control):
             # 라운디드 렉트 배경 (약간 패딩)
             pad = 2
             gc.SetBrush(wx.Brush(bg))
-            gc.SetPen(wx.TRANSPARENT_PEN)
+            if self._is_active:
+                border = Colors.VERSION_ACCENT if Colors else wx.Colour(255, 61, 139)
+            elif self._is_hovered:
+                border = Colors.BORDER_HOVER if Colors else wx.Colour(210, 210, 210)
+            else:
+                border = Colors.BORDER if Colors else wx.Colour(230, 230, 230)
+            gc.SetPen(wx.Pen(border, 1))
             gc.DrawRoundedRectangle(pad, pad, w - pad * 2, h - pad * 2, _CORNER_RADIUS)
 
             # 아이콘 그리기 (중앙)

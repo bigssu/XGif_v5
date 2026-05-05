@@ -6,50 +6,67 @@ import wx
 
 
 class Colors:
-    """색상 팔레트 (wxPython wx.Colour 객체)"""
+    """색상 팔레트 (wxPython wx.Colour 객체)
+
+    XGif는 Figma 계열의 밝은 캔버스, 검정 잉크, 파스텔 편집 블록을
+    데스크톱 편집기 UI에 맞게 번역한 토큰을 사용한다.
+    """
+
+    # Figma-inspired brand blocks
+    FIGMA_BLACK = wx.Colour(0, 0, 0)
+    FIGMA_WHITE = wx.Colour(255, 255, 255)
+    FIGMA_LIME = wx.Colour(220, 238, 177)
+    FIGMA_LILAC = wx.Colour(197, 176, 244)
+    FIGMA_CREAM = wx.Colour(244, 236, 214)
+    FIGMA_PINK = wx.Colour(239, 212, 212)
+    FIGMA_MINT = wx.Colour(200, 230, 205)
+    FIGMA_CORAL = wx.Colour(243, 201, 182)
+    FIGMA_NAVY = wx.Colour(31, 29, 61)
+    FIGMA_MAGENTA = wx.Colour(255, 61, 139)
 
     # 배경색
-    BG_PRIMARY = wx.Colour(32, 32, 32)       # 메인 배경
-    BG_SECONDARY = wx.Colour(28, 28, 28)     # 보조 배경
-    BG_TERTIARY = wx.Colour(55, 55, 55)      # 입력 필드, 버튼 배경
-    BG_HOVER = wx.Colour(70, 70, 70)         # 호버 상태
-    BG_PRESSED = wx.Colour(45, 45, 45)       # 눌림 상태
-    BG_SELECTED = wx.Colour(0, 120, 212)     # 선택 상태
-    BG_TOOLBAR = wx.Colour(45, 45, 45)       # 인라인 툴바 배경
-    BG_PANEL = wx.Colour(40, 40, 40)         # 패널 배경
-    BG_CANVAS = wx.Colour(50, 50, 50)        # 캔버스 배경
+    BG_PRIMARY = wx.Colour(247, 247, 245)    # 메인 배경
+    BG_SECONDARY = wx.Colour(255, 255, 255)  # 보조 배경
+    BG_TERTIARY = wx.Colour(241, 241, 241)   # 입력 필드, 버튼 배경
+    BG_HOVER = wx.Colour(230, 230, 230)      # 호버 상태
+    BG_PRESSED = wx.Colour(218, 218, 218)    # 눌림 상태
+    BG_SELECTED = FIGMA_LILAC                # 선택 상태
+    BG_TOOLBAR = wx.Colour(255, 255, 255)    # 인라인 툴바 배경
+    BG_PANEL = wx.Colour(255, 255, 255)      # 패널 배경
+    BG_CANVAS = wx.Colour(236, 236, 234)     # 캔버스 배경
 
     # 테두리
-    BORDER = wx.Colour(60, 60, 60)
-    BORDER_HOVER = wx.Colour(80, 80, 80)
-    BORDER_FOCUS = wx.Colour(0, 120, 212)
+    BORDER = wx.Colour(230, 230, 230)
+    BORDER_HOVER = wx.Colour(210, 210, 210)
+    BORDER_FOCUS = FIGMA_MAGENTA
 
     # 텍스트
-    TEXT_PRIMARY = wx.Colour(255, 255, 255)
-    TEXT_SECONDARY = wx.Colour(180, 180, 180)
-    TEXT_MUTED = wx.Colour(136, 136, 136)
+    TEXT_PRIMARY = wx.Colour(17, 17, 17)
+    TEXT_SECONDARY = wx.Colour(70, 70, 70)
+    TEXT_MUTED = wx.Colour(114, 114, 114)
+    TEXT_ON_DARK = FIGMA_WHITE
 
     # 강조색
-    ACCENT = wx.Colour(0, 120, 212)
-    ACCENT_HOVER = wx.Colour(26, 145, 235)
-    ACCENT_PRESSED = wx.Colour(0, 95, 170)
-    SUCCESS = wx.Colour(129, 199, 132)
-    WARNING = wx.Colour(255, 167, 38)
-    DANGER = wx.Colour(255, 107, 107)
-    INFO = wx.Colour(79, 195, 247)
-    VERSION_ACCENT = wx.Colour(0, 170, 255)
-    GPU_ON = wx.Colour(76, 175, 80)          # 에디터 GPU 활성
-    GPU_OFF = wx.Colour(136, 136, 136)       # 에디터 GPU 비활성
+    ACCENT = FIGMA_LILAC
+    ACCENT_HOVER = wx.Colour(181, 156, 238)
+    ACCENT_PRESSED = wx.Colour(159, 134, 224)
+    SUCCESS = wx.Colour(30, 166, 74)
+    WARNING = wx.Colour(176, 118, 0)
+    DANGER = wx.Colour(211, 47, 47)
+    INFO = FIGMA_NAVY
+    VERSION_ACCENT = FIGMA_MAGENTA
+    GPU_ON = SUCCESS                         # 에디터 GPU 활성
+    GPU_OFF = TEXT_MUTED                     # 에디터 GPU 비활성
 
     # 메뉴바
-    BG_MENUBAR = wx.Colour(38, 38, 38)
-    MENU_LABEL_HOVER = wx.Colour(60, 60, 60)
+    BG_MENUBAR = FIGMA_WHITE
+    MENU_LABEL_HOVER = BG_TERTIARY
 
     # 툴바 버튼 (FlatIconButton)
-    ICON_BTN_HOVER = wx.Colour(55, 55, 55)
-    ICON_BTN_PRESSED = wx.Colour(42, 42, 42)
-    ICON_BTN_ACTIVE = wx.Colour(0, 120, 212, 60)
-    ICON_BTN_DISABLED = BG_PRIMARY
+    ICON_BTN_HOVER = FIGMA_CREAM
+    ICON_BTN_PRESSED = FIGMA_CORAL
+    ICON_BTN_ACTIVE = wx.Colour(197, 176, 244, 150)
+    ICON_BTN_DISABLED = BG_TERTIARY
 
     # 에디터 액션 버튼
     ACTION_BUTTON_BG = BG_TERTIARY
@@ -58,15 +75,15 @@ class Colors:
 
     # 에디터 특정 액션 semantic token
     LANG_TOGGLE_FG = SUCCESS
-    LANG_TOGGLE_BG = BG_SECONDARY
+    LANG_TOGGLE_BG = FIGMA_MINT
     SAVE_PRIMARY = ACTION_BUTTON_PRIMARY_BG
 
     # 헥스 색상 문자열 (DC 그리기용)
-    BG_PRIMARY_HEX = "#202020"
-    BG_SECONDARY_HEX = "#1c1c1c"
-    BG_TERTIARY_HEX = "#373737"
-    ACCENT_HEX = "#0078d4"
-    TEXT_PRIMARY_HEX = "#ffffff"
+    BG_PRIMARY_HEX = "#f7f7f5"
+    BG_SECONDARY_HEX = "#ffffff"
+    BG_TERTIARY_HEX = "#f1f1f1"
+    ACCENT_HEX = "#c5b0f4"
+    TEXT_PRIMARY_HEX = "#111111"
 
     # ── 레코더 전용 ──
 

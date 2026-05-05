@@ -81,3 +81,19 @@ def test_editor_buttons_and_override_colors_use_semantic_tokens():
     assert '"rotate_angle":' in ko_locale
     assert '"rotate_tooltip":' in en_locale
     assert '"rotate_angle":' in en_locale
+
+
+def test_editor_theme_follows_design_md_tokens():
+    design = Path("DESIGN.md").read_text(encoding="utf-8")
+    theme = Path("ui/theme.py").read_text(encoding="utf-8")
+    icon_toolbar = Path("editor/ui/icon_toolbar_wx.py").read_text(encoding="utf-8")
+    icon_utils = Path("editor/ui/icon_utils_wx.py").read_text(encoding="utf-8")
+
+    assert "Figma-inspired" in design
+    assert "FIGMA_LILAC = wx.Colour(197, 176, 244)" in theme
+    assert "FIGMA_MAGENTA = wx.Colour(255, 61, 139)" in theme
+    assert "BG_PRIMARY = wx.Colour(247, 247, 245)" in theme
+    assert "BORDER = wx.Colour(230, 230, 230)" in theme
+    assert "VERSION_ACCENT = FIGMA_MAGENTA" in theme
+    assert "gc.SetPen(wx.Pen(border, 1))" in icon_toolbar
+    assert 'OPEN_FILE = "#ff3d8b"' in icon_utils

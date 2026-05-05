@@ -17,31 +17,31 @@ class IconColors:
     """통일된 아이콘 색상 팔레트"""
 
     # 액션 색상
-    APPLY = "#81c784"       # 녹색 - 적용/확인
-    CANCEL = "#4fc3f7"      # 파랑 - 취소/닫기
-    DELETE = "#ff6b6b"      # 빨강 - 삭제/지우기
+    APPLY = "#1ea64a"       # 녹색 - 적용/확인
+    CANCEL = "#1f1d3d"      # 네이비 - 취소/닫기
+    DELETE = "#d32f2f"      # 빨강 - 삭제/지우기
 
     # 기능별 색상
-    CROP = "#9C27B0"        # 보라 - 자르기
-    RESIZE = "#00BCD4"      # 청록 - 크기조절
-    EFFECTS = "#FF9800"     # 주황 - 효과
-    TEXT = "#4CAF50"        # 초록 - 텍스트
-    STICKER = "#FFC107"     # 노랑 - 스티커
-    SPEED = "#FF5722"       # 딥오렌지 - 속도
-    PENCIL = "#FFC107"      # 노랑 - 펜슬
+    CROP = "#1f1d3d"        # 네이비 - 자르기
+    RESIZE = "#ff3d8b"      # 마젠타 - 크기조절
+    EFFECTS = "#b76447"     # 코랄 잉크 - 효과
+    TEXT = "#1ea64a"        # 초록 - 텍스트
+    STICKER = "#6c7f23"     # 라임 잉크 - 스티커
+    SPEED = "#ff3d8b"       # 마젠타 - 속도
+    PENCIL = "#6e56cf"      # 라일락 잉크 - 펜슬
 
     # 기타 색상
-    OPEN_FILE = "#FFA726"   # 오렌지 - 파일 열기
-    FRAME = "#2196F3"       # 파랑 - 프레임
-    ROTATE = "#3F51B5"      # 인디고 - 회전
-    FLIP = "#607D8B"        # 블루그레이 - 뒤집기
-    REVERSE = "#E91E63"     # 핑크 - 역재생
-    YOYO = "#795548"        # 브라운 - 요요
-    REDUCE = "#009688"      # 틸 - 줄이기
-    TIME = "#4fc3f7"        # 파랑 - 시간
-    ADD = "#81c784"         # 녹색 - 추가
-    PLAY = "#4CAF50"        # 녹색 - 재생
-    PAUSE = "#FF9800"       # 주황 - 일시정지
+    OPEN_FILE = "#ff3d8b"   # 마젠타 - 파일 열기
+    FRAME = "#1f1d3d"       # 네이비 - 프레임
+    ROTATE = "#6e56cf"      # 라일락 잉크 - 회전
+    FLIP = "#000000"        # 잉크 - 뒤집기
+    REVERSE = "#ff3d8b"     # 마젠타 - 역재생
+    YOYO = "#b76447"        # 코랄 잉크 - 요요
+    REDUCE = "#2e7d48"      # 민트 잉크 - 줄이기
+    TIME = "#1f1d3d"        # 네이비 - 시간
+    ADD = "#1ea64a"         # 녹색 - 추가
+    PLAY = "#1ea64a"        # 녹색 - 재생
+    PAUSE = "#b17600"       # 골드 - 일시정지
 
 
 class IconFactory:
