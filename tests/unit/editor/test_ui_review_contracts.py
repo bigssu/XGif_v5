@@ -175,6 +175,10 @@ def test_inline_toolbar_icon_labels_use_shared_icon_factory():
     assert "wx.WrapSizer" not in base_toolbar
     assert "wx.ScrolledWindow" in base_toolbar
     assert "wx.BoxSizer(wx.HORIZONTAL)" in base_toolbar
+    assert "ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)" in base_toolbar
+    assert "_bind_toolbar_drag_scroll(self._controls_widget)" in base_toolbar
+    assert "self._bind_toolbar_drag_scroll(label)" in base_toolbar
+    assert "self._bind_toolbar_drag_scroll(separator)" in base_toolbar
 
 
 def test_inline_toolbar_icon_label_renders_a_real_transparent_icon():

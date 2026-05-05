@@ -52,6 +52,11 @@ class InlineToolbarBase(wx.Panel):
         self._main_window = main_window
         self._canvas: Optional['CanvasWidget'] = None
         self._is_active = False
+        self._toolbar_dragging = False
+        self._toolbar_drag_start_x = 0
+        self._toolbar_drag_start_view_x = 0
+        self._toolbar_drag_capture: Optional[wx.Window] = None
+        self._toolbar_scroll_rate_x = 12
 
         # 성능 모드 설정 (저사양 모드 감지)
         self._is_low_end_mode = getattr(main_window, '_is_low_end_mode', False)
@@ -72,10 +77,12 @@ class InlineToolbarBase(wx.Panel):
 
         # 컨트롤 영역 (전체 너비 사용)
         self._controls_widget = wx.ScrolledWindow(self, style=wx.HSCROLL | wx.BORDER_NONE)
-        self._controls_widget.SetScrollRate(12, 0)
+        self._controls_widget.SetScrollRate(self._toolbar_scroll_rate_x, 0)
+        self._controls_widget.ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)
         self._controls_widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
         self._controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self._controls_widget.SetSizer(self._controls_sizer)
+        self._bind_toolbar_drag_scroll(self._controls_widget)
 
         self._main_sizer.Add(self._controls_widget, 1, wx.EXPAND | wx.ALL, 16)
 
@@ -96,6 +103,44 @@ class InlineToolbarBase(wx.Panel):
     def _on_preview_timer(self, event):
         """프리뷰 타이머 이벤트"""
         self._update_preview()
+
+    def _bind_toolbar_drag_scroll(self, widget: wx.Window):
+        """Bind drag-to-scroll behavior to passive toolbar surfaces."""
+        widget.Bind(wx.EVT_LEFT_DOWN, self._on_toolbar_drag_start)
+        widget.Bind(wx.EVT_MOTION, self._on_toolbar_drag_motion)
+        widget.Bind(wx.EVT_LEFT_UP, self._on_toolbar_drag_end)
+        widget.Bind(wx.EVT_MOUSE_CAPTURE_LOST, self._on_toolbar_drag_capture_lost)
+
+    def _event_screen_x(self, event) -> int:
+        point = event.GetEventObject().ClientToScreen(event.GetPosition())
+        return point.x if hasattr(point, "x") else point.GetX()
+
+    def _on_toolbar_drag_start(self, event):
+        self._toolbar_dragging = True
+        self._toolbar_drag_start_x = self._event_screen_x(event)
+        self._toolbar_drag_start_view_x = self._controls_widget.GetViewStart()[0]
+        self._toolbar_drag_capture = event.GetEventObject()
+        if not self._toolbar_drag_capture.HasCapture():
+            self._toolbar_drag_capture.CaptureMouse()
+
+    def _on_toolbar_drag_motion(self, event):
+        if not self._toolbar_dragging or not event.Dragging() or not event.LeftIsDown():
+            event.Skip()
+            return
+
+        delta_x = self._event_screen_x(event) - self._toolbar_drag_start_x
+        scroll_delta = int(round(-delta_x / self._toolbar_scroll_rate_x))
+        self._controls_widget.Scroll(max(0, self._toolbar_drag_start_view_x + scroll_delta), 0)
+
+    def _on_toolbar_drag_end(self, event):
+        self._toolbar_dragging = False
+        if self._toolbar_drag_capture and self._toolbar_drag_capture.HasCapture():
+            self._toolbar_drag_capture.ReleaseMouse()
+        self._toolbar_drag_capture = None
+
+    def _on_toolbar_drag_capture_lost(self, event):
+        self._toolbar_dragging = False
+        self._toolbar_drag_capture = None
 
     # === 공개 메서드 ===
 
@@ -190,6 +235,7 @@ class InlineToolbarBase(wx.Panel):
         label.SetMinSize((slot_size, slot_size))
         if tooltip:
             label.SetToolTip(tooltip)
+        self._bind_toolbar_drag_scroll(label)
 
         self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         return label
@@ -199,12 +245,14 @@ class InlineToolbarBase(wx.Panel):
         separator = wx.StaticLine(self._controls_widget, style=wx.LI_VERTICAL)
         separator.SetMinSize((1, 50))
         separator.SetBackgroundColour(Colors.BORDER)
+        self._bind_toolbar_drag_scroll(separator)
         self._controls_sizer.Add(separator, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
 
     def add_label(self, text: str) -> wx.StaticText:
         """라벨 추가"""
         label = wx.StaticText(self._controls_widget, label=text)
         label.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._bind_toolbar_drag_scroll(label)
         self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 8)
         return label
 
