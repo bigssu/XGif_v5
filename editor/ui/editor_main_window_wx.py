@@ -95,6 +95,7 @@ class MainWindow(wx.Frame):
         self._undo_manager = UndoManager(max_history=20, max_memory_mb=200)
         self._current_file_path: Optional[str] = None
         self._is_modified = False
+        self._startup_duplicate_prompt_pending = True
 
         # 설정 (wxPython의 wx.Config 사용)
         self._settings = wx.Config("XGifEditor")
@@ -679,6 +680,7 @@ class MainWindow(wx.Frame):
             self._update_title()
             self._update_info_bar()
             self._refresh_all()
+            self._maybe_offer_startup_duplicate_removal()
 
         except Exception as e:
             wx.MessageBox(f"파일을 열 수 없습니다:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
@@ -1113,10 +1115,57 @@ class MainWindow(wx.Frame):
         except Exception as e:
             wx.MessageBox(f"프레임 복제 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
 
-    def _remove_duplicates(self):
+    def _maybe_offer_startup_duplicate_removal(self) -> None:
+        """에디터 시작 후 첫 파일 로드 시 중복 프레임 제거 여부를 한 번만 묻는다."""
+        if not self._startup_duplicate_prompt_pending:
+            return
+        if self._frames.is_empty or self._frames.frame_count < 2:
+            return
+
+        self._startup_duplicate_prompt_pending = False
+        wx.CallAfter(self._show_startup_duplicate_removal_prompt)
+
+    def _show_startup_duplicate_removal_prompt(self) -> None:
+        """시작 시 중복 프레임 제거 실행 여부 확인."""
+        if self._frames.is_empty or self._frames.frame_count < 2:
+            return
+
+        dlg = wx.MessageDialog(
+            self,
+            self._translations.tr("startup_duplicate_prompt_message", count=self._frames.frame_count),
+            self._translations.tr("startup_duplicate_prompt_title"),
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+        )
+        with contextlib.suppress(AttributeError):
+            dlg.SetYesNoLabels(
+                self._translations.tr("startup_duplicate_prompt_yes"),
+                self._translations.tr("startup_duplicate_prompt_no"),
+            )
+        try:
+            if dlg.ShowModal() == wx.ID_YES:
+                self._remove_duplicates()
+        finally:
+            dlg.Destroy()
+
+    def _show_duplicate_removal_result(self, removed: int, memory_mb: float | None = None) -> None:
+        """중복 제거 결과 메시지 표시."""
+        if removed <= 0:
+            message = self._translations.tr("msg_duplicate_none")
+        else:
+            message = self._translations.tr("msg_duplicate_removed", count=removed)
+            if memory_mb is not None:
+                message += "\n" + self._translations.tr("msg_memory_limit", memory=f"{memory_mb:.1f}")
+
+        wx.MessageBox(
+            message,
+            self._translations.tr("msg_complete"),
+            wx.OK | wx.ICON_INFORMATION,
+        )
+
+    def _remove_duplicates(self) -> Optional[int]:
         """중복 프레임 제거"""
         if self._frames.is_empty:
-            return
+            return None
 
         try:
             # 메모리 사용량 체크 (100MB 이상이면 히스토리 저장 건너뛰기)
@@ -1126,22 +1175,25 @@ class MainWindow(wx.Frame):
                 self._frames.remove_duplicates()
                 removed = old_count - self._frames.frame_count
                 self._refresh_all()
-                self._is_modified = True
-                wx.MessageBox(
-                    f"중복 프레임 {removed}개가 제거되었습니다.\n(메모리 제한으로 실행취소 불가: {current_memory_mb:.1f}MB)",
-                    "완료",
-                    wx.OK | wx.ICON_INFORMATION
-                )
-                return
+                if removed > 0:
+                    self._is_modified = True
+                    self._update_title()
+                    self._update_info_bar()
+                self._show_duplicate_removal_result(removed, current_memory_mb)
+                return removed
 
             # Undo 등록
             old_frames = self._frames.clone()
-            old_count = self._frames.frame_count
+            new_frames = self._frames.clone()
+            removed = new_frames.remove_duplicates()
+            if removed <= 0:
+                self._show_duplicate_removal_result(0)
+                return 0
             memory_usage = old_frames.get_memory_usage()
 
             def execute():
                 try:
-                    self._frames.remove_duplicates()
+                    self._frames = new_frames.clone()
                     self._refresh_all()
                 except Exception as e:
                     wx.MessageBox(f"중복 제거 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
@@ -1149,7 +1201,7 @@ class MainWindow(wx.Frame):
 
             def undo():
                 try:
-                    self._frames = old_frames
+                    self._frames = old_frames.clone()
                     self._refresh_all()
                 except Exception as e:
                     wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
@@ -1157,13 +1209,11 @@ class MainWindow(wx.Frame):
 
             self._undo_manager.execute_lambda("중복 프레임 제거", execute, undo, memory_usage)
             self._is_modified = True
+            self._update_title()
+            self._update_info_bar()
 
-            removed = old_count - self._frames.frame_count
-            wx.MessageBox(
-                f"중복 프레임 {removed}개가 제거되었습니다.",
-                "완료",
-                wx.OK | wx.ICON_INFORMATION
-            )
+            self._show_duplicate_removal_result(removed)
+            return removed
         except MemoryError:
             wx.MessageBox(
                 "메모리가 부족하여 작업을 수행할 수 없습니다.",
@@ -1176,6 +1226,7 @@ class MainWindow(wx.Frame):
                 "오류",
                 wx.OK | wx.ICON_ERROR
             )
+        return None
 
     def _show_mosaic_toolbar(self):
         """모자이크 인라인 툴바 표시"""
@@ -1392,6 +1443,7 @@ class MainWindow(wx.Frame):
             "변환 완료",
             wx.OK | wx.ICON_INFORMATION
         )
+        self._maybe_offer_startup_duplicate_removal()
 
     def _on_video_load_error(self, error_msg: str, traceback: str):
         """비디오 로드 에러"""
