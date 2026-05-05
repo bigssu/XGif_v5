@@ -424,9 +424,9 @@ class IconFactory:
         font = wx.Font(int(size * 0.55), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, faceName="Arial")
         gc.SetFont(font, c)
 
-        text_w, text_h = dc.GetTextExtent("A")
-        x = (size - text_w) // 2
-        y = (size - text_h) // 2
+        text_w, text_h = gc.GetTextExtent("A")
+        x = (size - text_w) / 2
+        y = (size - text_h) / 2
         gc.DrawText("A", x, y)
 
     @classmethod
@@ -692,8 +692,8 @@ class IconFactory:
         # T 문자
         font = wx.Font(int(size * 0.4), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, faceName="Arial")
         gc.SetFont(font, c)
-        text_w, text_h = dc.GetTextExtent("T")
-        gc.DrawText("T", 2, (size - text_h) // 2)
+        _text_w, text_h = gc.GetTextExtent("T")
+        gc.DrawText("T", 2, (size - text_h) / 2)
 
         # 위아래 화살표
         arrow_x = size - 6

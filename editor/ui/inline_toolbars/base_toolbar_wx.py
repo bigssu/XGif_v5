@@ -7,6 +7,7 @@ PropertyBar 컨테이너의 자식으로 등록되어 활성 도구에 따라 �
 import wx
 from typing import TYPE_CHECKING, Optional, Callable
 from contextlib import suppress
+from ..icon_utils_wx import IconFactory
 from ..style_constants_wx import Colors
 from ...utils.wx_events import (
     ToolbarAppliedEvent, ToolbarCancelledEvent, ToolbarPreviewUpdatedEvent
@@ -171,14 +172,21 @@ class InlineToolbarBase(wx.Panel):
 
     def add_icon_label(self, icon_type: str, size: int = 20, tooltip: str = None) -> wx.StaticBitmap:
         """아이콘 라벨 추가"""
-        bitmap = wx.Bitmap(size, size)
+        slot_size = size + 8
+        bitmap = wx.Bitmap.FromRGBA(slot_size, slot_size, 0, 0, 0, 0)
+        icon = IconFactory.create_bitmap(icon_type, size)
+
         dc = wx.MemoryDC(bitmap)
-        dc.SetBackground(wx.Brush(Colors.BORDER))
-        dc.Clear()
+        gc = wx.GraphicsContext.Create(dc)
+        if gc and icon.IsOk():
+            offset = (slot_size - size) / 2
+            gc.DrawBitmap(icon, offset, offset, size, size)
+        if gc:
+            del gc
         dc.SelectObject(wx.NullBitmap)
 
         label = wx.StaticBitmap(self._controls_widget, bitmap=bitmap)
-        label.SetMinSize((size + 8, size + 8))
+        label.SetMinSize((slot_size, slot_size))
         if tooltip:
             label.SetToolTip(tooltip)
 

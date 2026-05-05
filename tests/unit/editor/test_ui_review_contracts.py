@@ -123,3 +123,74 @@ def test_icon_factory_bitmaps_keep_transparent_backgrounds():
 
         assert image.GetAlpha(0, 0) == 0, icon_type
         assert opaque_pixels > 0, icon_type
+
+
+def test_text_toolbar_icon_is_centered_in_its_bitmap():
+    import wx
+    from editor.ui.icon_utils_wx import IconFactory
+
+    _app = wx.App.Get() or wx.App(False)
+    IconFactory._cache.clear()
+    image = IconFactory.create_bitmap("text", 39).ConvertToImage()
+    pixels = [
+        (x, y)
+        for y in range(image.GetHeight())
+        for x in range(image.GetWidth())
+        if image.GetAlpha(x, y)
+    ]
+
+    assert pixels
+    min_x = min(x for x, _y in pixels)
+    max_x = max(x for x, _y in pixels)
+    min_y = min(y for _x, y in pixels)
+    max_y = max(y for _x, y in pixels)
+
+    center_x = (min_x + max_x) / 2
+    center_y = (min_y + max_y) / 2
+    assert abs(center_x - 19) <= 2
+    assert abs(center_y - 19) <= 2
+
+
+def test_inline_toolbar_icon_labels_use_shared_icon_factory():
+    inline_paths = Path("editor/ui/inline_toolbars").glob("*_toolbar_wx.py")
+    icon_types = set()
+    for path in inline_paths:
+        module = _module(str(path))
+        for node in ast.walk(module):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute) or node.func.attr != "add_icon_label":
+                continue
+            if node.args and isinstance(node.args[0], ast.Constant):
+                icon_types.add(node.args[0].value)
+
+    icon_factory = _class(_module("editor/ui/icon_utils_wx.py"), "IconFactory")
+    draw_methods = {node.name.removeprefix("_draw_") for node in icon_factory.body if isinstance(node, ast.FunctionDef)}
+    base_toolbar = Path("editor/ui/inline_toolbars/base_toolbar_wx.py").read_text(encoding="utf-8")
+
+    assert icon_types
+    assert icon_types <= draw_methods
+    assert "IconFactory.create_bitmap(icon_type, size)" in base_toolbar
+    assert "wx.Bitmap(size, size)" not in base_toolbar
+
+
+def test_inline_toolbar_icon_label_renders_a_real_transparent_icon():
+    import wx
+    from editor.ui.inline_toolbars.base_toolbar_wx import InlineToolbarBase
+
+    _app = wx.App.Get() or wx.App(False)
+    frame = wx.Frame(None)
+    try:
+        toolbar = InlineToolbarBase(frame, frame)
+        label = toolbar.add_icon_label("text", 20)
+        image = label.GetBitmap().ConvertToImage()
+
+        assert image.HasAlpha()
+        assert image.GetAlpha(0, 0) == 0
+        assert any(
+            image.GetAlpha(x, y)
+            for y in range(image.GetHeight())
+            for x in range(image.GetWidth())
+        )
+    finally:
+        frame.Destroy()
