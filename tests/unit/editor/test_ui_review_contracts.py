@@ -1,17 +1,11 @@
 import ast
 from pathlib import Path
 
+from tests._ast_helpers import find_class, find_function, parse_module
 
-def _module(path: str) -> ast.Module:
-    return ast.parse(Path(path).read_text(encoding="utf-8"))
-
-
-def _class(module: ast.Module, name: str) -> ast.ClassDef:
-    return next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == name)
-
-
-def _function(class_node: ast.ClassDef, name: str) -> ast.FunctionDef:
-    return next(node for node in class_node.body if isinstance(node, ast.FunctionDef) and node.name == name)
+_module = parse_module
+_class = find_class
+_function = find_function
 
 
 def _assigned_constant(class_node: ast.ClassDef, name: str):

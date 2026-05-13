@@ -1,23 +1,13 @@
 import ast
 from pathlib import Path
 
-
-def _module(path: str) -> ast.Module:
-    return ast.parse(Path(path).read_text(encoding="utf-8"))
-
-
-def _class(module: ast.Module, name: str) -> ast.ClassDef:
-    return next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == name)
-
-
-def _function(class_node: ast.ClassDef, name: str) -> ast.FunctionDef:
-    return next(node for node in class_node.body if isinstance(node, ast.FunctionDef) and node.name == name)
+from tests._ast_helpers import find_class, find_function, parse_module
 
 
 def test_editor_about_uses_custom_dialog_not_native_about_box():
     source = Path("editor/ui/editor_main_window_wx.py").read_text(encoding="utf-8")
-    main_window = _class(_module("editor/ui/editor_main_window_wx.py"), "MainWindow")
-    about = _function(main_window, "_show_about_dialog")
+    main_window = find_class(parse_module("editor/ui/editor_main_window_wx.py"), "MainWindow")
+    about = find_function(main_window, "_show_about_dialog")
     about_source = ast.get_source_segment(source, about)
 
     assert "AboutDialog" in about_source

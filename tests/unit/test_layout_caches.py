@@ -1,36 +1,20 @@
-"""AST 회귀 테스트 — 2.1.x 인라인 툴바/다이얼로그/타이틀바 캐시.
+"""AST 회귀 테스트 — 인라인 툴바/다이얼로그/타이틀바 캐시.
 
 wx 없이 정적 계약만 검증. 캐시 누락이 다시 들어오면 즉시 실패한다.
 """
 import ast
-from pathlib import Path
 
-
-def _module(path: str) -> tuple[str, ast.Module]:
-    source = Path(path).read_text(encoding="utf-8")
-    return source, ast.parse(source)
-
-
-def _class(module: ast.Module, name: str) -> ast.ClassDef:
-    return next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == name)
-
-
-def _function(class_node: ast.ClassDef, name: str) -> ast.FunctionDef:
-    return next(n for n in class_node.body if isinstance(n, ast.FunctionDef) and n.name == name)
-
-
-def _function_or_method_source(source: str, node: ast.FunctionDef) -> str:
-    return ast.get_source_segment(source, node) or ""
+from tests._ast_helpers import find_class, find_function, function_source, read_module
 
 
 # --- base_toolbar_wx: _calculate_wrapped_height 캐시 ---
 
 
 def test_base_toolbar_caches_wrapped_height():
-    source, module = _module("editor/ui/inline_toolbars/base_toolbar_wx.py")
-    base = _class(module, "InlineToolbarBase")
-    init = _function_or_method_source(source, _function(base, "__init__"))
-    calc = _function_or_method_source(source, _function(base, "_calculate_wrapped_height"))
+    source, module = read_module("editor/ui/inline_toolbars/base_toolbar_wx.py")
+    base = find_class(module, "InlineToolbarBase")
+    init = function_source(source, find_function(base, "__init__"))
+    calc = function_source(source, find_function(base, "_calculate_wrapped_height"))
 
     assert "_wrapped_height_cache" in init, "InlineToolbarBase.__init__ 가 캐시 dict를 초기화하지 않음"
     assert "self._wrapped_height_cache.get(client_width)" in calc, \
@@ -40,14 +24,14 @@ def test_base_toolbar_caches_wrapped_height():
 
 
 def test_base_toolbar_invalidates_cache_on_add_methods():
-    source, module = _module("editor/ui/inline_toolbars/base_toolbar_wx.py")
-    base = _class(module, "InlineToolbarBase")
+    source, module = read_module("editor/ui/inline_toolbars/base_toolbar_wx.py")
+    base = find_class(module, "InlineToolbarBase")
     method_names = {n.name for n in base.body if isinstance(n, ast.FunctionDef)}
     assert "_invalidate_wrapped_height_cache" in method_names, \
         "InlineToolbarBase 에 _invalidate_wrapped_height_cache 메서드가 없음"
 
     for method in ("add_control", "add_icon_label", "add_label", "add_separator"):
-        body = _function_or_method_source(source, _function(base, method))
+        body = function_source(source, find_function(base, method))
         assert "_invalidate_wrapped_height_cache" in body, \
             f"{method} 가 캐시를 무효화하지 않음 (자식 추가 후 stale 캐시 위험)"
 
@@ -56,11 +40,11 @@ def test_base_toolbar_invalidates_cache_on_add_methods():
 
 
 def test_help_dialog_uses_per_page_index_and_last_width():
-    source, module = _module("editor/ui/dialogs/help_dialog_wx.py")
-    cls = _class(module, "HelpDialog")
-    init = _function_or_method_source(source, _function(cls, "__init__"))
-    wrap_visible = _function_or_method_source(source, _function(cls, "_wrap_visible_labels"))
-    wrap_all = _function_or_method_source(source, _function(cls, "_wrap_all_labels"))
+    source, module = read_module("editor/ui/dialogs/help_dialog_wx.py")
+    cls = find_class(module, "HelpDialog")
+    init = function_source(source, find_function(cls, "__init__"))
+    wrap_visible = function_source(source, find_function(cls, "_wrap_visible_labels"))
+    wrap_all = function_source(source, find_function(cls, "_wrap_all_labels"))
 
     assert "_page_wrap_labels" in init, "HelpDialog 가 page-별 라벨 dict 를 초기화하지 않음"
     assert "_last_wrap_widths" in init, "HelpDialog 가 last_wrap_width 캐시를 초기화하지 않음"
@@ -78,8 +62,8 @@ def test_help_dialog_uses_per_page_index_and_last_width():
 
 def test_help_dialog_drops_descendant_walk_helper():
     """더 이상 사용되지 않는 _is_descendant_of 헬퍼는 제거되어야 한다."""
-    _source, module = _module("editor/ui/dialogs/help_dialog_wx.py")
-    cls = _class(module, "HelpDialog")
+    _source, module = read_module("editor/ui/dialogs/help_dialog_wx.py")
+    cls = find_class(module, "HelpDialog")
     method_names = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
     assert "_is_descendant_of" not in method_names, \
         "_is_descendant_of 가 남아 있음 — 캐시 도입 후 dead code"
@@ -89,9 +73,9 @@ def test_help_dialog_drops_descendant_walk_helper():
 
 
 def test_apply_dark_title_bar_is_idempotent():
-    source, module = _module("ui/window_chrome.py")
+    source, module = read_module("ui/window_chrome.py")
     func = next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == "apply_dark_title_bar")
-    body = _function_or_method_source(source, func)
+    body = function_source(source, func)
 
     # 시그니처 캐시 attribute 가 있어야 한다
     assert "_APPLIED_ATTR" in source, "window_chrome 이 멱등성 시그니처 키를 정의하지 않음"

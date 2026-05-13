@@ -6,8 +6,6 @@ download_file() 의 retry/네트워크 분기는 BAT 스모크 검증 영역 (�
 """
 import ast
 import hashlib
-import importlib.util
-import sys
 import types
 from pathlib import Path
 
@@ -81,6 +79,22 @@ def test_download_file_signature_accepts_expected_sha256():
     assert "expected_sha256" in arg_names, "download_file 시그니처에 expected_sha256 누락"
 
 
+def test_download_file_expected_sha256_is_keyword_only():
+    """`expected_sha256` 은 정확성 가드라 positional 6번째로 새는 것을 막는다."""
+    src = Path("BootStrapper/download_utils.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    func = next(
+        n for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == "download_file"
+    )
+    positional = {arg.arg for arg in func.args.args}
+    kwonly = {arg.arg for arg in func.args.kwonlyargs}
+    assert "expected_sha256" in kwonly, \
+        "expected_sha256 가 keyword-only 가 아님 — positional 잠재 오용 위험"
+    assert "expected_sha256" not in positional, \
+        "expected_sha256 가 positional 인자에 노출됨"
+
+
 def test_setup_bat_advises_verifying_microsoft_signature():
     """BAT 가 vc_redist 다운로드 후 코드 서명 검증을 안내해야 한다."""
     bat = Path("BootStrapper/XGif_Setup.bat").read_text(encoding="utf-8")
@@ -88,8 +102,3 @@ def test_setup_bat_advises_verifying_microsoft_signature():
     assert "Microsoft" in bat
     # 다운로드 페이지 URL 은 그대로 유지
     assert "aka.ms/vs/17/release/vc_redist.x64.exe" in bat
-
-
-# `sys` 미사용 경고 회피 (lint helper — 향후 import 정리용 hook).
-_ = sys
-_ = importlib.util

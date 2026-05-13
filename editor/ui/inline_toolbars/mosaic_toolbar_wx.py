@@ -137,6 +137,7 @@ class MosaicToolbar(InlineToolbarBase):
                 self._color_btn.Hide()
             # 강도 컨트롤 활성화/비활성화
             self._strength_spin.Enable(censor_type != "black_bar")
+            self._invalidate_wrapped_height_cache()
             self._controls_sizer.Layout()
 
         self._preview_timer.Start(50, wx.TIMER_ONE_SHOT)

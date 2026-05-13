@@ -149,6 +149,7 @@ class WatermarkToolbar(InlineToolbarBase):
         self._font_spin.Show(is_text)
         self._color_btn.Show(is_text)
         self._image_btn.Show(not is_text)
+        self._invalidate_wrapped_height_cache()
         self._controls_sizer.Layout()
         self._on_setting_changed()
 

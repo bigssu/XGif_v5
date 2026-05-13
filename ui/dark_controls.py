@@ -9,6 +9,7 @@ from `editor/` is sanctioned by `.claude/rules/architecture-boundaries.md`
 from __future__ import annotations
 
 import contextlib
+import sys
 from collections.abc import Iterable
 
 import wx
@@ -27,7 +28,6 @@ def enable_msw_dark_mode(target_wx=wx) -> None:
     No-op on non-Windows platforms and silently tolerates wx builds that omit
     the option. Safe to call multiple times — wx coalesces the option write.
     """
-    import sys
     if sys.platform != 'win32':
         return
     with contextlib.suppress(Exception):
@@ -256,11 +256,9 @@ class DarkSelect(wx.Control):
         enabled = self.IsEnabled()
         parent = self.GetParent()
         parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_CARD
-        state_key = (
-            w, h, self._hovered, self._pressed, enabled, self._value,
-            self._bg.Get(), self._fg.Get(), self._border.Get(),
-            parent_bg.Get() if hasattr(parent_bg, 'Get') else tuple(parent_bg),
-        )
+        # 색상 setter (SetBackgroundColour 등) 가 이미 _cached_bmp = None 으로
+        # 무효화하므로 state_key 에서 색상 필드는 생략한다.
+        state_key = (w, h, self._hovered, self._pressed, enabled, self._value, parent_bg.Get())
         if self._cached_bmp is not None and self._cached_state == state_key:
             dc.DrawBitmap(self._cached_bmp, 0, 0, False)
             return
@@ -508,11 +506,9 @@ class DarkSpinCtrl(wx.Control):
         parent = self.GetParent()
         parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_CARD
         text = self._format_value()
-        state_key = (
-            w, h, self._hovered, self._pressed_part, enabled, text,
-            self._bg.Get(), self._fg.Get(), self._border.Get(),
-            parent_bg.Get() if hasattr(parent_bg, 'Get') else tuple(parent_bg),
-        )
+        # 색상 setter (SetBackgroundColour 등) 가 이미 _cached_bmp = None 으로
+        # 무효화하므로 state_key 에서 색상 필드는 생략한다.
+        state_key = (w, h, self._hovered, self._pressed_part, enabled, text, parent_bg.Get())
         if self._cached_bmp is not None and self._cached_state == state_key:
             dc.DrawBitmap(self._cached_bmp, 0, 0, False)
             return

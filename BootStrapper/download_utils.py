@@ -78,6 +78,7 @@ def download_file(
     progress_cb=None,
     timeout: int = DEFAULT_TIMEOUT,
     max_retries: int = MAX_RETRIES,
+    *,
     expected_sha256: str = "",
 ) -> bool:
     """
@@ -122,7 +123,7 @@ def download_file(
                 log_and_ui(f"다운로드 무결성 검증 실패: {os.path.basename(dest_path)}")
                 with contextlib.suppress(OSError):
                     os.remove(tmp_path)
-                raise OSError(f"SHA-256 mismatch (expected {expected_sha256[:12]}…)")
+                raise OSError(f"SHA-256 mismatch (expected {expected_sha256[:12]}...)")
 
             # Atomic rename
             if os.path.exists(dest_path):
