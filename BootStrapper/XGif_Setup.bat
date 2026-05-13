@@ -35,6 +35,9 @@ if "!VCRT_OK!"=="0" (
     echo   자동으로 다운로드 페이지를 엽니다...
     start "" "https://aka.ms/vs/17/release/vc_redist.x64.exe"
     echo.
+    echo   * 다운로드한 파일은 Microsoft 코드 서명을 확인 후 실행하세요.
+    echo     (파일 우클릭 ^> 속성 ^> 디지털 서명 탭에서 'Microsoft Corporation' 확인)
+    echo.
     echo   설치 완료 후 아무 키나 누르세요...
     pause >nul
     echo.

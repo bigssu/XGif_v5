@@ -11,6 +11,8 @@
 - `scripts/sign_exe.ps1` 와 `scripts/create_selfsign_cert.ps1` 의 `-Password` 파라미터를 `[System.Security.SecureString]` 으로 강제. 평문 `[string]` 입력 경로 제거.
 - 양 스크립트가 `XGIF_SIGN_PASSWORD` 와 `XGIF_PFX_PASSWORD` 환경변수 alias 를 모두 인식, 받은 평문은 즉시 SecureString 으로 승격하고 원본 env 변수를 비움.
 - signtool 호출 직전에만 BSTR 추출 + 호출 직후 `ZeroFreeBSTR` 로 메모리 zero out, 평문 잔류 위험 최소화.
+- BootStrapper `download_file()` 에 `expected_sha256` 옵셔널 인자 도입. 다운로드 직후 `.part` 단계에서 SHA-256 검증, 불일치 시 자동 재시도.
+- `BootStrapper/XGif_Setup.bat` 가 VC++ Redistributable 다운로드 후 Microsoft 코드 서명 확인을 사용자에게 안내.
 
 ### 수정
 - `pyproject.toml` 의 `version` 을 `core/version.py` 의 SSoT(`2.1.0`) 에 맞춰 동기화.

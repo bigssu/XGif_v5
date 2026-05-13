@@ -2,6 +2,7 @@
 download_utils.py – Robust HTTP downloader with progress callbacks and retry.
 """
 
+import hashlib
 import os
 import socket
 import ssl
@@ -49,18 +50,43 @@ def check_connectivity(timeout: int = 5) -> bool:
     return False
 
 
+def verify_sha256(path: str, expected_hex: str, *, chunk_size: int = CHUNK_SIZE) -> bool:
+    """Return True if *path* hashes to *expected_hex* (case-insensitive SHA-256).
+
+    Reads in CHUNK_SIZE blocks so large installers (50–100 MB) don't load
+    fully into memory. Returns False on missing file or hash mismatch.
+    """
+    if not expected_hex:
+        return True
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as f:
+            while True:
+                block = f.read(chunk_size)
+                if not block:
+                    break
+                digest.update(block)
+        actual = digest.hexdigest().lower()
+        return actual == expected_hex.lower()
+    except (OSError, ValueError):
+        return False
+
+
 def download_file(
     url: str,
     dest_path: str,
     progress_cb=None,
     timeout: int = DEFAULT_TIMEOUT,
     max_retries: int = MAX_RETRIES,
+    expected_sha256: str = "",
 ) -> bool:
     """
     Download *url* to *dest_path*.
 
     progress_cb(downloaded_bytes, total_bytes_or_none) is called periodically.
-    Returns True on success.
+    If *expected_sha256* is provided, the downloaded file is hash-verified and
+    deleted on mismatch (treated as a failed attempt — retried up to
+    *max_retries* times). Returns True on success.
     """
     logger = get_logger()
     dest_dir = os.path.dirname(dest_path)
@@ -89,6 +115,14 @@ def download_file(
                     downloaded += len(chunk)
                     if progress_cb:
                         progress_cb(downloaded, total)
+
+            # SHA-256 검증: 부분 다운로드를 .part 상태에서 검증, 불일치 시 폐기
+            if expected_sha256 and not verify_sha256(tmp_path, expected_sha256):
+                logger.warning("SHA-256 mismatch for %s (expected %s)", url, expected_sha256)
+                log_and_ui(f"다운로드 무결성 검증 실패: {os.path.basename(dest_path)}")
+                with contextlib.suppress(OSError):
+                    os.remove(tmp_path)
+                raise OSError(f"SHA-256 mismatch (expected {expected_sha256[:12]}…)")
 
             # Atomic rename
             if os.path.exists(dest_path):
