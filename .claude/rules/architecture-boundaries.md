@@ -39,6 +39,21 @@ import wx  # GUI 모드에서만 도달
 - `editor/`는 `python -m editor`로 독립 실행 가능하다.
 - 에디터 진입점: `editor/__main__.py`
 
+## editor/ → ui/ 공유 위젯 import 정책
+`editor/` 는 `ui/` 의 **공유 위젯·테마·상수 모듈**을 import 할 수 있다. 단,
+`ui/main_window.py` 같은 컴포지트 화면 모듈은 import 금지.
+
+| 분류 | 모듈 | editor/ import 허용 여부 |
+|------|------|-----------------------|
+| 공유 위젯 (wx-only, 단일 책임) | `ui/dark_controls.py`, `ui/window_chrome.py` | ✅ 허용 |
+| 테마/스타일 상수 | `ui/theme.py` | ✅ 허용 |
+| 국제화 | `ui/i18n.py` | ✅ 허용 |
+| 의존성 다이얼로그 | `ui/dependency_dialogs.py`, `ui/startup_check_dialog.py` | ✅ 허용 |
+| 메인 윈도우/컴포지트 | `ui/main_window.py`, `ui/capture_control_bar.py` 등 | ❌ 금지 |
+
+신규 공유 모듈을 추가할 때 위 표에 등재한다. 표에 없는 `ui/` 모듈을 `editor/`
+에서 import 해야 한다면 먼저 표를 갱신하여 정책을 명문화하라.
+
 ## BootStrapper 격리
 - `BootStrapper/`는 XGif 본체와 완전히 독립된 별도 애플리케이션이다.
 - XGif 본체 코드(`main.py`, `ui/`, `core/`, `cli/`, `editor/`)에서 `BootStrapper/`를 import하지 않는다.

@@ -24,12 +24,8 @@ def main():
         print("pip install wxPython 명령으로 설치해주세요.")
         sys.exit(1)
 
-    if sys.platform == 'win32':
-        import contextlib
-        with contextlib.suppress(Exception):
-            wx.SystemOptions.SetOption("msw.dark-mode", 2)
-
-    from ui.dark_controls import install_dark_controls
+    from ui.dark_controls import enable_msw_dark_mode, install_dark_controls
+    enable_msw_dark_mode(wx)
     install_dark_controls(wx)
 
     # wxPython 앱 생성

@@ -1,13 +1,37 @@
-"""Small owner-drawn controls for dark wx/MSW tool surfaces."""
+"""Small owner-drawn controls for dark wx/MSW tool surfaces.
+
+Architecture note: this module is a wx-only shared widget surface in `ui/`.
+Both `main.py` and `editor/__main__.py` import it. The cross-package import
+from `editor/` is sanctioned by `.claude/rules/architecture-boundaries.md`
+("editor/ → ui/ 공유 위젯 import 정책").
+"""
 
 from __future__ import annotations
 
 import contextlib
-from typing import Iterable
+from collections.abc import Iterable
 
 import wx
 
 from ui.theme import Colors, Fonts
+
+
+# msw.dark-mode value used by wx 4.2.x to opt-in to native dark frame chrome.
+# Centralised here so the `wx` magic number lives in one place.
+_MSW_DARK_MODE_VALUE = 2
+
+
+def enable_msw_dark_mode(target_wx=wx) -> None:
+    """Opt the current process into wx's MSW dark frame chrome.
+
+    No-op on non-Windows platforms and silently tolerates wx builds that omit
+    the option. Safe to call multiple times — wx coalesces the option write.
+    """
+    import sys
+    if sys.platform != 'win32':
+        return
+    with contextlib.suppress(Exception):
+        target_wx.SystemOptions.SetOption("msw.dark-mode", _MSW_DARK_MODE_VALUE)
 
 
 class DarkSelect(wx.Control):
@@ -43,6 +67,8 @@ class DarkSelect(wx.Control):
         self._bg = Colors.BG_INPUT_DARK
         self._fg = Colors.TEXT_PRIMARY
         self._border = Colors.BORDER
+        self._cached_bmp = None
+        self._cached_state = None
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         self.SetMinSize(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
@@ -59,16 +85,19 @@ class DarkSelect(wx.Control):
 
     def SetBackgroundColour(self, colour):
         self._bg = colour
+        self._cached_bmp = None
         self.Refresh()
         return True
 
     def SetForegroundColour(self, colour):
         self._fg = colour
+        self._cached_bmp = None
         self.Refresh()
         return True
 
     def SetBorderColour(self, colour):
         self._border = colour
+        self._cached_bmp = None
         self.Refresh()
         return True
 
@@ -76,6 +105,7 @@ class DarkSelect(wx.Control):
         changed = super().Enable(enable)
         self._hovered = False
         self._pressed = False
+        self._cached_bmp = None
         self.Refresh()
         return changed
 
@@ -83,6 +113,7 @@ class DarkSelect(wx.Control):
         self._choices.clear()
         self._selection = -1
         self._value = ""
+        self._cached_bmp = None
         self.Refresh()
 
     def Append(self, item, *_args):
@@ -116,6 +147,7 @@ class DarkSelect(wx.Control):
         else:
             self._selection = -1
             self._value = ""
+        self._cached_bmp = None
         self.Refresh()
 
     def GetSelection(self):
@@ -125,6 +157,7 @@ class DarkSelect(wx.Control):
         value = str(value)
         self._value = value
         self._selection = self.FindString(value)
+        self._cached_bmp = None
         self.Refresh()
 
     def GetValue(self):
@@ -220,16 +253,25 @@ class DarkSelect(wx.Control):
         if w <= 0 or h <= 0:
             return
 
-        bmp = wx.Bitmap(w, h)
-        mem = wx.MemoryDC(bmp)
+        enabled = self.IsEnabled()
         parent = self.GetParent()
         parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_CARD
+        state_key = (
+            w, h, self._hovered, self._pressed, enabled, self._value,
+            self._bg.Get(), self._fg.Get(), self._border.Get(),
+            parent_bg.Get() if hasattr(parent_bg, 'Get') else tuple(parent_bg),
+        )
+        if self._cached_bmp is not None and self._cached_state == state_key:
+            dc.DrawBitmap(self._cached_bmp, 0, 0, False)
+            return
+
+        bmp = wx.Bitmap(w, h)
+        mem = wx.MemoryDC(bmp)
         mem.SetBackground(wx.Brush(parent_bg))
         mem.Clear()
 
         gc = wx.GraphicsContext.Create(mem)
         if gc:
-            enabled = self.IsEnabled()
             bg = Colors.BG_SUNKEN if not enabled else Colors.BG_HOVER if self._hovered else self._bg
             fg = self._fg if enabled else Colors.TEXT_MUTED
             border = Colors.BORDER_HOVER if self._hovered and enabled else self._border
@@ -253,6 +295,8 @@ class DarkSelect(wx.Control):
             gc.StrokePath(path)
 
         mem.SelectObject(wx.NullBitmap)
+        self._cached_bmp = bmp
+        self._cached_state = state_key
         dc.DrawBitmap(bmp, 0, 0, False)
 
 
@@ -286,6 +330,11 @@ class DarkSpinCtrl(wx.Control):
         self._hovered = False
         self._pressed_part = None
         self._value = self._coerce(value if value != "" else initial)
+        self._bg = Colors.BG_INPUT_DARK
+        self._fg = Colors.TEXT_PRIMARY
+        self._border = Colors.BORDER_SOFT
+        self._cached_bmp = None
+        self._cached_state = None
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         self.SetMinSize(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
@@ -299,15 +348,21 @@ class DarkSpinCtrl(wx.Control):
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
         self.Bind(wx.EVT_MOUSEWHEEL, self._on_wheel)
 
-    def SetBackgroundColour(self, _colour):
+    def SetBackgroundColour(self, colour):
+        self._bg = colour
+        self._cached_bmp = None
         self.Refresh()
         return True
 
-    def SetForegroundColour(self, _colour):
+    def SetForegroundColour(self, colour):
+        self._fg = colour
+        self._cached_bmp = None
         self.Refresh()
         return True
 
-    def SetBorderColour(self, _colour):
+    def SetBorderColour(self, colour):
+        self._border = colour
+        self._cached_bmp = None
         self.Refresh()
         return True
 
@@ -315,6 +370,7 @@ class DarkSpinCtrl(wx.Control):
         changed = super().Enable(enable)
         self._hovered = False
         self._pressed_part = None
+        self._cached_bmp = None
         self.Refresh()
         return changed
 
@@ -342,6 +398,7 @@ class DarkSpinCtrl(wx.Control):
 
     def SetDigits(self, digits):
         self._digits = int(digits)
+        self._cached_bmp = None
         self.Refresh()
 
     def GetValue(self):
@@ -349,6 +406,7 @@ class DarkSpinCtrl(wx.Control):
 
     def SetValue(self, value):
         self._value = self._coerce(value)
+        self._cached_bmp = None
         self.Refresh()
 
     def GetBestSize(self):
@@ -446,27 +504,36 @@ class DarkSpinCtrl(wx.Control):
         if w <= 0 or h <= 0:
             return
 
-        bmp = wx.Bitmap(w, h)
-        mem = wx.MemoryDC(bmp)
+        enabled = self.IsEnabled()
         parent = self.GetParent()
         parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_CARD
+        text = self._format_value()
+        state_key = (
+            w, h, self._hovered, self._pressed_part, enabled, text,
+            self._bg.Get(), self._fg.Get(), self._border.Get(),
+            parent_bg.Get() if hasattr(parent_bg, 'Get') else tuple(parent_bg),
+        )
+        if self._cached_bmp is not None and self._cached_state == state_key:
+            dc.DrawBitmap(self._cached_bmp, 0, 0, False)
+            return
+
+        bmp = wx.Bitmap(w, h)
+        mem = wx.MemoryDC(bmp)
         mem.SetBackground(wx.Brush(parent_bg))
         mem.Clear()
 
         gc = wx.GraphicsContext.Create(mem)
         if gc:
-            enabled = self.IsEnabled()
-            bg = Colors.BG_SUNKEN if not enabled else Colors.BG_HOVER if self._hovered else Colors.BG_INPUT_DARK
-            fg = Colors.TEXT_PRIMARY if enabled else Colors.TEXT_MUTED
+            bg = Colors.BG_SUNKEN if not enabled else Colors.BG_HOVER if self._hovered else self._bg
+            fg = self._fg if enabled else Colors.TEXT_MUTED
             icon_fg = Colors.TEXT_SECONDARY if enabled else Colors.TEXT_MUTED
             gc.SetBrush(wx.Brush(bg))
-            gc.SetPen(wx.Pen(Colors.BORDER_HOVER if self._hovered and enabled else Colors.BORDER_SOFT, 1))
+            gc.SetPen(wx.Pen(Colors.BORDER_HOVER if self._hovered and enabled else self._border, 1))
             gc.DrawRoundedRectangle(0.5, 0.5, w - 1, h - 1, 4)
             gc.SetPen(wx.Pen(Colors.BORDER_SOFT, 1))
             gc.StrokeLine(w - 20, 4, w - 20, h - 4)
             gc.StrokeLine(w - 19, h / 2, w - 3, h / 2)
             gc.SetFont(self.GetFont(), fg)
-            text = self._format_value()
             tw, th = gc.GetTextExtent(text)[:2]
             gc.DrawText(text, max(6, (w - 22 - tw) / 2), (h - th) / 2)
             gc.SetPen(wx.Pen(icon_fg, 1))
@@ -485,6 +552,8 @@ class DarkSpinCtrl(wx.Control):
                 gc.StrokePath(path)
 
         mem.SelectObject(wx.NullBitmap)
+        self._cached_bmp = bmp
+        self._cached_state = state_key
         dc.DrawBitmap(bmp, 0, 0, False)
 
 
