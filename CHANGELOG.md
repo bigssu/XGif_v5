@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Deprecated (예정)
+- `editor/ui/icon_utils_wx.py` 의 레거시 `_draw_*` 메서드(약 700 LOC) — 2.2.0 에서 Registry 패턴 마이그레이션과 함께 일괄 삭제 예정.
+
+### 보안 / 안전성
+- 도움말 다이얼로그의 `mailto` 주제 문자열을 `urllib.parse.quote` 로 인코딩하여 향후 사용자 입력 확장 시 URL 인젝션 위험을 사전 차단.
+- `scripts/sign_exe.ps1` 문서 예시에서 유사-실제 PFX 비밀번호를 `<your-pfx-password>` placeholder 로 치환하고 환경변수 `XGIF_SIGN_PASSWORD` 사용을 권장 사용법으로 격상.
+
+### 수정
+- `pyproject.toml` 의 `version` 을 `core/version.py` 의 SSoT(`2.1.0`) 에 맞춰 동기화.
+
 ## [2.1.0] - 2026-05-13
 
 ### 변경

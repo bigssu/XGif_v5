@@ -5,6 +5,7 @@ HelpDialog - 메인 앱 도움말 다이얼로그 (wxPython)
 non-modal (Show) 로 사용하여 녹화 등 다른 기능을 방해하지 않음.
 """
 import webbrowser
+from urllib.parse import quote
 import wx
 from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr
@@ -77,7 +78,7 @@ class HelpDialog(ThemedDialog):
         webbrowser.open(GITHUB_URL)
 
     def _on_bug_report(self, event):
-        subject = f"[XGif v{APP_VERSION}] Bug Report"
+        subject = quote(f"[XGif v{APP_VERSION}] Bug Report")
         webbrowser.open(f"mailto:{BUG_REPORT_EMAIL}?subject={subject}")
 
     def _create_tab(self, parent, text):

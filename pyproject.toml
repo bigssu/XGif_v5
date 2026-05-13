@@ -1,6 +1,6 @@
 [project]
 name = "xgif"
-version = "2.0.1"
+version = "2.1.0"
 description = "Windows용 GIF/MP4 화면 녹화 프로그램"
 readme = "README.md"
 license = {text = "MIT"}

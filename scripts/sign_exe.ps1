@@ -1,8 +1,12 @@
 # sign_exe.ps1 — XGif EXE/인스톨러 코드 서명
 #
-# 사용법:
-#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx -Password "XGif2024!"
-#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx -Password "XGif2024!" -ExePaths "dist\XGif.exe","dist\XGif_Setup_0.56.exe"
+# 사용법 (권장: 환경변수 XGIF_SIGN_PASSWORD 사용):
+#   $env:XGIF_SIGN_PASSWORD = '<your-pfx-password>'
+#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx
+#
+# 사용법 (대안 — 명령행에서 비밀번호 노출됨, 디버그용으로만 사용):
+#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx -Password '<your-pfx-password>'
+#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx -Password '<your-pfx-password>' -ExePaths "dist\XGif.exe","dist\XGif_Setup_0.56.exe"
 
 param(
     [Parameter(Mandatory=$true)]
