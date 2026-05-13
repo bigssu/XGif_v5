@@ -233,7 +233,6 @@ Root           | -        | 1           | 진입점 (main.py)
 
 [부트스트래퍼 진입점]
 - F:\ProjectX\XGif_V6\BootStrapper/XGif_Setup.bat
-  - BAT 파일 (Defender 차단 우회)
   - Python 3.11 embedded, FFmpeg, 의존성 설치
 
 

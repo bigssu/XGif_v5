@@ -6,7 +6,8 @@ PyQt6 QTableWidget를 wx.grid.Grid로 마이그레이션
 import wx
 import wx.grid as grid
 from typing import TYPE_CHECKING, List
-from .style_constants_wx import Colors
+from .style_constants_wx import Colors, Fonts
+from .icon_toolbar_wx import FlatIconButton
 from ..utils.wx_events import (
     FrameSelectedEvent, FrameDeletedEvent, FrameDelayChangedEvent
 )
@@ -38,7 +39,7 @@ class FrameListWidget(wx.Panel):
         translations = getattr(self._main_window, '_translations', None)
 
         # 프레임 그리드 생성
-        self._grid = grid.Grid(self)
+        self._grid = grid.Grid(self, style=wx.BORDER_NONE)
         self._grid.CreateGrid(0, 2)  # 0행, 2열로 시작
 
         # 헤더 설정
@@ -58,8 +59,8 @@ class FrameListWidget(wx.Panel):
         self._grid.EnableDragGridSize(False)  # 그리드 크기 조정 비활성화
 
         # 컬럼 크기 설정
-        self._grid.SetColSize(0, 50)  # 번호 컬럼 (42 * 1.2)
-        self._grid.SetColSize(1, 120)  # 프레임 시간 컬럼 (150 * 0.8)
+        self._grid.SetColSize(0, 48)
+        self._grid.SetColSize(1, 104)
         self._grid.SetColFormatFloat(1, -1, 2)  # 시간 컬럼은 float 형식
 
         # 컬럼 0은 읽기 전용
@@ -74,13 +75,7 @@ class FrameListWidget(wx.Panel):
         self._grid.SetColAttr(1, attr_time)
 
         # 그리드 스타일 설정
-        self._grid.SetDefaultCellBackgroundColour(Colors.BG_PRIMARY)
-        self._grid.SetDefaultCellTextColour(Colors.TEXT_PRIMARY)
-        self._grid.SetLabelBackgroundColour(Colors.BG_TERTIARY)
-        self._grid.SetLabelTextColour(Colors.TEXT_PRIMARY)
-        self._grid.SetGridLineColour(Colors.BG_TERTIARY)
-        self._grid.SetSelectionBackground(Colors.ACCENT)
-        self._grid.SetSelectionForeground(Colors.TEXT_PRIMARY)
+        self._apply_grid_palette()
 
         # 이벤트 바인딩
         # 선택 변경 감지를 위한 여러 이벤트
@@ -90,6 +85,7 @@ class FrameListWidget(wx.Panel):
         self._grid.Bind(grid.EVT_GRID_CELL_CHANGED, self._on_cell_changed)
         self._grid.Bind(grid.EVT_GRID_CELL_LEFT_DCLICK, self._on_cell_double_clicked)
         self._grid.Bind(grid.EVT_GRID_CELL_RIGHT_CLICK, self._on_right_click)
+        self._grid.Bind(wx.EVT_SIZE, self._on_grid_size)
         self._grid.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
 
         # 선택 변경 감지용 타이머 (안전장치)
@@ -100,36 +96,80 @@ class FrameListWidget(wx.Panel):
         # 윈도우 파괴 시 타이머 정리
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_frame_list_destroy)
 
-        main_sizer.Add(self._grid, 1, wx.EXPAND | wx.ALL, 0)
+        main_sizer.Add(self._grid, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 1)
 
         # 하단 버튼 영역
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 삭제 버튼 (휴지통 아이콘)
         delete_tooltip = translations.tr("frame_list_delete_tooltip") if translations else "선택한 프레임 삭제 (Delete)"
-        self._delete_btn = self._create_icon_button("🗑️", delete_tooltip)
+        self._delete_btn = self._create_icon_button("delete", delete_tooltip)
         self._delete_btn.Bind(wx.EVT_BUTTON, self._on_delete_clicked)
         button_sizer.Add(self._delete_btn, 0, wx.ALL, 5)
 
         # 시간 설정 버튼 (시계 아이콘)
         time_tooltip = translations.tr("frame_list_time_tooltip") if translations else "선택한 프레임 시간 일괄 설정"
-        self._time_btn = self._create_icon_button("⏱️", time_tooltip)
+        self._time_btn = self._create_icon_button("time", time_tooltip)
         self._time_btn.Bind(wx.EVT_BUTTON, self._on_time_clicked)
         button_sizer.Add(self._time_btn, 0, wx.ALL, 5)
 
         # 프레임 추가 버튼 (플러스 아이콘)
         add_tooltip = translations.tr("frame_list_add_tooltip") if translations else "프레임 복제"
-        self._add_btn = self._create_icon_button("➕", add_tooltip)
+        self._add_btn = self._create_icon_button("add", add_tooltip)
         self._add_btn.Bind(wx.EVT_BUTTON, self._on_add_clicked)
         button_sizer.Add(self._add_btn, 0, wx.ALL, 5)
 
         button_sizer.AddStretchSpacer()
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.TOP, 1)
 
         self.SetSizer(main_sizer)
 
         # 배경색 설정
-        self.SetBackgroundColour(Colors.BG_PRIMARY)
+        self.SetBackgroundColour(Colors.FRAME_LIST_RAIL)
+
+    def _apply_grid_palette(self):
+        """프레임 리스트 전용 저대비 팔레트 적용."""
+        with contextlib.suppress(Exception):
+            self._grid.UseNativeColHeader(False)
+        with contextlib.suppress(Exception):
+            self._grid.ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)
+        with contextlib.suppress(Exception):
+            self._grid.SetMargins(0, 0)
+
+        self._grid.SetBackgroundColour(Colors.FRAME_LIST_BG)
+        self._grid.SetDefaultCellBackgroundColour(Colors.FRAME_LIST_ROW_BG)
+        self._grid.SetDefaultCellTextColour(Colors.TEXT_SECONDARY)
+        self._grid.SetLabelBackgroundColour(Colors.FRAME_LIST_HEADER_BG)
+        self._grid.SetLabelTextColour(Colors.TEXT_SECONDARY)
+        self._grid.SetGridLineColour(Colors.FRAME_LIST_GRID)
+        self._grid.SetSelectionBackground(Colors.FRAME_LIST_SELECTED_BG)
+        self._grid.SetSelectionForeground(Colors.FRAME_LIST_SELECTED_FG)
+        self._grid.SetDefaultCellAlignment(wx.ALIGN_CENTER, wx.ALIGN_CENTER)
+        self._grid.SetColLabelAlignment(wx.ALIGN_CENTER, wx.ALIGN_CENTER)
+        self._grid.SetDefaultCellFont(Fonts.get_font(Fonts.SIZE_SMALL))
+        self._grid.SetLabelFont(Fonts.get_font(Fonts.SIZE_SMALL, bold=True))
+        self._grid.SetColLabelSize(28)
+        self._grid.SetDefaultRowSize(24, True)
+        self._grid.SetRowMinimalAcceptableHeight(22)
+        self._grid.SetCellHighlightPenWidth(0)
+        self._grid.SetCellHighlightROPenWidth(0)
+
+    def _style_row(self, row: int):
+        bg = Colors.FRAME_LIST_ROW_ALT_BG if row % 2 else Colors.FRAME_LIST_ROW_BG
+        for col in range(self._grid.GetNumberCols()):
+            self._grid.SetCellBackgroundColour(row, col, bg)
+            self._grid.SetCellTextColour(row, col, Colors.TEXT_SECONDARY)
+
+    def _on_grid_size(self, event):
+        width = self._grid.GetClientSize().width
+        if width > 20:
+            number_width = 46
+            time_width = max(82, width - number_width - 4)
+            if self._grid.GetColSize(0) != number_width:
+                self._grid.SetColSize(0, number_width)
+            if self._grid.GetColSize(1) != time_width:
+                self._grid.SetColSize(1, time_width)
+        event.Skip()
 
     def _on_frame_list_destroy(self, event):
         """윈도우 파괴 시 타이머 정리 (PyDeadObjectError 방지)"""
@@ -138,13 +178,9 @@ class FrameListWidget(wx.Panel):
                 self._selection_timer.Stop()
         event.Skip()
 
-    def _create_icon_button(self, icon_text: str, tooltip: str) -> wx.Button:
-        """아이콘 버튼 생성 (임시: 텍스트 기반)"""
-        btn = wx.Button(self, label=icon_text, size=(32, 32))
-        btn.SetToolTip(tooltip)
-        btn.SetBackgroundColour(Colors.BG_TERTIARY)
-        btn.SetForegroundColour(Colors.TEXT_PRIMARY)
-        return btn
+    def _create_icon_button(self, icon_type: str, tooltip: str) -> FlatIconButton:
+        """프레임 리스트용 아이콘 버튼 생성."""
+        return FlatIconButton(icon_type, tooltip, self, size=(36, 36))
 
     def refresh(self):
         """프레임 목록 새로고침"""
@@ -202,6 +238,7 @@ class FrameListWidget(wx.Panel):
                 if not hasattr(self, '_cell_data'):
                     self._cell_data = {}
                 self._cell_data[(i, 1)] = delay_ms
+                self._style_row(i)
 
             except Exception:
                 continue

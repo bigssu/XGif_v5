@@ -11,24 +11,9 @@ echo.
 cd /d "%~dp0"
 
 :: ================================================================
-:: STEP 1 - SmartScreen / Zone.Identifier 제거
+:: STEP 1 - VC++ Runtime Check
 :: ================================================================
-echo [1/3] Windows Defender SmartScreen 우회 준비...
-echo ----------------------------------------
-
-:: 모든 exe/dll 파일의 Zone.Identifier 제거 (하위 폴더 포함 — _internal 등)
-set "UNBLOCK_COUNT=0"
-for /R "%~dp0" %%F in (*.exe *.dll *.pyd) do (
-    powershell.exe -Command "Remove-Item -LiteralPath '%%F' -Stream Zone.Identifier -ErrorAction SilentlyContinue" 2>nul
-    set /a UNBLOCK_COUNT+=1
-)
-echo   [OK] !UNBLOCK_COUNT!개 파일 차단 해제 완료 (exe/dll/pyd, 하위 폴더 포함)
-echo.
-
-:: ================================================================
-:: STEP 2 - VC++ Runtime Check
-:: ================================================================
-echo [2/3] VC++ Runtime Check
+echo [1/2] VC++ Runtime Check
 echo ----------------------------------------
 
 set "VCRT_OK=0"
@@ -64,9 +49,9 @@ if "!VCRT_OK!"=="0" (
 )
 
 :: ================================================================
-:: STEP 3 - XGif Bootstrapper 실행 (의존성 설치)
+:: STEP 2 - XGif Bootstrapper 실행 (의존성 설치)
 :: ================================================================
-echo [3/3] XGif Bootstrapper 실행
+echo [2/2] XGif Bootstrapper 실행
 echo ----------------------------------------
 
 :: Bootstrap exe 찾기 (버전 포함 파일명 지원)

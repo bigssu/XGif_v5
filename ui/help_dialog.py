@@ -8,7 +8,7 @@ import webbrowser
 import wx
 from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr
-from core.version import APP_VERSION
+from core.version import APP_DEVELOPER, APP_LAST_MODIFIED, APP_VERSION
 
 GITHUB_URL = "https://github.com/bigssu/XGif_v5"
 BUG_REPORT_EMAIL = "sungwook@krafton.com"
@@ -116,7 +116,9 @@ class HelpDialog(ThemedDialog):
             f"GitHub: {GITHUB_URL}\n"
             f"버그 신고: {BUG_REPORT_EMAIL}\n"
             "\n"
-            f"v{APP_VERSION}  by 서승욱"
+            f"버전: v{APP_VERSION}\n"
+            f"마지막 수정일: {APP_LAST_MODIFIED}\n"
+            f"개발자: {APP_DEVELOPER}"
         )
 
     @staticmethod

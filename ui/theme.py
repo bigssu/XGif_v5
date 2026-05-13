@@ -9,117 +9,151 @@ class Colors:
     """색상 팔레트 (wxPython wx.Colour 객체)"""
 
     # 배경색
-    BG_PRIMARY = wx.Colour(32, 32, 32)       # 메인 배경
-    BG_SECONDARY = wx.Colour(28, 28, 28)     # 보조 배경
-    BG_TERTIARY = wx.Colour(55, 55, 55)      # 입력 필드, 버튼 배경
-    BG_HOVER = wx.Colour(70, 70, 70)         # 호버 상태
-    BG_PRESSED = wx.Colour(45, 45, 45)       # 눌림 상태
-    BG_SELECTED = wx.Colour(0, 120, 212)     # 선택 상태
-    BG_TOOLBAR = wx.Colour(45, 45, 45)       # 인라인 툴바 배경
-    BG_PANEL = wx.Colour(40, 40, 40)         # 패널 배경
-    BG_CANVAS = wx.Colour(50, 50, 50)        # 캔버스 배경
+    BG_PRIMARY = wx.Colour(8, 10, 14)        # 메인 배경
+    BG_SECONDARY = wx.Colour(18, 23, 31)     # 보조 배경
+    BG_TERTIARY = wx.Colour(42, 52, 68)      # 입력 필드, 버튼 배경
+    BG_HOVER = wx.Colour(58, 70, 89)         # 호버 상태
+    BG_PRESSED = wx.Colour(24, 30, 40)       # 눌림 상태
+    BG_SELECTED = wx.Colour(76, 141, 245)    # 선택 상태
+    BG_TOOLBAR = wx.Colour(25, 31, 41)       # 인라인 툴바 배경
+    BG_PANEL = wx.Colour(22, 28, 38)         # 패널 배경
+    BG_CANVAS = wx.Colour(5, 7, 10)          # 캔버스 배경
+    BG_SUNKEN = wx.Colour(7, 9, 13)          # 안쪽 작업면
+    BG_CARD = wx.Colour(32, 40, 54)          # 카드/바 기본 표면
+    BG_CARD_ALT = wx.Colour(44, 55, 72)      # 한 단계 올라온 표면
+    BG_RAISED = wx.Colour(53, 65, 84)        # 강조 표면
+    BG_INPUT = wx.Colour(38, 48, 63)         # 입력 컨트롤
+    BG_INPUT_DARK = wx.Colour(36, 45, 60)    # 드롭다운/숫자 필드
 
     # 테두리
-    BORDER = wx.Colour(60, 60, 60)
-    BORDER_HOVER = wx.Colour(80, 80, 80)
-    BORDER_FOCUS = wx.Colour(0, 120, 212)
+    BORDER = wx.Colour(69, 84, 106)
+    BORDER_SOFT = wx.Colour(48, 60, 78)
+    BORDER_HOVER = wx.Colour(91, 109, 134)
+    BORDER_FOCUS = wx.Colour(102, 169, 255)
+    BORDER_STRONG = wx.Colour(76, 90, 108)
+    DIVIDER = wx.Colour(54, 67, 86)
+    DIVIDER_SUBTLE = wx.Colour(33, 42, 56)
+    RAIL_BG = wx.Colour(20, 26, 35)
+    RAIL_BG_ALT = wx.Colour(13, 17, 24)
+    SURFACE_HIGHLIGHT = wx.Colour(79, 94, 116)
+    SURFACE_SHADOW = wx.Colour(3, 5, 8)
 
     # 텍스트
-    TEXT_PRIMARY = wx.Colour(255, 255, 255)
-    TEXT_SECONDARY = wx.Colour(180, 180, 180)
-    TEXT_MUTED = wx.Colour(136, 136, 136)
+    TEXT_PRIMARY = wx.Colour(244, 247, 250)
+    TEXT_SECONDARY = wx.Colour(185, 195, 207)
+    TEXT_MUTED = wx.Colour(125, 138, 153)
 
     # 강조색
-    ACCENT = wx.Colour(0, 120, 212)
-    ACCENT_HOVER = wx.Colour(26, 145, 235)
-    ACCENT_PRESSED = wx.Colour(0, 95, 170)
-    SUCCESS = wx.Colour(129, 199, 132)
-    WARNING = wx.Colour(255, 167, 38)
-    DANGER = wx.Colour(255, 107, 107)
-    INFO = wx.Colour(79, 195, 247)
-    VERSION_ACCENT = wx.Colour(0, 170, 255)
-    GPU_ON = wx.Colour(76, 175, 80)          # 에디터 GPU 활성
-    GPU_OFF = wx.Colour(136, 136, 136)       # 에디터 GPU 비활성
+    ACCENT = wx.Colour(94, 162, 255)
+    ACCENT_HOVER = wx.Colour(116, 179, 255)
+    ACCENT_PRESSED = wx.Colour(64, 132, 226)
+    ACCENT_SOFT = wx.Colour(94, 162, 255, 42)
+    SUCCESS = wx.Colour(86, 198, 139)
+    WARNING = wx.Colour(232, 171, 74)
+    DANGER = wx.Colour(239, 105, 115)
+    INFO = wx.Colour(91, 196, 228)
+    VERSION_ACCENT = wx.Colour(116, 179, 255)
+    GPU_ON = wx.Colour(86, 198, 139)         # 에디터 GPU 활성
+    GPU_OFF = wx.Colour(125, 138, 153)       # 에디터 GPU 비활성
+    CROP_ACCENT = wx.Colour(232, 171, 74)
+    MOSAIC_ACCENT = wx.Colour(184, 132, 255)
+    BUBBLE_ACCENT = wx.Colour(86, 198, 139)
+    OVERLAY_TEXT_ACCENT = wx.Colour(94, 162, 255)
 
     # 메뉴바
-    BG_MENUBAR = wx.Colour(38, 38, 38)
-    MENU_LABEL_HOVER = wx.Colour(60, 60, 60)
+    BG_MENUBAR = wx.Colour(22, 25, 30)
+    MENU_LABEL_HOVER = wx.Colour(38, 43, 51)
 
     # 툴바 버튼 (FlatIconButton)
-    ICON_BTN_HOVER = wx.Colour(55, 55, 55)
-    ICON_BTN_PRESSED = wx.Colour(42, 42, 42)
-    ICON_BTN_ACTIVE = wx.Colour(0, 120, 212, 60)
+    ICON_BTN_HOVER = wx.Colour(38, 45, 55)
+    ICON_BTN_PRESSED = wx.Colour(25, 30, 37)
+    ICON_BTN_ACTIVE = wx.Colour(94, 162, 255, 45)
     ICON_BTN_DISABLED = BG_PRIMARY
 
     # 에디터 액션 버튼
-    ACTION_BUTTON_BG = BG_TERTIARY
+    ACTION_BUTTON_BG = BG_INPUT_DARK
     ACTION_BUTTON_PRIMARY_BG = ACCENT
     ACTION_BUTTON_TEXT = TEXT_PRIMARY
 
     # 에디터 특정 액션 semantic token
     LANG_TOGGLE_FG = SUCCESS
-    LANG_TOGGLE_BG = BG_SECONDARY
+    LANG_TOGGLE_BG = BG_INPUT_DARK
     SAVE_PRIMARY = ACTION_BUTTON_PRIMARY_BG
 
+    # 에디터 프레임 리스트
+    FRAME_LIST_BG = wx.Colour(5, 7, 10)
+    FRAME_LIST_HEADER_BG = wx.Colour(28, 36, 48)
+    FRAME_LIST_ROW_BG = wx.Colour(9, 12, 17)
+    FRAME_LIST_ROW_ALT_BG = wx.Colour(14, 18, 25)
+    FRAME_LIST_SELECTED_BG = wx.Colour(50, 66, 86)
+    FRAME_LIST_SELECTED_FG = wx.Colour(234, 240, 247)
+    FRAME_LIST_GRID = wx.Colour(35, 45, 60)
+    FRAME_LIST_RAIL = wx.Colour(17, 22, 30)
+
     # 헥스 색상 문자열 (DC 그리기용)
-    BG_PRIMARY_HEX = "#202020"
-    BG_SECONDARY_HEX = "#1c1c1c"
-    BG_TERTIARY_HEX = "#373737"
-    ACCENT_HEX = "#0078d4"
-    TEXT_PRIMARY_HEX = "#ffffff"
+    BG_PRIMARY_HEX = "#080a0e"
+    BG_SECONDARY_HEX = "#12171f"
+    BG_TERTIARY_HEX = "#2a3444"
+    ACCENT_HEX = "#5ea2ff"
+    TEXT_PRIMARY_HEX = "#f4f7fa"
 
     # ── 레코더 전용 ──
 
     # 녹화 버튼 상태별
-    REC_READY = wx.Colour(233, 69, 96)
-    REC_READY_HOVER = wx.Colour(245, 90, 115)
-    REC_READY_PRESSED = wx.Colour(200, 55, 80)
-    REC_RECORDING = wx.Colour(107, 114, 128)
-    REC_RECORDING_FG = wx.Colour(209, 213, 219)
-    REC_PAUSED = wx.Colour(34, 197, 94)
-    REC_PAUSED_HOVER = wx.Colour(50, 210, 110)
-    REC_PAUSED_PRESSED = wx.Colour(25, 170, 80)
+    REC_READY = wx.Colour(229, 74, 92)
+    REC_READY_HOVER = wx.Colour(242, 95, 111)
+    REC_READY_PRESSED = wx.Colour(199, 56, 73)
+    REC_RECORDING = wx.Colour(82, 93, 108)
+    REC_RECORDING_FG = wx.Colour(210, 218, 228)
+    REC_PAUSED = wx.Colour(86, 198, 139)
+    REC_PAUSED_HOVER = wx.Colour(105, 213, 157)
+    REC_PAUSED_PRESSED = wx.Colour(65, 169, 116)
 
     # GPU 버튼 (레코더용 — 에디터 GPU_ON/OFF와 다른 값)
-    GPU_BTN_ON = wx.Colour(34, 197, 94)
-    GPU_BTN_ON_HOVER = wx.Colour(50, 210, 110)
-    GPU_BTN_OFF = wx.Colour(107, 114, 128)
-    GPU_BTN_OFF_HOVER = wx.Colour(120, 127, 141)
+    GPU_BTN_ON = wx.Colour(47, 151, 103)
+    GPU_BTN_ON_HOVER = wx.Colour(63, 174, 121)
+    GPU_BTN_OFF = wx.Colour(59, 68, 81)
+    GPU_BTN_OFF_HOVER = wx.Colour(72, 83, 98)
 
     # Pause 버튼
-    PAUSE_BG = wx.Colour(254, 202, 87)
-    PAUSE_HOVER = wx.Colour(255, 215, 110)
-    PAUSE_PRESSED = wx.Colour(230, 180, 70)
+    PAUSE_BG = wx.Colour(217, 154, 55)
+    PAUSE_HOVER = wx.Colour(232, 171, 74)
+    PAUSE_PRESSED = wx.Colour(186, 128, 41)
 
     # 오버레이
-    OVERLAY_BORDER = wx.Colour(255, 107, 107)
-    OVERLAY_BORDER_REC = wx.Colour(233, 69, 96, 77)
-    OVERLAY_INNER_BORDER = wx.Colour(233, 69, 96, 180)
+    OVERLAY_BORDER = wx.Colour(239, 105, 115)
+    OVERLAY_BORDER_REC = wx.Colour(229, 74, 92, 77)
+    OVERLAY_INNER_BORDER = wx.Colour(229, 74, 92, 180)
     OVERLAY_BADGE_BG = wx.Colour(233, 69, 96, 230)
     OVERLAY_HANDLE_BG = wx.Colour(245, 245, 245)
-    OVERLAY_HANDLE_BORDER = wx.Colour(200, 200, 200)
-    OVERLAY_HANDLE_ACCENT = wx.Colour(233, 69, 96)
+    OVERLAY_HANDLE_BORDER = wx.Colour(208, 217, 226)
+    OVERLAY_HANDLE_ACCENT = wx.Colour(229, 74, 92)
     OVERLAY_HANDLE_SHADOW = wx.Colour(0, 0, 0, 40)
 
     # 상태 시맨틱 (의존성 다이얼로그, 인코딩 상태)
-    STATUS_SUCCESS = wx.Colour(34, 197, 94)
-    STATUS_ERROR = wx.Colour(239, 68, 68)
-    STATUS_WARNING = wx.Colour(245, 158, 11)
-    STATUS_SUCCESS_ALT = wx.Colour(16, 185, 129)
+    STATUS_SUCCESS = wx.Colour(86, 198, 139)
+    STATUS_ERROR = wx.Colour(239, 105, 115)
+    STATUS_WARNING = wx.Colour(232, 171, 74)
+    STATUS_SUCCESS_ALT = wx.Colour(69, 184, 132)
 
     # 인코딩 상태
-    ENCODING_PROGRESS = wx.Colour(52, 152, 219)
-    ENCODING_COMPLETE = wx.Colour(39, 174, 96)
-    ENCODING_ERROR = wx.Colour(231, 76, 60)
+    ENCODING_PROGRESS = ACCENT
+    ENCODING_COMPLETE = SUCCESS
+    ENCODING_ERROR = DANGER
 
     # FlatButton 기본 비활성
-    BTN_DISABLED_FG = wx.Colour(100, 100, 100)
-    BTN_DISABLED_BG = wx.Colour(50, 50, 50)
+    BTN_DISABLED_FG = wx.Colour(91, 103, 119)
+    BTN_DISABLED_BG = wx.Colour(31, 36, 43)
 
     # 토글 스위치
-    TOGGLE_OFF_TRACK = wx.Colour(80, 80, 80)
-    TOGGLE_OFF_HANDLE = wx.Colour(160, 160, 160)
-    TOGGLE_ON_HANDLE = wx.Colour(255, 255, 255)
+    TOGGLE_OFF_TRACK = wx.Colour(62, 71, 84)
+    TOGGLE_OFF_HANDLE = wx.Colour(153, 166, 181)
+    TOGGLE_ON_HANDLE = wx.Colour(247, 250, 252)
+
+    # 캔버스 / 프리뷰
+    CHECKER_LIGHT = wx.Colour(210, 216, 224)
+    CHECKER_DARK = wx.Colour(168, 177, 188)
+    CANVAS_EMPTY_RING = wx.Colour(55, 65, 78)
 
 
 class Sizes:
@@ -231,19 +265,19 @@ def apply_panel_style(panel: wx.Panel, bg_color=None):
 
 def apply_text_ctrl_style(text_ctrl: wx.TextCtrl):
     """텍스트 컨트롤에 다크 테마 스타일 적용"""
-    text_ctrl.SetBackgroundColour(Colors.BG_TERTIARY)
+    text_ctrl.SetBackgroundColour(Colors.BG_INPUT_DARK)
     text_ctrl.SetForegroundColour(Colors.TEXT_PRIMARY)
 
 
 def apply_spin_ctrl_style(spin_ctrl):
     """스핀 컨트롤에 다크 테마 스타일 적용"""
-    spin_ctrl.SetBackgroundColour(Colors.BG_TERTIARY)
+    spin_ctrl.SetBackgroundColour(Colors.BG_INPUT_DARK)
     spin_ctrl.SetForegroundColour(Colors.TEXT_PRIMARY)
 
 
 def apply_combobox_style(combobox: wx.ComboBox):
     """콤보박스에 다크 테마 스타일 적용"""
-    combobox.SetBackgroundColour(Colors.BG_TERTIARY)
+    combobox.SetBackgroundColour(Colors.BG_INPUT_DARK)
     combobox.SetForegroundColour(Colors.TEXT_PRIMARY)
 
 
@@ -298,7 +332,7 @@ def _apply_child_theme(widget: wx.Window):
     # 입력 위젯: bg + fg
     if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble, wx.ComboBox, wx.Choice)):
         if sys_bg:
-            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+            widget.SetBackgroundColour(Colors.BG_INPUT_DARK)
         if unstyled:
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
     # 텍스트/라벨: fg만

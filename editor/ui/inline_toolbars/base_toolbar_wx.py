@@ -8,6 +8,7 @@ import wx
 from typing import TYPE_CHECKING, Optional, Callable
 from contextlib import suppress
 from ..style_constants_wx import Colors
+from ..icon_utils_wx import IconFactory
 from ...utils.wx_events import (
     ToolbarAppliedEvent, ToolbarCancelledEvent, ToolbarPreviewUpdatedEvent
 )
@@ -36,9 +37,9 @@ class InlineToolbarBase(wx.Panel):
     """
 
     # 툴바 기본 설정
-    TOOLBAR_MIN_HEIGHT = 88
-    TOOLBAR_ROW_HEIGHT = 76
-    TOOLBAR_BG_COLOR = Colors.BG_TOOLBAR
+    TOOLBAR_MIN_HEIGHT = 62
+    TOOLBAR_ROW_HEIGHT = 50
+    TOOLBAR_BG_COLOR = Colors.RAIL_BG_ALT
 
     # 서브클래스에서 False로 설정하면 Clear 버튼 비표시
     _has_clear_button = True
@@ -47,10 +48,15 @@ class InlineToolbarBase(wx.Panel):
     def __init__(self, main_window: 'MainWindow', parent: Optional[wx.Window] = None):
         if parent is None:
             parent = main_window
-        super().__init__(parent, style=wx.BORDER_SIMPLE)
+        super().__init__(parent, style=wx.BORDER_NONE)
         self._main_window = main_window
         self._canvas: Optional['CanvasWidget'] = None
         self._is_active = False
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
+        self.Bind(wx.EVT_SIZE, self._on_size)
+        self._layout_sync_pending = False
 
         # 성능 모드 설정 (저사양 모드 감지)
         self._is_low_end_mode = getattr(main_window, '_is_low_end_mode', False)
@@ -70,12 +76,12 @@ class InlineToolbarBase(wx.Panel):
         self._main_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 컨트롤 영역 (전체 너비 사용)
-        self._controls_widget = wx.Panel(self)
-        self._controls_widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
+        self._controls_widget = wx.Panel(self, style=wx.BORDER_NONE)
+        self._controls_widget.SetBackgroundColour(Colors.RAIL_BG)
         self._controls_sizer = wx.WrapSizer(wx.HORIZONTAL)
         self._controls_widget.SetSizer(self._controls_sizer)
 
-        self._main_sizer.Add(self._controls_widget, 1, wx.EXPAND | wx.ALL, 16)
+        self._main_sizer.Add(self._controls_widget, 1, wx.EXPAND | wx.ALL, 7)
 
         self.SetSizer(self._main_sizer)
 
@@ -84,6 +90,96 @@ class InlineToolbarBase(wx.Panel):
         self.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
         self.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.SetMinSize((-1, self.TOOLBAR_MIN_HEIGHT))
+
+    def _on_size(self, event):
+        """Recalculate wrapped-toolbar height after width changes settle."""
+        self._schedule_layout_height_sync()
+        event.Skip()
+
+    def _schedule_layout_height_sync(self):
+        if self._layout_sync_pending:
+            return
+        self._layout_sync_pending = True
+        wx.CallAfter(self._run_layout_height_sync)
+
+    def _run_layout_height_sync(self):
+        self._layout_sync_pending = False
+        self.sync_layout_height()
+
+    def sync_layout_height(self, *, notify_parent: bool = True) -> int:
+        """Grow the toolbar to fit all wrapped rows without clipping controls."""
+        desired_height = self._calculate_wrapped_height()
+        current_min = self.GetMinSize()
+        if current_min.GetHeight() != desired_height:
+            self.SetMinSize((-1, desired_height))
+
+            parent = self.GetParent()
+            if notify_parent and parent and hasattr(parent, "sync_active_toolbar_height"):
+                parent.sync_active_toolbar_height()
+            elif notify_parent and parent:
+                parent.Layout()
+
+        controls_height = max(1, desired_height - 14)
+        controls_min = self._controls_widget.GetMinSize()
+        if controls_min.GetHeight() != controls_height:
+            self._controls_widget.SetMinSize((-1, controls_height))
+
+        self._controls_widget.Layout()
+        self.Layout()
+        return desired_height
+
+    def _calculate_wrapped_height(self) -> int:
+        client_width = self.GetClientSize().GetWidth()
+        if client_width <= 0:
+            parent = self.GetParent()
+            client_width = parent.GetClientSize().GetWidth() if parent else 0
+
+        available_width = max(1, client_width - 14)
+        total_height = 0
+        row_width = 0
+        row_height = 0
+
+        for item in self._controls_sizer.GetChildren():
+            if not item.IsShown():
+                continue
+            min_size = item.CalcMin()
+            item_width = max(1, min_size.GetWidth())
+            item_height = max(1, min_size.GetHeight())
+
+            if row_width and row_width + item_width > available_width:
+                total_height += row_height
+                row_width = 0
+                row_height = 0
+
+            row_width += item_width
+            row_height = max(row_height, item_height)
+
+        if row_width or row_height:
+            total_height += row_height
+
+        return max(self.TOOLBAR_MIN_HEIGHT, total_height + 14)
+
+    def _on_paint(self, event):
+        dc = wx.PaintDC(self)
+        w, h = self.GetClientSize()
+        if w <= 0 or h <= 0:
+            return
+
+        parent = self.GetParent()
+        bg = parent.GetBackgroundColour() if parent else Colors.BG_PRIMARY
+        dc.SetBackground(wx.Brush(bg))
+        dc.Clear()
+
+        gc = wx.GraphicsContext.Create(dc)
+        if gc:
+            pad = 5
+            gc.SetBrush(wx.Brush(Colors.RAIL_BG))
+            gc.SetPen(wx.Pen(Colors.DIVIDER_SUBTLE, 1))
+            gc.DrawRoundedRectangle(pad, pad, w - pad * 2, h - pad * 2, 12)
+            gc.SetPen(wx.Pen(Colors.SURFACE_HIGHLIGHT, 1))
+            gc.StrokeLine(pad + 9, pad + 1, w - pad - 9, pad + 1)
+            gc.SetPen(wx.Pen(Colors.SURFACE_SHADOW, 1))
+            gc.StrokeLine(pad + 9, h - pad - 1, w - pad - 9, h - pad - 1)
 
     def _on_destroy(self, event):
         """윈도우 파괴 시 타이머 정리"""
@@ -102,6 +198,7 @@ class InlineToolbarBase(wx.Panel):
         self._canvas = self._safe_get_canvas()
         self._is_active = True
         self._on_activated()
+        self._schedule_layout_height_sync()
 
     def deactivate(self):
         """툴바 비활성화 (PropertyBar에서 호출)"""
@@ -158,45 +255,60 @@ class InlineToolbarBase(wx.Panel):
     def add_control(self, widget: wx.Window):
         """컨트롤 영역에 위젯 추가 (다크 테마 자동 적용)"""
         if isinstance(widget, (wx.TextCtrl, wx.SpinCtrl, wx.SpinCtrlDouble, wx.ComboBox)):
-            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+            widget.SetBackgroundColour(Colors.BG_INPUT_DARK)
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+            self._use_best_control_height(widget)
         elif isinstance(widget, wx.Slider):
-            widget.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
+            widget.SetBackgroundColour(Colors.RAIL_BG)
+            width, height = widget.GetMinSize()
+            widget.SetMinSize((width if width > 0 else 120, height if height > 0 else -1))
         elif isinstance(widget, (wx.StaticText, wx.CheckBox)):
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        elif isinstance(widget, (wx.ToggleButton, wx.Choice)):
-            widget.SetBackgroundColour(Colors.BG_TERTIARY)
+        elif isinstance(widget, wx.Choice):
+            widget.SetBackgroundColour(Colors.BG_INPUT_DARK)
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._controls_sizer.Add(widget, 0, wx.ALL, 8)
+            self._use_best_control_height(widget)
+        elif isinstance(widget, (wx.Button, wx.ToggleButton)):
+            widget.SetBackgroundColour(Colors.BG_INPUT_DARK)
+            widget.SetForegroundColour(Colors.TEXT_PRIMARY)
+            self._use_best_control_height(widget, preserve_explicit_height=True)
+        self._controls_sizer.Add(widget, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 4)
+
+    def _use_best_control_height(self, widget: wx.Window, *, preserve_explicit_height: bool = False):
+        """Keep native controls at their best height so text stays vertically centered."""
+        min_size = widget.GetMinSize()
+        best_size = widget.GetBestSize()
+        width = min_size.GetWidth() if min_size.GetWidth() > 0 else -1
+        height = min_size.GetHeight() if preserve_explicit_height and min_size.GetHeight() > 0 else -1
+        if height <= 0:
+            height = best_size.GetHeight() if best_size.GetHeight() > 0 else -1
+        widget.SetMinSize((width, height))
 
     def add_icon_label(self, icon_type: str, size: int = 20, tooltip: str = None) -> wx.StaticBitmap:
         """아이콘 라벨 추가"""
-        bitmap = wx.Bitmap(size, size)
-        dc = wx.MemoryDC(bitmap)
-        dc.SetBackground(wx.Brush(Colors.BORDER))
-        dc.Clear()
-        dc.SelectObject(wx.NullBitmap)
+        bitmap = IconFactory.create_bitmap(icon_type, size)
 
         label = wx.StaticBitmap(self._controls_widget, bitmap=bitmap)
-        label.SetMinSize((size + 8, size + 8))
+        label.SetMinSize((size + 8, max(size + 8, 28)))
+        label.SetBackgroundColour(Colors.RAIL_BG)
         if tooltip:
             label.SetToolTip(tooltip)
 
-        self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 4)
         return label
 
     def add_separator(self):
         """구분선 추가"""
         separator = wx.StaticLine(self._controls_widget, style=wx.LI_VERTICAL)
-        separator.SetMinSize((1, 50))
-        separator.SetBackgroundColour(Colors.BORDER)
-        self._controls_sizer.Add(separator, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 5)
+        separator.SetMinSize((1, 30))
+        separator.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
+        self._controls_sizer.Add(separator, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 7)
 
     def add_label(self, text: str) -> wx.StaticText:
         """라벨 추가"""
         label = wx.StaticText(self._controls_widget, label=text)
         label.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 8)
+        self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 4)
         return label
 
     def add_target_combo(

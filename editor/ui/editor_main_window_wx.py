@@ -19,12 +19,12 @@ from ..core.editor_gif_encoder import EncoderSettings
 from ..utils.translations import Translations
 from ..utils.logger import get_logger
 from core.app_shutdown import ensure_exit_if_no_primary_windows
+from ui.window_chrome import apply_dark_title_bar
 
 # wxPython 버전 위젯 임포트
 from .canvas_widget_wx import CanvasWidget
 from .frame_list_widget_wx import FrameListWidget
-from .icon_toolbar_wx import IconToolbar
-from .icon_utils_wx import IconFactory
+from .icon_toolbar_wx import FlatIconButton, IconToolbar
 from .style_constants_wx import Colors, Fonts, apply_button_style
 
 # ── 다이얼로그 (wxPython 버전) ──────────────────────────────
@@ -70,11 +70,94 @@ class FileDropTarget(wx.FileDropTarget):
         return False
 
 
+class FlatEditorMenuBar(wx.Control):
+    """Dark owner-drawn menu strip backed by existing wx.Menu popups."""
+
+    def __init__(self, owner: 'MainWindow', parent=None):
+        super().__init__(parent, size=(-1, 28), style=wx.BORDER_NONE)
+        self._owner = owner
+        self._items: list[tuple[str, wx.Menu]] = []
+        self._rects: list[wx.Rect] = []
+        self._hover_index = -1
+        self.SetMinSize((-1, 28))
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda _event: None)
+        self.Bind(wx.EVT_MOTION, self._on_motion)
+        self.Bind(wx.EVT_LEAVE_WINDOW, self._on_leave)
+        self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
+
+    def set_items(self, items: list[tuple[str, wx.Menu]]) -> None:
+        self._items = [(label.replace("&", ""), menu) for label, menu in items]
+        self._hover_index = -1
+        self.Refresh()
+
+    def _layout_items(self, dc: wx.DC) -> list[wx.Rect]:
+        rects = []
+        x = 8
+        h = self.GetClientSize().height
+        for label, _menu in self._items:
+            tw, _th = dc.GetTextExtent(label)
+            width = tw + 18
+            rects.append(wx.Rect(x, 3, width, max(20, h - 6)))
+            x += width + 2
+        return rects
+
+    def _on_paint(self, _event):
+        dc = wx.PaintDC(self)
+        w, h = self.GetClientSize()
+        dc.SetBackground(wx.Brush(Colors.RAIL_BG_ALT))
+        dc.Clear()
+        dc.SetFont(self.GetFont())
+        self._rects = self._layout_items(dc)
+
+        gc = wx.GraphicsContext.Create(dc)
+        if gc:
+            gc.SetPen(wx.Pen(Colors.DIVIDER_SUBTLE, 1))
+            gc.StrokeLine(0, h - 1, w, h - 1)
+            for idx, (label, _menu) in enumerate(self._items):
+                rect = self._rects[idx]
+                if idx == self._hover_index:
+                    gc.SetBrush(wx.Brush(Colors.BG_CARD))
+                    gc.SetPen(wx.Pen(Colors.BORDER_SOFT, 1))
+                    gc.DrawRoundedRectangle(rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1, 4)
+                gc.SetFont(self.GetFont(), Colors.TEXT_SECONDARY if idx != self._hover_index else Colors.TEXT_PRIMARY)
+                _tw, th = gc.GetTextExtent(label)[:2]
+                gc.DrawText(label, rect.x + 9, rect.y + (rect.height - th) / 2)
+
+    def _hit_test(self, pos: wx.Point) -> int:
+        for idx, rect in enumerate(self._rects):
+            if rect.Contains(pos):
+                return idx
+        return -1
+
+    def _on_motion(self, event):
+        index = self._hit_test(event.GetPosition())
+        if index != self._hover_index:
+            self._hover_index = index
+            self.Refresh()
+
+    def _on_leave(self, _event):
+        if self._hover_index != -1:
+            self._hover_index = -1
+            self.Refresh()
+
+    def _on_left_down(self, event):
+        index = self._hit_test(event.GetPosition())
+        if index < 0 or index >= len(self._items):
+            return
+        rect = self._rects[index]
+        _label, menu = self._items[index]
+        self.PopupMenu(menu, rect.x, rect.y + rect.height + 1)
+
+
 class MainWindow(wx.Frame):
     """Honeycam 스타일 GIF 에디터 메인 윈도우 (wxPython)"""
 
     def __init__(self):
         super().__init__(None, title="XGif Editor", size=(1680, 1120))
+        apply_dark_title_bar(self)
         if Colors:
             self.SetBackgroundColour(Colors.BG_PRIMARY)
 
@@ -259,6 +342,10 @@ class MainWindow(wx.Frame):
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
+        # === 앱 메뉴 스트립 (네이티브 흰 MenuBar 대신 다크 owner-draw) ===
+        self._flat_menu_bar = FlatEditorMenuBar(self, central_panel)
+        main_sizer.Add(self._flat_menu_bar, 0, wx.EXPAND)
+
         # === 아이콘 툴바 ===
         self._icon_toolbar = IconToolbar(self, central_panel)
         self._connect_icon_toolbar()
@@ -266,7 +353,7 @@ class MainWindow(wx.Frame):
 
         # === 상단 정보 바 ===
         self._info_bar = wx.Panel(central_panel)
-        self._info_bar.SetBackgroundColour(Colors.BG_SECONDARY)
+        self._info_bar.SetBackgroundColour(Colors.RAIL_BG)
         info_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         app_name_label = wx.StaticText(self._info_bar, label="XGif")
@@ -285,7 +372,7 @@ class MainWindow(wx.Frame):
         info_sizer.Add(date_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         sep_app = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep_app.SetBackgroundColour(Colors.BORDER)
+        sep_app.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
         info_sizer.Add(sep_app, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 줌 레벨
@@ -305,7 +392,7 @@ class MainWindow(wx.Frame):
         info_sizer.Add(self._size_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         sep1 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep1.SetBackgroundColour(Colors.BORDER)
+        sep1.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
         info_sizer.Add(sep1, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 프레임 수
@@ -316,7 +403,7 @@ class MainWindow(wx.Frame):
         info_sizer.Add(self._frame_count_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         sep2 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep2.SetBackgroundColour(Colors.BORDER)
+        sep2.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
         info_sizer.Add(sep2, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 재생 시간
@@ -327,7 +414,7 @@ class MainWindow(wx.Frame):
         info_sizer.Add(self._duration_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         sep3 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep3.SetBackgroundColour(Colors.BORDER)
+        sep3.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
         info_sizer.Add(sep3, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 메모리 사용량
@@ -338,14 +425,14 @@ class MainWindow(wx.Frame):
         info_sizer.Add(self._memory_info, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         self._memory_value = wx.StaticText(self._info_bar, label="0MB")
-        self._memory_value.SetBackgroundColour(Colors.BG_HOVER)
+        self._memory_value.SetBackgroundColour(Colors.BG_INPUT_DARK)
         self._memory_value.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._memory_value.SetMinSize((60, -1))
         self._memory_value.SetToolTip(self._translations.tr("info_memory_tooltip"))
         info_sizer.Add(self._memory_value, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         sep4 = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep4.SetBackgroundColour(Colors.BORDER)
+        sep4.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
         info_sizer.Add(sep4, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # GPU 상태
@@ -358,7 +445,7 @@ class MainWindow(wx.Frame):
 
         # 구분선
         sep_lang = wx.StaticLine(self._info_bar, style=wx.LI_VERTICAL, size=(1, 16))
-        sep_lang.SetBackgroundColour(Colors.BORDER)
+        sep_lang.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
         info_sizer.Add(sep_lang, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 언어 토글 버튼 (info_bar 우측)
@@ -372,16 +459,18 @@ class MainWindow(wx.Frame):
         info_sizer.Add(self._lang_toggle_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         self._info_bar.SetSizer(info_sizer)
-        main_sizer.Add(self._info_bar, 0, wx.EXPAND | wx.ALL, 5)
+        main_sizer.Add(self._info_bar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # === 메인 콘텐츠 영역 ===
-        content_splitter = wx.SplitterWindow(central_panel, style=wx.SP_3D | wx.SP_LIVE_UPDATE)
+        content_splitter = wx.SplitterWindow(central_panel, style=wx.SP_LIVE_UPDATE | wx.SP_NOBORDER)
         content_splitter.SetBackgroundColour(Colors.BG_PRIMARY)
+        with contextlib.suppress(Exception):
+            content_splitter.SetSashInvisible(True)
 
         # 좌측: 프레임 목록
         self._frame_list = FrameListWidget(self, content_splitter)
-        self._frame_list.SetMinSize((72, -1))
-        self._frame_list.SetMaxSize((120, -1))
+        self._frame_list.SetMinSize((92, -1))
+        self._frame_list.SetMaxSize((180, -1))
 
         from ..utils.wx_events import EVT_FRAME_SELECTED, EVT_FRAME_DELAY_CHANGED, EVT_FRAME_DELETED
         self._frame_list.Bind(EVT_FRAME_SELECTED, self._on_frame_selected)
@@ -403,19 +492,15 @@ class MainWindow(wx.Frame):
 
         # 하단 컨트롤 (슬라이더 + 공유 액션 버튼)
         self._bottom_controls = wx.Panel(self._workspace)
-        self._bottom_controls.SetBackgroundColour(Colors.BG_SECONDARY)
+        self._bottom_controls.SetBackgroundColour(Colors.RAIL_BG)
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self._play_btn = wx.Button(self._bottom_controls, size=(36, 36))
-        self._play_btn.SetToolTip("재생/일시정지 (Space)")
-        self._play_btn.SetCursor(wx.Cursor(wx.CURSOR_HAND))
-        self._play_btn.SetBackgroundColour(Colors.BG_TERTIARY)
-        self._update_play_button_icon(False)
+        self._play_btn = FlatIconButton("play", "재생/일시정지 (Space)", self._bottom_controls, size=(38, 38))
         self._play_btn.Bind(wx.EVT_BUTTON, lambda e: self.toggle_play())
         controls_sizer.Add(self._play_btn, 0, wx.ALL, 5)
 
         self._frame_slider = wx.Slider(self._bottom_controls, style=wx.SL_HORIZONTAL)
-        self._frame_slider.SetBackgroundColour(Colors.BG_SECONDARY)
+        self._frame_slider.SetBackgroundColour(Colors.RAIL_BG)
         self._frame_slider.SetMin(0)
         self._frame_slider.SetValue(0)
         self._frame_slider.Bind(wx.EVT_SLIDER, lambda e: self._on_slider_changed(e.GetInt()))
@@ -424,6 +509,7 @@ class MainWindow(wx.Frame):
         self._frame_indicator = wx.StaticText(self._bottom_controls, label="0/0")
         self._frame_indicator.SetMinSize((60, -1))
         self._frame_indicator.SetForegroundColour(Colors.TEXT_SECONDARY)
+        self._frame_indicator.SetFont(Fonts.get_font(Fonts.SIZE_SM, bold=True))
         controls_sizer.Add(self._frame_indicator, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 공유 액션 버튼 (도구 활성 시만 표시)
@@ -454,17 +540,19 @@ class MainWindow(wx.Frame):
         self._workspace.SetSizer(workspace_sizer)
 
         # 스플리터 설정
-        content_splitter.SplitVertically(self._frame_list, self._workspace, 200)
-        main_sizer.Add(content_splitter, 1, wx.EXPAND)
+        content_splitter.SplitVertically(self._frame_list, self._workspace, 168)
+        content_splitter.SetMinimumPaneSize(96)
+        content_splitter.SetSashGravity(0.0)
+        main_sizer.Add(content_splitter, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
 
         # === 하단 버튼 영역 ===
         bottom_bar = wx.Panel(central_panel)
-        bottom_bar.SetBackgroundColour(Colors.BG_SECONDARY)
+        bottom_bar.SetBackgroundColour(Colors.BG_PRIMARY)
         bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         close_text = translations.tr("btn_close_edit") if translations else "편집 종료"
         self._close_btn = wx.Button(bottom_bar, label=close_text)
-        self._close_btn.SetBackgroundColour(Colors.BG_TERTIARY)
+        self._close_btn.SetBackgroundColour(Colors.BG_INPUT_DARK)
         self._close_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._close_btn.SetToolTip(translations.tr("btn_close_edit_tooltip") if translations else "에디터를 닫습니다")
         self._close_btn.Bind(wx.EVT_BUTTON, lambda e: self.Close())
@@ -481,7 +569,7 @@ class MainWindow(wx.Frame):
         bottom_sizer.Add(self._save_btn, 0, wx.ALL, 10)
 
         bottom_bar.SetSizer(bottom_sizer)
-        main_sizer.Add(bottom_bar, 0, wx.EXPAND)
+        main_sizer.Add(bottom_bar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         central_panel.SetSizer(main_sizer)
         central_panel.Layout()
@@ -569,15 +657,15 @@ class MainWindow(wx.Frame):
         action_about = self._help_menu.Append(wx.ID_ABOUT, f"XGif 정보  v{__version__}")
         self._help_menu.Bind(wx.EVT_MENU, lambda e: self._show_about_dialog(), action_about)
 
-        # === OS 표준 wx.MenuBar ===
-        self._menubar = wx.MenuBar()
-        self._menubar.Append(self._file_menu, "파일(&F)")
-        self._menubar.Append(self._edit_menu, "편집(&E)")
-        self._menubar.Append(self._manage_menu, "관리(&M)")
-        self._menubar.Append(self._view_menu, "보기(&V)")
-        self._menubar.Append(self._settings_menu, "설정(&S)")
-        self._menubar.Append(self._help_menu, "도움말(&H)")
-        self.SetMenuBar(self._menubar)
+        # === 다크 owner-drawn 메뉴 스트립 ===
+        self._flat_menu_bar.set_items([
+            ("파일(&F)", self._file_menu),
+            ("편집(&E)", self._edit_menu),
+            ("관리(&M)", self._manage_menu),
+            ("보기(&V)", self._view_menu),
+            ("설정(&S)", self._settings_menu),
+            ("도움말(&H)", self._help_menu),
+        ])
 
     def _setup_shortcuts(self):
         """키보드 단축키 설정"""
@@ -881,7 +969,7 @@ class MainWindow(wx.Frame):
                         self._memory_value.SetBackgroundColour(Colors.WARNING)
                         self._memory_value.SetForegroundColour(Colors.TEXT_PRIMARY)
                     else:
-                        self._memory_value.SetBackgroundColour(Colors.BG_HOVER)
+                        self._memory_value.SetBackgroundColour(Colors.BG_INPUT_DARK)
                         self._memory_value.SetForegroundColour(Colors.TEXT_SECONDARY)
                     self._memory_value.Refresh()
 
@@ -931,10 +1019,8 @@ class MainWindow(wx.Frame):
 
     def _update_play_button_icon(self, is_playing: bool):
         """재생 버튼 아이콘 업데이트"""
-        if IconFactory:
-            icon_type = "pause" if is_playing else "play"
-            bitmap = IconFactory.create_bitmap(icon_type, 24)
-            self._play_btn.SetBitmap(bitmap)
+        if hasattr(self, '_play_btn') and hasattr(self._play_btn, 'set_icon_type'):
+            self._play_btn.set_icon_type("pause" if is_playing else "play")
 
     def _update_gpu_status(self, event=None):
         """GPU 상태 업데이트"""
@@ -1959,25 +2045,11 @@ class MainWindow(wx.Frame):
 
     def _show_about_dialog(self):
         """정보 다이얼로그 표시"""
-        from core.utils import get_resource_path
+        from .dialogs.help_dialog_wx import AboutDialog
 
-        info = wx.adv.AboutDialogInfo()
-        info.SetName("XGif Editor")
-        info.SetVersion(__version__)
-        info.SetDescription(
-            "Honeycam 스타일 GIF 에디터\n\n"
-            "GIF 애니메이션을 편집하고 최적화할 수 있는 도구입니다."
-        )
-        info.SetDevelopers(["XGif Development Team"])
-        info.SetLicense(f"Last Modified: {__last_modified__}")
-
-        # 아이콘 설정
-        icon_path = get_resource_path(os.path.join('resources', 'Xgif_icon.png'))
-        if os.path.exists(icon_path):
-            icon = wx.Icon(icon_path, wx.BITMAP_TYPE_PNG)
-            info.SetIcon(icon)
-
-        wx.adv.AboutBox(info)
+        dlg = AboutDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def _init_gpu_menu_state(self):
         """GPU 메뉴 상태 비동기 초기화 (에디터 UI 표시 후 호출)"""
@@ -2078,6 +2150,8 @@ class MainWindow(wx.Frame):
     def OnShow(self, event):
         """표시"""
         event.Skip()
+        if event.IsShown():
+            apply_dark_title_bar(self)
 
     def closeEvent(self, event):
         """종료"""
@@ -2275,7 +2349,7 @@ class MainWindow(wx.Frame):
         """하단 공유 액션 버튼 생성"""
         button = wx.Button(self._bottom_controls, label=label)
         apply_button_style(button, primary=primary)
-        button.SetMinSize((70, 32))
+        button.SetMinSize((74, 30))
         button.Bind(wx.EVT_BUTTON, handler)
         button.Hide()
         return button

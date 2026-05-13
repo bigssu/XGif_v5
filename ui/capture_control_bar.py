@@ -1,6 +1,5 @@
 """
-CaptureControlBar - Windows 11 Dark Theme 스타일 녹화 컨트롤 바
-플랫 디자인, #202020 다크 배경, #0078D4 Windows Blue 강조색
+CaptureControlBar - XGif 다크 테마 녹화 컨트롤 바
 wxPython 버전
 """
 import logging
@@ -24,7 +23,7 @@ class FlatButton(wx.Control):
     def __init__(self, parent, label="", size=wx.DefaultSize,
                  bg_color=None, fg_color=None,
                  hover_color=None, pressed_color=None,
-                 corner_radius=4, id=wx.ID_ANY):
+                 border_color=None, corner_radius=7, id=wx.ID_ANY):
         super().__init__(parent, id, pos=wx.DefaultPosition, size=size,
                          style=wx.BORDER_NONE)
         self._label = label
@@ -32,10 +31,11 @@ class FlatButton(wx.Control):
         self._enabled = True
 
         # 색상 (기본값: Colors 기반)
-        self._bg_color = wx.Colour(*(bg_color or Colors.BG_TERTIARY.Get()[:3]))
+        self._bg_color = wx.Colour(*(bg_color or Colors.BG_INPUT_DARK.Get()[:3]))
         self._fg_color = wx.Colour(*(fg_color or Colors.TEXT_PRIMARY.Get()[:3]))
         self._hover_color = wx.Colour(*(hover_color or Colors.BG_HOVER.Get()[:3]))
         self._pressed_color = wx.Colour(*(pressed_color or Colors.BG_PRESSED.Get()[:3]))
+        self._border_color = wx.Colour(*(border_color or Colors.BORDER_SOFT.Get()[:3]))
         self._disabled_fg = Colors.BTN_DISABLED_FG
         self._disabled_bg = Colors.BTN_DISABLED_BG
 
@@ -69,6 +69,7 @@ class FlatButton(wx.Control):
 
     def SetLabel(self, label):
         self._label = label
+        self._cached_bmp = None
         self.Refresh()
 
     def GetLabel(self):
@@ -78,23 +79,34 @@ class FlatButton(wx.Control):
         if isinstance(colour, (tuple, list)):
             colour = wx.Colour(*colour)
         self._bg_color = colour
+        self._cached_bmp = None
         self.Refresh()
 
     def SetForegroundColour(self, colour):
         if isinstance(colour, (tuple, list)):
             colour = wx.Colour(*colour)
         self._fg_color = colour
+        self._cached_bmp = None
         self.Refresh()
 
     def SetHoverColour(self, colour):
         if isinstance(colour, (tuple, list)):
             colour = wx.Colour(*colour)
         self._hover_color = colour
+        self._cached_bmp = None
 
     def SetPressedColour(self, colour):
         if isinstance(colour, (tuple, list)):
             colour = wx.Colour(*colour)
         self._pressed_color = colour
+        self._cached_bmp = None
+
+    def SetBorderColour(self, colour):
+        if isinstance(colour, (tuple, list)):
+            colour = wx.Colour(*colour)
+        self._border_color = colour
+        self._cached_bmp = None
+        self.Refresh()
 
     def Enable(self, enable=True):
         self._enabled = enable
@@ -103,6 +115,7 @@ class FlatButton(wx.Control):
             self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         else:
             self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
+        self._cached_bmp = None
         self.Refresh()
 
     def Disable(self):
@@ -148,7 +161,11 @@ class FlatButton(wx.Control):
             return
 
         # 상태 키 생성 (변경 시에만 비트맵 재생성)
-        state_key = (w, h, self._hovered, self._pressed, self._enabled, self._label)
+        state_key = (
+            w, h, self._hovered, self._pressed, self._enabled, self._label,
+            self._bg_color.Get(), self._fg_color.Get(), self._hover_color.Get(),
+            self._pressed_color.Get(), self._border_color.Get(),
+        )
         if self._cached_bmp is not None and self._cached_state == state_key:
             dc.DrawBitmap(self._cached_bmp, 0, 0, False)
             return
@@ -158,7 +175,7 @@ class FlatButton(wx.Control):
 
         # 부모 배경으로 클리어
         parent = self.GetParent()
-        parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_TOOLBAR
+        parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_CARD
         memdc.SetBackground(wx.Brush(parent_bg))
         memdc.Clear()
 
@@ -176,8 +193,8 @@ class FlatButton(wx.Control):
 
             # 라운디드 렉트 배경
             gc.SetBrush(wx.Brush(bg))
-            gc.SetPen(wx.TRANSPARENT_PEN)
-            gc.DrawRoundedRectangle(0, 0, w, h, self._corner_radius)
+            gc.SetPen(wx.Pen(self._border_color, 1))
+            gc.DrawRoundedRectangle(0.5, 0.5, w - 1, h - 1, self._corner_radius)
 
             # 텍스트
             fg = self._disabled_fg if not self._enabled else self._fg_color
@@ -279,7 +296,7 @@ class CustomToggleSwitch(wx.Panel):
         memdc = wx.MemoryDC(bitmap)
 
         parent = self.GetParent()
-        bg_color = parent.GetBackgroundColour() if parent else Colors.BG_TOOLBAR
+        bg_color = parent.GetBackgroundColour() if parent else Colors.BG_CARD
         memdc.SetBackground(wx.Brush(bg_color))
         memdc.Clear()
 
@@ -334,15 +351,19 @@ class CaptureControlBar(wx.Panel):
         self._on_stop_clicked = None
         self._on_help_requested = None
 
-        # 배경색 (Windows 11 Dark)
-        self.SetBackgroundColour(Colors.BG_TOOLBAR)
+        # 배경색
+        self.SetBackgroundColour(Colors.RAIL_BG)
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.SetMinSize((-1, 66))
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
 
         # 버튼 다수 생성 중 개별 Refresh 방지 — 완료 후 한 번에 갱신
         self.Freeze()
 
         # 메인 레이아웃 (inner_panel 없이 직접 배치 — 패널 중첩 크래시 방지)
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        main_sizer.Add((8, 0))  # 좌측 패딩
+        main_sizer.Add((20, 0))  # 좌측 패딩
         self.SetSizer(main_sizer)
 
         # 기본 폰트
@@ -354,13 +375,13 @@ class CaptureControlBar(wx.Panel):
 
         # 포맷 선택 (GIF/MP4)
         self.format_combo = wx.ComboBox(self, choices=["GIF", "MP4"],
-                                        style=wx.CB_READONLY, size=(65, -1))
+                                        style=wx.CB_READONLY, size=(70, -1))
         self.format_combo.SetSelection(0)
         self.format_combo.SetToolTip(tr('output_format_tooltip'))
         self.format_combo.Bind(wx.EVT_COMBOBOX, self._on_format_combo_changed)
         self._style_combobox(self.format_combo)
         self.format_combo.SetFont(default_font)
-        main_sizer.Add(self.format_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.format_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
         # FPS 라벨
         self.fps_label = wx.StaticText(self, label=tr('fps'))
@@ -377,34 +398,34 @@ class CaptureControlBar(wx.Panel):
         self.fps_combo.Bind(wx.EVT_COMBOBOX, self._on_fps_combo_changed)
         self._style_combobox(self.fps_combo)
         self.fps_combo.SetFont(default_font)
-        main_sizer.Add(self.fps_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.fps_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
         # 해상도 선택 (사용자 입력 가능)
         self.resolution_combo = wx.ComboBox(self,
                                             choices=["320 × 240", "640 × 480", "800 × 600", "1024 × 768"],
-                                            style=wx.CB_DROPDOWN, size=(115, -1))
+                                            style=wx.CB_DROPDOWN, size=(126, -1))
         self.resolution_combo.SetSelection(0)
         self.resolution_combo.SetToolTip(tr('resolution_tooltip_custom'))
         self.resolution_combo.Bind(wx.EVT_COMBOBOX, self._on_resolution_combo_changed)
         self.resolution_combo.Bind(wx.EVT_TEXT_ENTER, self._on_resolution_combo_changed)
         self._style_combobox(self.resolution_combo)
         self.resolution_combo.SetFont(default_font)
-        main_sizer.Add(self.resolution_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.resolution_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
         # 품질 선택
         self.quality_combo = wx.ComboBox(self, choices=[tr('high'), tr('medium'), tr('low')],
-                                         style=wx.CB_READONLY, size=(55, -1))
+                                         style=wx.CB_READONLY, size=(68, -1))
         self.quality_combo.SetSelection(0)
         self.quality_combo.SetToolTip(tr('quality_tooltip'))
         self.quality_combo.Bind(wx.EVT_COMBOBOX, self._on_quality_combo_changed)
         self._style_combobox(self.quality_combo)
         self.quality_combo.SetFont(default_font)
-        main_sizer.Add(self.quality_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        main_sizer.Add(self.quality_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
         # 구분선 1 (커스텀 패널로 색상 제어)
-        sep1 = wx.Panel(self, size=(1, 24))
-        sep1.SetBackgroundColour(Colors.BORDER)
-        main_sizer.Add(sep1, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
+        sep1 = wx.Panel(self, size=(1, 28))
+        sep1.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
+        main_sizer.Add(sep1, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 14)
 
         # ═══════════════════════════════════════════════════════════════
         # 중앙 섹션: 토글 스위치들
@@ -413,7 +434,7 @@ class CaptureControlBar(wx.Panel):
         # 커서 아이콘
         self.cursor_icon = wx.StaticText(self, label="↖")
         self.cursor_icon.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.cursor_icon.SetBackgroundColour(Colors.BG_TOOLBAR)
+        self.cursor_icon.SetBackgroundColour(Colors.RAIL_BG)
         self.cursor_icon.SetFont(Fonts.get_font(12))
         self.cursor_icon.SetToolTip(tr('cursor_tooltip'))
         main_sizer.Add(self.cursor_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -427,7 +448,7 @@ class CaptureControlBar(wx.Panel):
         # 영역 아이콘
         self.region_icon = wx.StaticText(self, label="⬚")
         self.region_icon.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.region_icon.SetBackgroundColour(Colors.BG_TOOLBAR)
+        self.region_icon.SetBackgroundColour(Colors.RAIL_BG)
         self.region_icon.SetFont(Fonts.get_font(14))
         self.region_icon.SetToolTip(tr('click_highlight_icon_tooltip'))
         main_sizer.Add(self.region_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
@@ -439,9 +460,9 @@ class CaptureControlBar(wx.Panel):
         main_sizer.Add(self.region_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 구분선 2
-        sep2 = wx.Panel(self, size=(1, 24))
-        sep2.SetBackgroundColour(Colors.BORDER)
-        main_sizer.Add(sep2, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 12)
+        sep2 = wx.Panel(self, size=(1, 28))
+        sep2.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
+        main_sizer.Add(sep2, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 14)
 
         # ═══════════════════════════════════════════════════════════════
         # 오른쪽 섹션: 플랫 버튼들
@@ -451,7 +472,8 @@ class CaptureControlBar(wx.Panel):
         self.gpu_status_button = FlatButton(self, label="GPU", size=(55, 28),
                                             bg_color=Colors.GPU_BTN_OFF.Get()[:3],
                                             fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                            hover_color=Colors.GPU_BTN_OFF_HOVER.Get()[:3])
+                                            hover_color=Colors.GPU_BTN_OFF_HOVER.Get()[:3],
+                                            border_color=Colors.BORDER_SOFT.Get()[:3])
         self.gpu_status_button.SetToolTip(tr('gpu_status_tooltip'))
         self.gpu_status_button.Bind(wx.EVT_BUTTON, self._on_gpu_button_clicked)
         self._on_gpu_click_callback = None
@@ -462,7 +484,8 @@ class CaptureControlBar(wx.Panel):
                                      bg_color=Colors.REC_READY.Get()[:3],
                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                      hover_color=Colors.REC_READY_HOVER.Get()[:3],
-                                     pressed_color=Colors.REC_READY_PRESSED.Get()[:3])
+                                     pressed_color=Colors.REC_READY_PRESSED.Get()[:3],
+                                     border_color=Colors.REC_READY_PRESSED.Get()[:3])
         self.rec_button.SetToolTip(tr('rec_tooltip'))
         self.rec_button.Bind(wx.EVT_BUTTON, self._on_rec_button_clicked)
         main_sizer.Add(self.rec_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
@@ -472,33 +495,36 @@ class CaptureControlBar(wx.Panel):
                                     bg_color=Colors.PAUSE_BG.Get()[:3],
                                     fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                     hover_color=Colors.PAUSE_HOVER.Get()[:3],
-                                    pressed_color=Colors.PAUSE_PRESSED.Get()[:3])
+                                    pressed_color=Colors.PAUSE_PRESSED.Get()[:3],
+                                    border_color=Colors.PAUSE_PRESSED.Get()[:3])
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
         self.pause_btn.Enable(False)
         self.pause_btn.Bind(wx.EVT_BUTTON, self._on_pause_button_clicked)
         main_sizer.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 설정 버튼 (아이콘 2배 크기)
-        self.settings_button = FlatButton(self, label="⚙", size=(48, 40),
-                                          bg_color=Colors.BG_TERTIARY.Get()[:3],
+        self.settings_button = FlatButton(self, label="⚙", size=(42, 36),
+                                          bg_color=Colors.BG_INPUT_DARK.Get()[:3],
                                           fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                          hover_color=Colors.BG_HOVER.Get()[:3])
-        self.settings_button.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT * 2))
+                                          hover_color=Colors.BG_HOVER.Get()[:3],
+                                          border_color=Colors.BORDER.Get()[:3])
+        self.settings_button.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
         self.settings_button.SetToolTip(tr('settings_tooltip'))
         self.settings_button.Bind(wx.EVT_BUTTON, self._on_settings_button_clicked)
         main_sizer.Add(self.settings_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # 도움말 버튼
-        self.help_button = FlatButton(self, label="?", size=(40, 40),
-                                      bg_color=Colors.BG_TERTIARY.Get()[:3],
+        self.help_button = FlatButton(self, label="?", size=(38, 36),
+                                      bg_color=Colors.BG_INPUT_DARK.Get()[:3],
                                       fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                      hover_color=Colors.BG_HOVER.Get()[:3])
-        self.help_button.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT * 2))
+                                      hover_color=Colors.BG_HOVER.Get()[:3],
+                                      border_color=Colors.BORDER.Get()[:3])
+        self.help_button.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
         self.help_button.SetToolTip(tr('help_tooltip'))
         self.help_button.Bind(wx.EVT_BUTTON, self._on_help_button_clicked)
         main_sizer.Add(self.help_button, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        main_sizer.Add((8, 0))  # 우측 패딩
+        main_sizer.Add((20, 0))  # 우측 패딩
 
         self.Layout()
         self.Thaw()  # Freeze() 해제 — 이제 한 번에 화면 갱신
@@ -515,10 +541,35 @@ class CaptureControlBar(wx.Panel):
         event.Skip()
         self.Refresh(True)
 
+    def _on_paint(self, event):
+        dc = wx.PaintDC(self)
+        w, h = self.GetClientSize()
+        if w <= 0 or h <= 0:
+            return
+
+        parent = self.GetParent()
+        parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_PRIMARY
+        dc.SetBackground(wx.Brush(parent_bg))
+        dc.Clear()
+
+        gc = wx.GraphicsContext.Create(dc)
+        if gc:
+            pad_x = 8
+            pad_y = 5
+            gc.SetBrush(wx.Brush(Colors.RAIL_BG))
+            gc.SetPen(wx.Pen(Colors.DIVIDER_SUBTLE, 1))
+            gc.DrawRoundedRectangle(pad_x, pad_y, w - pad_x * 2, h - pad_y * 2, 9)
+            gc.SetPen(wx.Pen(Colors.SURFACE_HIGHLIGHT, 1))
+            gc.StrokeLine(pad_x + 10, pad_y + 1, w - pad_x - 10, pad_y + 1)
+            gc.SetPen(wx.Pen(Colors.SURFACE_SHADOW, 1))
+            gc.StrokeLine(pad_x + 10, h - pad_y - 1, w - pad_x - 10, h - pad_y - 1)
+
     def _style_combobox(self, combo):
-        """콤보박스 스타일 (Windows 11 Dark)"""
-        combo.SetBackgroundColour(Colors.BG_TOOLBAR)
+        """콤보박스 스타일"""
+        combo.SetBackgroundColour(Colors.BG_INPUT_DARK)
         combo.SetForegroundColour(Colors.TEXT_PRIMARY)
+        if hasattr(combo, 'SetBorderColour'):
+            combo.SetBorderColour(Colors.BORDER)
 
     def _style_gpu_button(self, btn, enabled):
         """GPU 버튼 색상 업데이트"""

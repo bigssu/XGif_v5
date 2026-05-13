@@ -8,7 +8,7 @@ import wx
 import math
 from typing import Optional, List, Tuple, TYPE_CHECKING
 from PIL import Image
-from .style_constants_wx import Colors
+from .style_constants_wx import Colors, Fonts
 from ..utils.image_utils import pil_to_wx_bitmap
 from ..utils.wx_paint_utils import draw_checkerboard, draw_handle, get_handle_rects, get_cursor_for_handle
 from ..utils.wx_events import (
@@ -78,8 +78,8 @@ class CanvasWidget(wx.Panel):
 
         # 배경 색상
         self._bg_color = Colors.BG_CANVAS
-        self._checker_color1 = wx.Colour(255, 255, 255)
-        self._checker_color2 = wx.Colour(200, 200, 200)
+        self._checker_color1 = Colors.CHECKER_LIGHT
+        self._checker_color2 = Colors.CHECKER_DARK
         self._checker_size = 10
 
         # 펜슬 그리기 모드
@@ -284,13 +284,7 @@ class CanvasWidget(wx.Panel):
         try:
             frames = getattr(self._main_window, 'frames', None)
             if not frames or getattr(frames, 'is_empty', True):
-                # "No frame" 메시지
-                dc.SetTextForeground(Colors.TEXT_MUTED)
-                text = "No frame loaded"
-                tw, th = dc.GetTextExtent(text)
-                dc.DrawText(text,
-                           (self.GetSize().GetWidth() - tw) // 2,
-                           (self.GetSize().GetHeight() - th) // 2)
+                self._draw_empty_state(dc)
                 return
 
             getattr(frames, 'current_index', 0)
@@ -330,6 +324,31 @@ class CanvasWidget(wx.Panel):
             dc.SetTextForeground(Colors.DANGER)
             error_text = f"Rendering error: {str(e)}"
             dc.DrawText(error_text, 10, 10)
+
+    def _draw_empty_state(self, dc: wx.DC):
+        """빈 캔버스 상태를 작업면 중심에 그린다."""
+        size = self.GetSize()
+        card_w = min(380, max(260, size.GetWidth() - 96))
+        card_h = 132
+        x = (size.GetWidth() - card_w) // 2
+        y = (size.GetHeight() - card_h) // 2
+
+        dc.SetPen(wx.Pen(Colors.BORDER_SOFT, 1))
+        dc.SetBrush(wx.Brush(Colors.BG_CARD))
+        dc.DrawRoundedRectangle(x, y, card_w, card_h, 10)
+
+        title = "No frame loaded"
+        detail = "Open a GIF to preview edits here"
+
+        dc.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
+        dc.SetTextForeground(Colors.TEXT_PRIMARY)
+        title_w, _title_h = dc.GetTextExtent(title)
+        dc.DrawText(title, x + (card_w - title_w) // 2, y + 38)
+
+        dc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
+        dc.SetTextForeground(Colors.TEXT_MUTED)
+        detail_w, _detail_h = dc.GetTextExtent(detail)
+        dc.DrawText(detail, x + (card_w - detail_w) // 2, y + 68)
 
     def _draw_frame_image(self, dc: wx.DC, frame, img_rect: wx.Rect):
         """프레임 이미지 그리기"""
@@ -414,14 +433,14 @@ class CanvasWidget(wx.Panel):
             self._draw_speech_bubble_overlay(dc, screen_rect)
 
     def _draw_text_overlay(self, dc: wx.DC, screen_rect: wx.Rect):
-        """텍스트 편집 오버레이 (파란색 점선 사각형)"""
-        dc.SetPen(wx.Pen(Colors.ACCENT, 2, wx.PENSTYLE_SHORT_DASH))
+        """텍스트 편집 오버레이."""
+        dc.SetPen(wx.Pen(Colors.OVERLAY_TEXT_ACCENT, 2, wx.PENSTYLE_SHORT_DASH))
         dc.SetBrush(wx.TRANSPARENT_BRUSH)
         dc.DrawRectangle(screen_rect)
 
     def _draw_crop_overlay(self, dc: wx.DC, screen_rect: wx.Rect, img_rect: wx.Rect):
-        """크롭 오버레이 (노란색 사각형)"""
-        dc.SetPen(wx.Pen(wx.Colour(255, 255, 0), 2))
+        """크롭 오버레이."""
+        dc.SetPen(wx.Pen(Colors.CROP_ACCENT, 2))
         dc.SetBrush(wx.TRANSPARENT_BRUSH)
         dc.DrawRectangle(screen_rect)
 
@@ -442,15 +461,15 @@ class CanvasWidget(wx.Panel):
                 if 0 <= shape_idx < len(sticker_toolbar.SHAPES):
                     shape_type = sticker_toolbar.SHAPES[shape_idx][1]
                     fill_color = sticker_toolbar._fill_color
-                    outline_color = wx.Colour(255, 255, 255, 200)
+                    outline_color = wx.Colour(Colors.TEXT_PRIMARY.Red(), Colors.TEXT_PRIMARY.Green(), Colors.TEXT_PRIMARY.Blue(), 210)
 
                     # 도형 그리기 (원본 PyQt6 방식)
                     self._draw_sticker_shape(dc, screen_rect, shape_type, fill_color, outline_color)
             except Exception:
                 pass
 
-        # 선택 박스 그리기 (빨간색 테두리)
-        dc.SetPen(wx.Pen(wx.Colour(255, 107, 107), 2))
+        # 선택 박스 그리기
+        dc.SetPen(wx.Pen(Colors.DANGER, 2))
         dc.SetBrush(wx.TRANSPARENT_BRUSH)
         dc.DrawRectangle(screen_rect)
 
@@ -518,8 +537,8 @@ class CanvasWidget(wx.Panel):
             dc.DrawPolygon(points)
 
     def _draw_mosaic_overlay(self, dc: wx.DC, screen_rect: wx.Rect):
-        """모자이크 오버레이 (분홍색 점선 사각형)"""
-        dc.SetPen(wx.Pen(wx.Colour(255, 100, 255), 2, wx.PENSTYLE_SHORT_DASH))
+        """모자이크 오버레이."""
+        dc.SetPen(wx.Pen(Colors.MOSAIC_ACCENT, 2, wx.PENSTYLE_SHORT_DASH))
         dc.SetBrush(wx.TRANSPARENT_BRUSH)
         dc.DrawRectangle(screen_rect)
 
@@ -539,14 +558,17 @@ class CanvasWidget(wx.Panel):
             except Exception:
                 pass
 
-        # 선택 박스 (초록색 테두리)
-        dc.SetPen(wx.Pen(wx.Colour(100, 255, 100), 2))
+        # 선택 박스
+        dc.SetPen(wx.Pen(Colors.BUBBLE_ACCENT, 2))
         dc.SetBrush(wx.TRANSPARENT_BRUSH)
         dc.DrawRoundedRectangle(screen_rect.x, screen_rect.y,
                                screen_rect.width, screen_rect.height, 10)
 
     def _draw_handles(self, dc: wx.DC):
         """리사이즈 핸들 그리기 (Phase 2.3c에서 구현)"""
+        handle_fill = Colors.TEXT_PRIMARY
+        handle_border = Colors.BORDER_FOCUS
+
         # 텍스트 모드 핸들
         if self._text_edit_mode and not self._text_rect.IsEmpty():
             screen_rect = self._image_rect_to_screen(self._text_rect)
@@ -556,7 +578,9 @@ class CanvasWidget(wx.Panel):
                 draw_handle(dc,
                            handle_rect.x + handle_rect.width // 2,
                            handle_rect.y + handle_rect.height // 2,
-                           self.HANDLE_SIZE)
+                           self.HANDLE_SIZE,
+                           fill_color=handle_fill,
+                           border_color=handle_border)
 
         # 크롭 모드 핸들 (8개: 4 코너 + 4 엣지)
         if self._crop_mode and not self._crop_rect.IsEmpty():
@@ -567,7 +591,9 @@ class CanvasWidget(wx.Panel):
                 draw_handle(dc,
                            handle_rect.x + handle_rect.width // 2,
                            handle_rect.y + handle_rect.height // 2,
-                           self.HANDLE_SIZE)
+                           self.HANDLE_SIZE,
+                           fill_color=handle_fill,
+                           border_color=Colors.CROP_ACCENT)
 
         # 스티커 모드 핸들 (4개: 4 코너)
         if self._sticker_mode and not self._sticker_rect.IsEmpty():
@@ -580,7 +606,9 @@ class CanvasWidget(wx.Panel):
                     draw_handle(dc,
                                handle_rect.x + handle_rect.width // 2,
                                handle_rect.y + handle_rect.height // 2,
-                               self.HANDLE_SIZE)
+                               self.HANDLE_SIZE,
+                               fill_color=handle_fill,
+                               border_color=Colors.DANGER)
 
         # 모자이크 모드 핸들 (4개: 4 코너)
         if self._mosaic_mode and not self._mosaic_rect.IsEmpty():
@@ -592,7 +620,9 @@ class CanvasWidget(wx.Panel):
                     draw_handle(dc,
                                handle_rect.x + handle_rect.width // 2,
                                handle_rect.y + handle_rect.height // 2,
-                               self.HANDLE_SIZE)
+                               self.HANDLE_SIZE,
+                               fill_color=handle_fill,
+                               border_color=Colors.MOSAIC_ACCENT)
 
         # 말풍선 모드 핸들 (4개: 4 코너)
         if self._speech_bubble_mode and not self._speech_bubble_rect.IsEmpty():
@@ -604,7 +634,9 @@ class CanvasWidget(wx.Panel):
                     draw_handle(dc,
                                handle_rect.x + handle_rect.width // 2,
                                handle_rect.y + handle_rect.height // 2,
-                               self.HANDLE_SIZE)
+                               self.HANDLE_SIZE,
+                               fill_color=handle_fill,
+                               border_color=Colors.BUBBLE_ACCENT)
 
     def _draw_pencil_paths(self, dc: wx.DC, is_playing: bool = False):
         """펜슬 경로 그리기"""

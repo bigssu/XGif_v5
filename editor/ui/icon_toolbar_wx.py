@@ -11,16 +11,36 @@ if TYPE_CHECKING:
 
 try:
     from .icon_utils_wx import IconFactory, IconColors
-    from .style_constants_wx import Colors, Sizes, Spacing
+    from .style_constants_wx import Colors
 except ImportError:
     IconFactory = None
     IconColors = None
     Colors = None
-    Sizes = None
-    Spacing = None
 
 # 라운디드 코너 반경
-_CORNER_RADIUS = 8
+_CORNER_RADIUS = 10
+_ICON_SIZE_BY_TYPE = {
+    "open_file": 24,
+    "text": 24,
+    "sticker": 24,
+    "pencil": 25,
+    "crop": 25,
+    "resize": 25,
+    "effects": 25,
+    "rotate": 26,
+    "flip_h": 26,
+    "flip_v": 26,
+    "reverse": 24,
+    "yoyo": 26,
+    "speed": 26,
+    "reduce": 24,
+    "delete": 24,
+    "clear": 24,
+    "add": 24,
+    "time": 25,
+    "play": 25,
+    "pause": 25,
+}
 
 
 class FlatIconButton(wx.Control):
@@ -30,26 +50,30 @@ class FlatIconButton(wx.Control):
     상태: normal / hovered / pressed / active / disabled
     """
 
-    def __init__(self, icon_type: str, tooltip: str, parent=None, size=(62, 62)):
+    def __init__(self, icon_type: str, tooltip: str, parent=None, size=(46, 46)):
         super().__init__(parent, wx.ID_ANY, pos=wx.DefaultPosition, size=size,
                          style=wx.BORDER_NONE)
         self._icon_type = icon_type
+        self._button_size = size
         self._is_active = False
         self._is_hovered = False
         self._pressed = False
         self._enabled = True
         self._bitmap: Optional[wx.Bitmap] = None
+        self._active_bitmap: Optional[wx.Bitmap] = None
+        self._disabled_bitmap: Optional[wx.Bitmap] = None
 
         # 색상
-        self._bg_normal = Colors.BG_PRIMARY if Colors else wx.Colour(32, 32, 32)
-        self._bg_hover = Colors.ICON_BTN_HOVER if Colors else wx.Colour(55, 55, 55)
+        self._bg_normal = None
+        self._bg_hover = Colors.BG_RAISED if Colors else wx.Colour(35, 40, 48)
         self._bg_pressed = Colors.ICON_BTN_PRESSED if Colors else wx.Colour(42, 42, 42)
         self._bg_active = Colors.ICON_BTN_ACTIVE if Colors else wx.Colour(0, 120, 212, 60)
-        self._bg_disabled = Colors.ICON_BTN_DISABLED if Colors else wx.Colour(32, 32, 32)
+        self._bg_disabled = None
 
         self.SetToolTip(tooltip)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         self.SetMinSize(size)
+        self.SetMaxSize(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self._skip_auto_theme = True
 
@@ -66,15 +90,37 @@ class FlatIconButton(wx.Control):
 
     def _create_icon(self):
         """아이콘 비트맵 생성"""
-        self._disabled_bitmap_cache = None  # 캐시 무효화
         if IconFactory:
-            self._bitmap = IconFactory.create_bitmap(self._icon_type, 39)
+            edge = min(self._button_size)
+            max_icon_size = max(18, edge - 11)
+            icon_size = min(_ICON_SIZE_BY_TYPE.get(self._icon_type, 25), max_icon_size)
+            if edge < 42:
+                icon_size = min(icon_size, 22)
+            self._bitmap = IconFactory.create_bitmap(self._icon_type, icon_size)
+            self._active_bitmap = IconFactory.create_bitmap(
+                self._icon_type,
+                icon_size,
+                IconColors.ACCENT if IconColors else None,
+            )
+            self._disabled_bitmap = IconFactory.create_bitmap(
+                self._icon_type,
+                icon_size,
+                IconColors.MUTED if IconColors else None,
+            )
 
     # --- 공개 API ---
 
     def set_active(self, active: bool):
         """활성 상태 설정"""
         self._is_active = active
+        self.Refresh()
+
+    def set_icon_type(self, icon_type: str):
+        """아이콘 타입 교체."""
+        if self._icon_type == icon_type:
+            return
+        self._icon_type = icon_type
+        self._create_icon()
         self.Refresh()
 
     def Enable(self, enable=True):
@@ -148,29 +194,30 @@ class FlatIconButton(wx.Control):
             else:
                 bg = self._bg_normal
 
-            # 라운디드 렉트 배경 (약간 패딩)
-            pad = 2
-            gc.SetBrush(wx.Brush(bg))
-            gc.SetPen(wx.TRANSPARENT_PEN)
-            gc.DrawRoundedRectangle(pad, pad, w - pad * 2, h - pad * 2, _CORNER_RADIUS)
+            # 기본 상태는 투명. hover/pressed/active에서만 표면을 그린다.
+            if bg is not None:
+                pad = 3
+                gc.SetBrush(wx.Brush(bg))
+                if self._is_active:
+                    gc.SetPen(wx.Pen(Colors.BORDER_FOCUS, 1))
+                elif self._is_hovered:
+                    gc.SetPen(wx.Pen(Colors.BORDER_HOVER, 1))
+                else:
+                    gc.SetPen(wx.TRANSPARENT_PEN)
+                gc.DrawRoundedRectangle(pad, pad, w - pad * 2, h - pad * 2, _CORNER_RADIUS)
 
             # 아이콘 그리기 (중앙)
-            if self._bitmap and self._bitmap.IsOk():
-                bw, bh = self._bitmap.GetWidth(), self._bitmap.GetHeight()
+            bitmap = self._bitmap
+            if not self._enabled:
+                bitmap = self._disabled_bitmap or bitmap
+            elif self._is_active:
+                bitmap = self._active_bitmap or bitmap
+
+            if bitmap and bitmap.IsOk():
+                bw, bh = bitmap.GetWidth(), bitmap.GetHeight()
                 ix = (w - bw) / 2
                 iy = (h - bh) / 2
-                if not self._enabled:
-                    # 비활성화: 반투명 처리 (캐시하여 매 paint마다 재계산 방지)
-                    if not hasattr(self, '_disabled_bitmap_cache') or self._disabled_bitmap_cache is None:
-                        img = self._bitmap.ConvertToImage()
-                        if img.HasAlpha():
-                            alpha_data = bytearray(img.GetAlpha())
-                            alpha_data = bytes(a // 3 for a in alpha_data)
-                            img.SetAlpha(alpha_data)
-                        self._disabled_bitmap_cache = wx.Bitmap(img)
-                    gc.DrawBitmap(self._disabled_bitmap_cache, ix, iy, bw, bh)
-                else:
-                    gc.DrawBitmap(self._bitmap, ix, iy, bw, bh)
+                gc.DrawBitmap(bitmap, ix, iy, bw, bh)
 
         memdc.SelectObject(wx.NullBitmap)
         dc.DrawBitmap(bmp, 0, 0, False)
@@ -180,8 +227,8 @@ class ToolSeparator(wx.Control):
     """툴바 구분선 (owner-draw, 라운디드 캡)"""
 
     def __init__(self, parent=None):
-        super().__init__(parent, wx.ID_ANY, size=(8, 50), style=wx.BORDER_NONE)
-        self.SetMinSize((8, 50))
+        super().__init__(parent, wx.ID_ANY, size=(10, 42), style=wx.BORDER_NONE)
+        self.SetMinSize((10, 42))
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
@@ -196,18 +243,18 @@ class ToolSeparator(wx.Control):
         memdc = wx.MemoryDC(bmp)
 
         parent = self.GetParent()
-        parent_bg = parent.GetBackgroundColour() if parent else wx.Colour(32, 32, 32)
+        parent_bg = parent.GetBackgroundColour() if parent else Colors.BG_PANEL
         memdc.SetBackground(wx.Brush(parent_bg))
         memdc.Clear()
 
         gc = wx.GraphicsContext.Create(memdc)
         if gc:
-            sep_color = Colors.BORDER if Colors else wx.Colour(60, 60, 60)
+            sep_color = Colors.DIVIDER_SUBTLE if Colors else wx.Colour(40, 46, 56)
             gc.SetBrush(wx.Brush(sep_color))
             gc.SetPen(wx.TRANSPARENT_PEN)
             # 세로 라운디드 바
-            bar_w = 2
-            bar_h = h - 12
+            bar_w = 1
+            bar_h = h - 18
             x = (w - bar_w) / 2
             y = 6
             gc.DrawRoundedRectangle(x, y, bar_w, bar_h, 1)
@@ -224,7 +271,32 @@ class IconToolbar(wx.Panel):
         self._main_window = main_window
         self._all_buttons = []
         self._active_button: Optional[FlatIconButton] = None
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
         self._setup_ui()
+
+    def _on_paint(self, event):
+        dc = wx.PaintDC(self)
+        w, h = self.GetClientSize()
+        if w <= 0 or h <= 0:
+            return
+
+        parent = self.GetParent()
+        bg = parent.GetBackgroundColour() if parent else Colors.BG_PRIMARY
+        dc.SetBackground(wx.Brush(bg))
+        dc.Clear()
+
+        gc = wx.GraphicsContext.Create(dc)
+        if gc:
+            pad = 6
+            gc.SetBrush(wx.Brush(Colors.RAIL_BG))
+            gc.SetPen(wx.Pen(Colors.DIVIDER_SUBTLE, 1))
+            gc.DrawRoundedRectangle(pad, pad, w - pad * 2, h - pad * 2, 13)
+            gc.SetPen(wx.Pen(Colors.SURFACE_HIGHLIGHT, 1))
+            gc.StrokeLine(pad + 10, pad + 1, w - pad - 10, pad + 1)
+            gc.SetPen(wx.Pen(Colors.SURFACE_SHADOW, 1))
+            gc.StrokeLine(pad + 10, h - pad - 1, w - pad - 10, h - pad - 1)
 
     def _setup_ui(self):
         """UI 초기화"""
@@ -240,10 +312,10 @@ class IconToolbar(wx.Panel):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 배경색
-        bg = Colors.BG_PRIMARY if Colors else wx.Colour(32, 32, 32)
-        self.SetBackgroundColour(bg)
+        bg = Colors.RAIL_BG if Colors else wx.Colour(25, 29, 35)
+        self.SetBackgroundColour(Colors.BG_PRIMARY if Colors else bg)
         scroll_panel.SetBackgroundColour(bg)
-        self.SetMinSize((-1, 78))
+        self.SetMinSize((-1, 72))
 
         # 번역
         translations = getattr(self._main_window, '_translations', None)
@@ -252,7 +324,7 @@ class IconToolbar(wx.Panel):
         open_tooltip = translations.tr("toolbar_open_file") if translations else "파일 열기 (Ctrl+O)"
         self._open_btn = FlatIconButton("open_file", open_tooltip, scroll_panel)
         self._open_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_open_file())
-        button_sizer.Add(self._open_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._open_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._open_btn)
 
         button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
@@ -261,19 +333,19 @@ class IconToolbar(wx.Panel):
         text_tooltip = translations.tr("toolbar_text") if translations else "텍스트 추가 (T)"
         self._text_btn = FlatIconButton("text", text_tooltip, scroll_panel)
         self._text_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_text())
-        button_sizer.Add(self._text_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._text_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._text_btn)
 
         sticker_tooltip = translations.tr("toolbar_sticker") if translations else "스티커/도형 추가"
         self._sticker_btn = FlatIconButton("sticker", sticker_tooltip, scroll_panel)
         self._sticker_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_sticker())
-        button_sizer.Add(self._sticker_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._sticker_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._sticker_btn)
 
         pencil_tooltip = translations.tr("toolbar_pencil") if translations else "펜슬 그리기 (P)"
         self._pencil_btn = FlatIconButton("pencil", pencil_tooltip, scroll_panel)
         self._pencil_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_pencil())
-        button_sizer.Add(self._pencil_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._pencil_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._pencil_btn)
 
         button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
@@ -282,13 +354,13 @@ class IconToolbar(wx.Panel):
         crop_tooltip = translations.tr("toolbar_crop") if translations else "자르기 (C)"
         self._crop_btn = FlatIconButton("crop", crop_tooltip, scroll_panel)
         self._crop_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_crop())
-        button_sizer.Add(self._crop_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._crop_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._crop_btn)
 
         resize_tooltip = translations.tr("toolbar_resize") if translations else "크기 조절 (R)"
         self._resize_btn = FlatIconButton("resize", resize_tooltip, scroll_panel)
         self._resize_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_resize())
-        button_sizer.Add(self._resize_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._resize_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._resize_btn)
 
         button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
@@ -297,7 +369,7 @@ class IconToolbar(wx.Panel):
         effects_tooltip = translations.tr("toolbar_effects") if translations else "효과/필터 (E)"
         self._effects_btn = FlatIconButton("effects", effects_tooltip, scroll_panel)
         self._effects_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_effects())
-        button_sizer.Add(self._effects_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._effects_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._effects_btn)
 
         button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
@@ -306,19 +378,19 @@ class IconToolbar(wx.Panel):
         rotate_tooltip = translations.tr("toolbar_rotate") if translations else "90° 회전"
         self._rotate_btn = FlatIconButton("rotate", rotate_tooltip, scroll_panel)
         self._rotate_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_rotate(0))
-        button_sizer.Add(self._rotate_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._rotate_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._rotate_btn)
 
         flip_h_tooltip = translations.tr("toolbar_flip_h") if translations else "좌우 뒤집기"
         self._flip_h_btn = FlatIconButton("flip_h", flip_h_tooltip, scroll_panel)
         self._flip_h_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_flip('h'))
-        button_sizer.Add(self._flip_h_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._flip_h_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._flip_h_btn)
 
         flip_v_tooltip = translations.tr("toolbar_flip_v") if translations else "상하 뒤집기"
         self._flip_v_btn = FlatIconButton("flip_v", flip_v_tooltip, scroll_panel)
         self._flip_v_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_flip('v'))
-        button_sizer.Add(self._flip_v_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._flip_v_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._flip_v_btn)
 
         button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
@@ -327,31 +399,31 @@ class IconToolbar(wx.Panel):
         reverse_tooltip = translations.tr("toolbar_reverse") if translations else "역재생"
         self._reverse_btn = FlatIconButton("reverse", reverse_tooltip, scroll_panel)
         self._reverse_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_reverse())
-        button_sizer.Add(self._reverse_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._reverse_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._reverse_btn)
 
         yoyo_tooltip = translations.tr("toolbar_yoyo") if translations else "요요 효과"
         self._yoyo_btn = FlatIconButton("yoyo", yoyo_tooltip, scroll_panel)
         self._yoyo_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_yoyo())
-        button_sizer.Add(self._yoyo_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._yoyo_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._yoyo_btn)
 
         speed_tooltip = translations.tr("toolbar_speed") if translations else "속도 조절"
         self._speed_btn = FlatIconButton("speed", speed_tooltip, scroll_panel)
         self._speed_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_speed())
-        button_sizer.Add(self._speed_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._speed_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._speed_btn)
 
         reduce_tooltip = translations.tr("toolbar_reduce") if translations else "프레임 줄이기"
         self._reduce_btn = FlatIconButton("reduce", reduce_tooltip, scroll_panel)
         self._reduce_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_reduce_frames())
-        button_sizer.Add(self._reduce_btn, 0, wx.ALL, 3)
+        button_sizer.Add(self._reduce_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._reduce_btn)
 
         button_sizer.AddStretchSpacer()
 
         scroll_panel.SetSizer(button_sizer)
-        main_sizer.Add(scroll_panel, 1, wx.EXPAND)
+        main_sizer.Add(scroll_panel, 1, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(main_sizer)
 
         scroll_panel.Thaw()

@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-05-13
+
 ### 변경
+- 에디터 도움말을 앱 요약, 편집 기능, 단축키, 제품 정보 탭으로 재구성
+- 에디터 정보 창을 커스텀 다크 다이얼로그로 교체하여 펼침 영역 텍스트 겹침 방지
+- 앱/에디터 버전과 개발자/수정일 메타데이터를 `core/version.py` 기준으로 갱신
+- 에디터 UI 아이콘, 카드 깊이, 메뉴/라인 톤을 현대적인 다크 스타일로 재정비
 - 의존성 최소 버전을 현재 설치 가능한 조합으로 갱신 (`wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.20.0` 등)
 - CUDA 13.x GPU 가속 의존성을 기본 설치에서 분리하고 `requirements-gpu.txt`로 선택 설치하도록 정리
 - 프로젝트 문서를 현재 저장소 상태 기준으로 재정렬
@@ -16,6 +22,7 @@
 - Windows `where ffmpeg` 출력 디코딩 경고 제거
 
 ### 삭제
+- 설치/빌드 흐름에서 Windows 보안 상태 변경 및 Defender 회피 관련 처리 제거
 - 무참조 `core/encoder/` 패키지 제거
 - 무참조 `DXCamPool`, GPU helper 일부, `tests/unit/core/test_encoder_presets.py` 제거
 

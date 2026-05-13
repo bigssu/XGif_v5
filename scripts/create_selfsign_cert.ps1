@@ -1,5 +1,5 @@
 # create_selfsign_cert.ps1 — XGif 코드 서명용 셀프 서명 인증서 생성
-# 용도: 로컬 테스트용 (SmartScreen 우회 불가, 개발/테스트 전용)
+# 용도: 로컬 개발/테스트용
 #
 # 사용법:
 #   powershell.exe -ExecutionPolicy Bypass -File scripts\create_selfsign_cert.ps1
@@ -84,5 +84,4 @@ Write-Host "  PFX: $PfxPath"
 Write-Host "  Password: [hidden]"
 Write-Host ""
 Write-Host "NOTE: This is a self-signed certificate for local testing only."
-Write-Host "      It will NOT bypass SmartScreen warnings."
 Write-Host "      For production, use a certificate from a trusted CA."

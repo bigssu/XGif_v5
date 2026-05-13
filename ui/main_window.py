@@ -36,6 +36,7 @@ from ui.constants import (
 )
 from ui.theme import Colors, Fonts
 from ui.i18n import tr, get_trans_manager
+from ui.window_chrome import apply_dark_title_bar
 
 
 def _preview_frame_to_rgb(frame: np.ndarray) -> np.ndarray | None:
@@ -140,6 +141,7 @@ class MainWindow(wx.Frame):
         wx.Frame.__init__(self, parent, title=f"{APP_NAME} v{VERSION}",
                          size=(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT),
                          style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
+        apply_dark_title_bar(self)
         self.capture_overlay = None
         self._last_pos = None  # 메인 윈도우 이전 위치 (오버레이 델타 이동용)
         self.recorder = None
@@ -220,6 +222,7 @@ class MainWindow(wx.Frame):
 
         # 이벤트 바인딩
         self.Bind(wx.EVT_MOVE, self.OnMove)
+        self.Bind(wx.EVT_SHOW, self.OnShow)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
 
     def _init_ui(self):
@@ -235,12 +238,12 @@ class MainWindow(wx.Frame):
         main_panel.SetBackgroundColour(Colors.BG_PRIMARY)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_panel.SetSizer(main_sizer)
-        main_sizer.Add((0, 4))  # 상단 4px
+        main_sizer.Add((0, 8))  # 상단 여백
         # Windows 11 Dark Theme 컨트롤 바
         from ui.capture_control_bar import CaptureControlBar
         self.capture_control_bar = CaptureControlBar(main_panel)
         self._connect_capture_control_bar()
-        main_sizer.Add(self.capture_control_bar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        main_sizer.Add(self.capture_control_bar, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 12)
 
         # 임시 버튼 참조 (호환성을 위해 capture_control_bar의 버튼 사용)
         self.start_btn = self.capture_control_bar.rec_button
@@ -254,8 +257,8 @@ class MainWindow(wx.Frame):
 
         # 커스텀 상태바 (Windows 11 Dark Theme)
         status_panel = wx.Panel(self)
-        status_panel.SetBackgroundColour(Colors.BG_SECONDARY)
-        status_panel.SetMinSize((-1, 26))
+        status_panel.SetBackgroundColour(Colors.RAIL_BG)
+        status_panel.SetMinSize((-1, 30))
         status_sizer = wx.BoxSizer(wx.HORIZONTAL)
         status_panel.SetSizer(status_sizer)
         font_sb = Fonts.get_font(Fonts.SIZE_DEFAULT)
@@ -315,6 +318,11 @@ class MainWindow(wx.Frame):
         event.Skip()
         if getattr(self, 'capture_control_bar', None):
             self.capture_control_bar.Refresh(True)
+
+    def OnShow(self, event):
+        event.Skip()
+        if event.IsShown():
+            apply_dark_title_bar(self)
 
     def retranslateUi(self, lang=None):
         """언어 변경 시 UI 업데이트"""
@@ -406,7 +414,7 @@ class MainWindow(wx.Frame):
         progress_panel = wx.Panel(parent_window)
         progress_panel.SetMinSize((-1, 20))
         progress_panel.SetSize((-1, 20))
-        progress_panel.SetBackgroundColour(Colors.BG_PRIMARY)
+        progress_panel.SetBackgroundColour(Colors.RAIL_BG_ALT)
         self._progress_panel = progress_panel
         # v1: setContentsMargins(10,2,10,0), setSpacing(10) → 상단 2px + 가로 10
         outer = wx.BoxSizer(wx.VERTICAL)
@@ -435,13 +443,13 @@ class MainWindow(wx.Frame):
         progress_sizer.Add((10, 0))  # 우측 10px
         progress_sizer.AddStretchSpacer()
         outer.SetSizeHints(progress_panel)
-        parent_layout.Add(progress_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        parent_layout.Add(progress_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 12)
 
     def _create_preview_area(self, parent_layout, parent_window):
         """실시간 미리보기 영역 생성."""
         preview_panel = wx.Panel(parent_window)
-        preview_panel.SetBackgroundColour(Colors.BG_PRIMARY)
-        preview_panel.SetMinSize((-1, PREVIEW_HEIGHT + 12))
+        preview_panel.SetBackgroundColour(Colors.RAIL_BG)
+        preview_panel.SetMinSize((-1, PREVIEW_HEIGHT + 18))
 
         preview_sizer = wx.BoxSizer(wx.HORIZONTAL)
         preview_panel.SetSizer(preview_sizer)
@@ -455,7 +463,8 @@ class MainWindow(wx.Frame):
 
         self.preview_bitmap = wx.StaticBitmap(preview_panel, size=(PREVIEW_WIDTH, PREVIEW_HEIGHT))
         self.preview_bitmap.SetMinSize((PREVIEW_WIDTH, PREVIEW_HEIGHT))
-        self.preview_bitmap.SetBackgroundColour(Colors.BG_SECONDARY)
+        self.preview_bitmap.SetBackgroundColour(Colors.BG_SUNKEN)
+        self.preview_bitmap.SetToolTip(tr('preview'))
         preview_sizer.Add(self.preview_bitmap, 0, wx.ALIGN_CENTER_VERTICAL)
 
         preview_sizer.AddStretchSpacer()

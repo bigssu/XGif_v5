@@ -13,13 +13,15 @@ class PropertyBar(wx.Panel):
 
     def __init__(self, parent):
         super().__init__(parent, style=wx.BORDER_NONE)
-        self.SetBackgroundColour(Colors.BG_TOOLBAR)
+        self.SetBackgroundColour(Colors.BG_PRIMARY)
 
         self._sizer = wx.BoxSizer(wx.VERTICAL)
         self.SetSizer(self._sizer)
 
         self._toolbars = {}  # name -> toolbar
         self._active_name = None
+
+        self.Bind(wx.EVT_SIZE, self._on_size)
 
         self.Hide()
 
@@ -43,6 +45,7 @@ class PropertyBar(wx.Panel):
 
         self._active_name = name
         self.Show()
+        self.sync_active_toolbar_height()
         self.GetParent().Layout()
 
     def hide_all(self):
@@ -50,8 +53,28 @@ class PropertyBar(wx.Panel):
         for tb in self._toolbars.values():
             tb.Hide()
         self._active_name = None
+        self.SetMinSize((-1, 0))
         self.Hide()
         self.GetParent().Layout()
+
+    def _on_size(self, event):
+        self.sync_active_toolbar_height()
+        event.Skip()
+
+    def sync_active_toolbar_height(self):
+        """Resize the property bar to the active toolbar's wrapped height."""
+        toolbar = self._toolbars.get(self._active_name)
+        if not toolbar or not toolbar.IsShown():
+            return
+
+        height = toolbar.sync_layout_height(notify_parent=False)
+        if self.GetMinSize().GetHeight() != height:
+            self.SetMinSize((-1, height))
+
+        self.Layout()
+        parent = self.GetParent()
+        if parent:
+            parent.Layout()
 
     @property
     def active_toolbar_name(self):

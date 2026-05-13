@@ -77,6 +77,14 @@ _install_startup_crash_reporter()
 # ── GUI 모드 ──
 import wx
 
+if sys.platform == 'win32':
+    with contextlib.suppress(Exception):
+        wx.SystemOptions.SetOption("msw.dark-mode", 2)
+
+from ui.dark_controls import install_dark_controls
+
+install_dark_controls(wx)
+
 # 공통 상수
 from core.utils import APP_SETTINGS_NAME
 

@@ -5,7 +5,6 @@ PencilToolbar - 펜슬 그리기 인라인 툴바 (wxPython 버전)
 """
 import wx
 from .base_toolbar_wx import InlineToolbarBase
-from ..style_constants_wx import Colors
 
 
 class PencilToolbar(InlineToolbarBase):
@@ -26,28 +25,24 @@ class PencilToolbar(InlineToolbarBase):
     def _setup_pencil_ui(self):
         """펜슬 도구 UI 생성"""
         # 적용 대상
-        target_label = wx.StaticText(self._controls_widget, label="대상:")
-        target_label.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._controls_sizer.Add(target_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.add_label("대상:")
 
         self._target_combo = wx.ComboBox(
             self._controls_widget,
             style=wx.CB_READONLY,
             choices=["모두", "선택", "현재"]
         )
-        self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
-        self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(self._pencil_target_mode)
         self._target_combo.Bind(wx.EVT_COMBOBOX, self._on_target_changed)
-        self._controls_sizer.Add(self._target_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        self.add_control(self._target_combo)
 
         self.add_separator()
 
         # 색상 버튼
-        self._color_btn = wx.Button(self._controls_widget, size=(52, 52))
+        self._color_btn = wx.Button(self._controls_widget, size=(58, 34))
         self._color_btn.Bind(wx.EVT_BUTTON, lambda e: self._select_color())
         self._update_color_icon()
-        self._controls_sizer.Add(self._color_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.add_control(self._color_btn)
 
         # 두께 슬라이더
         self._width_slider = wx.Slider(
@@ -58,18 +53,14 @@ class PencilToolbar(InlineToolbarBase):
             style=wx.SL_HORIZONTAL,
             size=(120, -1)
         )
-        self._width_slider.SetBackgroundColour(self.TOOLBAR_BG_COLOR)
         self._width_slider.Bind(wx.EVT_SLIDER, self._on_width_changed)
-        self._controls_sizer.Add(self._width_slider, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.add_control(self._width_slider)
 
         self._width_label = wx.StaticText(self._controls_widget, label=f"{self._pencil_width}px")
-        self._width_label.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._controls_sizer.Add(self._width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        self.add_control(self._width_label)
 
         # 지속 시간
-        duration_label = wx.StaticText(self._controls_widget, label="시간:")
-        duration_label.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._controls_sizer.Add(duration_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.add_label("시간:")
 
         self._duration_spin = wx.SpinCtrlDouble(
             self._controls_widget,
@@ -78,22 +69,18 @@ class PencilToolbar(InlineToolbarBase):
             inc=0.1,
             size=(80, -1)
         )
-        self._duration_spin.SetBackgroundColour(Colors.BG_TERTIARY)
-        self._duration_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._duration_spin.SetValue(self._pencil_duration)
         self._duration_spin.SetDigits(1)
         self._duration_spin.Bind(wx.EVT_SPINCTRLDOUBLE, self._on_duration_changed)
-        self._controls_sizer.Add(self._duration_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        self.add_control(self._duration_spin)
 
         self.add_separator()
 
         # Auto Animation 토글
         self._auto_anim_btn = wx.ToggleButton(self._controls_widget, label="Auto", size=(70, 36))
-        self._auto_anim_btn.SetBackgroundColour(Colors.BG_TERTIARY)
-        self._auto_anim_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._auto_anim_btn.SetValue(self._pencil_auto_animation)
         self._auto_anim_btn.Bind(wx.EVT_TOGGLEBUTTON, self._on_auto_anim_toggled)
-        self._controls_sizer.Add(self._auto_anim_btn, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.add_control(self._auto_anim_btn)
 
     # === 활성화 / 비활성화 ===
 

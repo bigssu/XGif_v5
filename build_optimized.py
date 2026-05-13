@@ -646,7 +646,7 @@ def _parse_args():
     )
     parser.add_argument(
         "--use-upx", action="store_true",
-        help="Enable UPX compression when UPX is installed; compare runtime/AV false positives before release"
+        help="Enable UPX compression when UPX is installed; compare runtime and startup behavior before release"
     )
     parser.add_argument(
         "--upx-dir", default=None,
@@ -976,7 +976,6 @@ if __name__ == "__main__":
             ')',
             'echo   Unknown exit code: !EXIT_CODE!',
             'echo   Common causes:',
-            'echo     - Windows Defender blocked the exe (check quarantine)',
             'echo     - Missing VC++ Redistributable',
             'echo     - CUDA DLL load failure (GPU driver mismatch)',
             'echo     - Temp folder access denied',

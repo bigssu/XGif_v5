@@ -16,32 +16,84 @@ except ImportError:
 class IconColors:
     """통일된 아이콘 색상 팔레트"""
 
+    PRIMARY = "#dbe6f2"
+    MUTED = "#7f8b9a"
+    ACCENT = "#8bbcff"
+    BLUE = "#8bbcff"
+    CYAN = "#7cc7d9"
+    TEAL = "#79c7b1"
+    AMBER = "#d6aa63"
+    ROSE = "#d98a92"
+    LAVENDER = "#b8a7ee"
+    STEEL = "#a8b5c5"
+
     # 액션 색상
-    APPLY = "#81c784"       # 녹색 - 적용/확인
-    CANCEL = "#4fc3f7"      # 파랑 - 취소/닫기
-    DELETE = "#ff6b6b"      # 빨강 - 삭제/지우기
+    APPLY = PRIMARY
+    CANCEL = PRIMARY
+    DELETE = PRIMARY
 
     # 기능별 색상
-    CROP = "#9C27B0"        # 보라 - 자르기
-    RESIZE = "#00BCD4"      # 청록 - 크기조절
-    EFFECTS = "#FF9800"     # 주황 - 효과
-    TEXT = "#4CAF50"        # 초록 - 텍스트
-    STICKER = "#FFC107"     # 노랑 - 스티커
-    SPEED = "#FF5722"       # 딥오렌지 - 속도
-    PENCIL = "#FFC107"      # 노랑 - 펜슬
+    CROP = PRIMARY
+    RESIZE = PRIMARY
+    EFFECTS = PRIMARY
+    TEXT = PRIMARY
+    STICKER = PRIMARY
+    SPEED = PRIMARY
+    PENCIL = PRIMARY
 
     # 기타 색상
-    OPEN_FILE = "#FFA726"   # 오렌지 - 파일 열기
-    FRAME = "#2196F3"       # 파랑 - 프레임
-    ROTATE = "#3F51B5"      # 인디고 - 회전
-    FLIP = "#607D8B"        # 블루그레이 - 뒤집기
-    REVERSE = "#E91E63"     # 핑크 - 역재생
-    YOYO = "#795548"        # 브라운 - 요요
-    REDUCE = "#009688"      # 틸 - 줄이기
-    TIME = "#4fc3f7"        # 파랑 - 시간
-    ADD = "#81c784"         # 녹색 - 추가
-    PLAY = "#4CAF50"        # 녹색 - 재생
-    PAUSE = "#FF9800"       # 주황 - 일시정지
+    OPEN_FILE = PRIMARY
+    FRAME = PRIMARY
+    ROTATE = PRIMARY
+    FLIP = PRIMARY
+    REVERSE = PRIMARY
+    YOYO = PRIMARY
+    REDUCE = PRIMARY
+    TIME = PRIMARY
+    ADD = PRIMARY
+    PLAY = PRIMARY
+    PAUSE = PRIMARY
+
+    _BY_ICON = {
+        "open_file": AMBER,
+        "text": BLUE,
+        "font_size": BLUE,
+        "sticker": LAVENDER,
+        "pencil": AMBER,
+        "crop": AMBER,
+        "resize": CYAN,
+        "effects": LAVENDER,
+        "color_palette": LAVENDER,
+        "rotate": BLUE,
+        "flip_h": STEEL,
+        "flip_v": STEEL,
+        "reverse": ROSE,
+        "yoyo": CYAN,
+        "speed": AMBER,
+        "reduce": TEAL,
+        "frame": STEEL,
+        "delete": ROSE,
+        "clear": ROSE,
+        "exit": STEEL,
+        "add": TEAL,
+        "apply": BLUE,
+        "cancel": STEEL,
+        "play": TEAL,
+        "pause": AMBER,
+        "time": CYAN,
+        "clock": CYAN,
+        "target": BLUE,
+        "outline": AMBER,
+        "animation": LAVENDER,
+        "blink": AMBER,
+        "position": BLUE,
+        "style": LAVENDER,
+        "width": STEEL,
+    }
+
+    @classmethod
+    def for_icon(cls, icon_type: str) -> str:
+        return cls._BY_ICON.get(icon_type, cls.PRIMARY)
 
 
 class IconFactory:
@@ -65,14 +117,7 @@ class IconFactory:
         Windows에서 wx.MemoryDC.Clear()는 알파를 0으로 설정하지 않으므로
         wx.Image를 통해 명시적으로 알파를 초기화합니다.
         """
-        img = wx.Image(width, height)
-        img.InitAlpha()
-        # 알파 전체를 0(투명)으로 초기화 — b'\x00' * n 은 리스트 생성 없이 즉시 할당
-        pixel_count = width * height
-        img.SetAlpha(b'\x00' * pixel_count)
-        # RGB도 0으로 (pre-multiplied alpha 환경에서 안전)
-        img.SetData(b'\x00' * (pixel_count * 3))
-        return wx.Bitmap(img, 32)
+        return wx.Bitmap.FromRGBA(width, height, 0, 0, 0, 0)
 
     @classmethod
     def create_bitmap(cls, icon_type: str, size: Optional[int] = None, color: Optional[str] = None) -> wx.Bitmap:
@@ -101,15 +146,360 @@ class IconFactory:
         # 안티앨리어싱 사용
         gc = wx.GraphicsContext.Create(dc)
         if gc:
-            # 아이콘 타입별 그리기
-            draw_method = getattr(cls, f'_draw_{icon_type}', None)
-            if draw_method:
-                draw_method(gc, dc, size, color)
+            # 최신 툴바는 모든 아이콘을 같은 stroke/색상 언어로 그린다.
+            # 기존 개별 draw_* 구현은 하위 호환 fallback으로만 남긴다.
+            if cls._draw_modern_icon(gc, dc, icon_type, size, color):
+                pass
+            else:
+                draw_method = getattr(cls, f'_draw_{icon_type}', None)
+                if draw_method:
+                    draw_method(gc, dc, size, color)
+
             del gc
 
         dc.SelectObject(wx.NullBitmap)
         cls._cache[cache_key] = bitmap
         return bitmap
+
+    @classmethod
+    def _icon_color(cls, icon_type: str, color: Optional[str] = None) -> wx.Colour:
+        return wx.Colour(color or IconColors.for_icon(icon_type))
+
+    @classmethod
+    def _stroke_width(cls, size: int) -> float:
+        return max(1.8, round(size / 14, 1))
+
+    @classmethod
+    def _set_stroke(cls, gc: wx.GraphicsContext, c: wx.Colour, size: int, *, width: Optional[float] = None):
+        info = wx.GraphicsPenInfo(c).Width(width or cls._stroke_width(size)).Cap(wx.CAP_ROUND).Join(wx.JOIN_ROUND)
+        gc.SetPen(gc.CreatePen(info))
+        gc.SetBrush(wx.NullGraphicsBrush)
+
+    @classmethod
+    def _set_fill(cls, gc: wx.GraphicsContext, c: wx.Colour):
+        gc.SetPen(wx.NullGraphicsPen)
+        gc.SetBrush(gc.CreateBrush(wx.Brush(c)))
+
+    @classmethod
+    def _stroke_lines(cls, gc: wx.GraphicsContext, points):
+        path = gc.CreatePath()
+        for item in points:
+            if item is None:
+                continue
+            start, end = item
+            path.MoveToPoint(*start)
+            path.AddLineToPoint(*end)
+        gc.StrokePath(path)
+
+    @classmethod
+    def _draw_arrow(cls, gc: wx.GraphicsContext, start, end, head: float = 4.5):
+        sx, sy = start
+        ex, ey = end
+        path = gc.CreatePath()
+        path.MoveToPoint(sx, sy)
+        path.AddLineToPoint(ex, ey)
+        angle = math.atan2(ey - sy, ex - sx)
+        for delta in (math.pi * 0.82, -math.pi * 0.82):
+            hx = ex + head * math.cos(angle + delta)
+            hy = ey + head * math.sin(angle + delta)
+            path.MoveToPoint(ex, ey)
+            path.AddLineToPoint(hx, hy)
+        gc.StrokePath(path)
+
+    @classmethod
+    def _draw_modern_icon(cls, gc: wx.GraphicsContext, dc: wx.DC, icon_type: str, size: int, color: Optional[str]) -> bool:
+        """단일 모노라인 아이콘 세트.
+
+        모든 아이콘은 투명 캔버스 위에 같은 두께와 같은 색으로 그려져
+        툴바가 서로 다른 앱에서 가져온 것처럼 보이지 않게 한다.
+        """
+        c = cls._icon_color(icon_type, color)
+        cls._set_stroke(gc, c, size)
+        optical_adjust = {
+            "open_file": -1.0,
+            "rotate": -0.5,
+            "speed": -0.5,
+            "effects": -0.5,
+            "text": 1.0,
+            "sticker": -0.5,
+            "pencil": -0.5,
+            "crop": 0.5,
+            "reduce": 1.0,
+            "play": 0.5,
+            "reverse": 0.5,
+            "delete": 0.5,
+            "flip_h": -0.5,
+            "flip_v": -0.5,
+            "yoyo": -0.5,
+            "font_size": 0.5,
+            "target": 0.5,
+        }
+        m = max(3, min(size * 0.30, size * 0.18 + optical_adjust.get(icon_type, 0)))
+        cx = cy = size / 2
+        u = size / 24
+        known = {
+            "apply", "cancel", "exit", "delete", "clear", "open_file", "crop", "resize",
+            "rotate", "flip_h", "flip_v", "effects", "text", "sticker", "pencil", "play",
+            "pause", "speed", "reverse", "yoyo", "reduce", "frame", "time", "add",
+            "font_size", "outline", "animation", "blink", "position", "clock", "target",
+            "color_palette", "style", "width",
+        }
+        if icon_type not in known:
+            return False
+
+        path = gc.CreatePath()
+
+        if icon_type == "apply":
+            path.MoveToPoint(m + 1, cy)
+            path.AddLineToPoint(cx - 2, size - m - 1)
+            path.AddLineToPoint(size - m, m + 1)
+            gc.StrokePath(path)
+        elif icon_type in {"cancel", "clear"}:
+            cls._stroke_lines(gc, [((m, m), (size - m, size - m)), ((size - m, m), (m, size - m))])
+        elif icon_type == "exit":
+            gc.DrawRoundedRectangle(m, m, size * 0.42, size - 2 * m, 2)
+            cls._draw_arrow(gc, (cx - 1, cy), (size - m, cy))
+        elif icon_type == "delete":
+            gc.DrawRoundedRectangle(4 * u, 5 * u, 16 * u, 14 * u, 2 * u)
+            cls._stroke_lines(gc, [
+                ((7 * u, 5 * u), (7 * u, 19 * u)),
+                ((17 * u, 5 * u), (17 * u, 19 * u)),
+                ((5.5 * u, 8 * u), (7 * u, 8 * u)),
+                ((5.5 * u, 12 * u), (7 * u, 12 * u)),
+                ((5.5 * u, 16 * u), (7 * u, 16 * u)),
+                ((17 * u, 8 * u), (18.5 * u, 8 * u)),
+                ((17 * u, 12 * u), (18.5 * u, 12 * u)),
+                ((17 * u, 16 * u), (18.5 * u, 16 * u)),
+                ((9.5 * u, 9.5 * u), (14.5 * u, 14.5 * u)),
+                ((14.5 * u, 9.5 * u), (9.5 * u, 14.5 * u)),
+            ])
+        elif icon_type == "open_file":
+            path.MoveToPoint(3 * u, 9 * u)
+            path.AddLineToPoint(3 * u, 19 * u)
+            path.AddLineToPoint(21 * u, 19 * u)
+            path.AddLineToPoint(21 * u, 10 * u)
+            path.AddLineToPoint(12 * u, 10 * u)
+            path.AddLineToPoint(10 * u, 7 * u)
+            path.AddLineToPoint(3 * u, 7 * u)
+            path.CloseSubpath()
+            gc.StrokePath(path)
+        elif icon_type == "crop":
+            cls._stroke_lines(gc, [
+                ((6 * u, 3 * u), (6 * u, 18 * u)),
+                ((3 * u, 6 * u), (18 * u, 6 * u)),
+                ((18 * u, 6 * u), (18 * u, 21 * u)),
+                ((6 * u, 18 * u), (21 * u, 18 * u)),
+            ])
+        elif icon_type == "resize":
+            gc.DrawRoundedRectangle(4 * u, 4 * u, 12 * u, 12 * u, 2 * u)
+            cls._draw_arrow(gc, (10 * u, 10 * u), (21 * u, 21 * u), head=4 * u)
+            cls._stroke_lines(gc, [
+                ((16 * u, 21 * u), (21 * u, 21 * u)),
+                ((21 * u, 16 * u), (21 * u, 21 * u)),
+            ])
+        elif icon_type == "rotate":
+            path.AddArc(cx, cy, 8 * u, math.radians(35), math.radians(330), True)
+            gc.StrokePath(path)
+            cls._stroke_lines(gc, [
+                ((18.5 * u, 5.5 * u), (21 * u, 5.5 * u)),
+                ((21 * u, 5.5 * u), (21 * u, 8 * u)),
+                ((18.5 * u, 18.5 * u), (15.5 * u, 18.5 * u)),
+            ])
+        elif icon_type in {"flip_h", "flip_v"}:
+            if icon_type == "flip_h":
+                cls._stroke_lines(gc, [((cx, 4 * u), (cx, 20 * u))])
+                path.MoveToPoint(m, cy)
+                path.AddLineToPoint(cx - 4, m + 4)
+                path.AddLineToPoint(cx - 4, size - m - 4)
+                path.CloseSubpath()
+                path.MoveToPoint(size - m, cy)
+                path.AddLineToPoint(cx + 4, m + 4)
+                path.AddLineToPoint(cx + 4, size - m - 4)
+                path.CloseSubpath()
+            else:
+                cls._stroke_lines(gc, [((4 * u, cy), (20 * u, cy))])
+                path.MoveToPoint(cx, m)
+                path.AddLineToPoint(m + 4, cy - 4)
+                path.AddLineToPoint(size - m - 4, cy - 4)
+                path.CloseSubpath()
+                path.MoveToPoint(cx, size - m)
+                path.AddLineToPoint(m + 4, cy + 4)
+                path.AddLineToPoint(size - m - 4, cy + 4)
+                path.CloseSubpath()
+            gc.StrokePath(path)
+        elif icon_type == "effects":
+            path.MoveToPoint(4 * u, 5 * u)
+            path.AddLineToPoint(20 * u, 5 * u)
+            path.AddLineToPoint(14 * u, 12 * u)
+            path.AddLineToPoint(14 * u, 18.5 * u)
+            path.AddLineToPoint(10 * u, 21 * u)
+            path.AddLineToPoint(10 * u, 12 * u)
+            path.CloseSubpath()
+            gc.StrokePath(path)
+            cls._stroke_lines(gc, [((7 * u, 9 * u), (17 * u, 9 * u))])
+        elif icon_type == "text":
+            font = wx.Font(
+                max(9, int(size * 0.76)),
+                wx.FONTFAMILY_SWISS,
+                wx.FONTSTYLE_NORMAL,
+                wx.FONTWEIGHT_BOLD,
+            )
+            gc.SetFont(font, c)
+            text_w, text_h = gc.GetTextExtent("T")[:2]
+            gc.DrawText("T", (size - text_w) / 2, (size - text_h) / 2 - 0.5)
+            cls._set_stroke(gc, c, size)
+        elif icon_type == "font_size":
+            font = wx.Font(
+                max(9, int(size * 0.62)),
+                wx.FONTFAMILY_SWISS,
+                wx.FONTSTYLE_NORMAL,
+                wx.FONTWEIGHT_BOLD,
+            )
+            gc.SetFont(font, c)
+            text_w, text_h = gc.GetTextExtent("T")[:2]
+            gc.DrawText("T", 5 * u, (size - text_h) / 2 - 0.5)
+            cls._set_stroke(gc, c, size, width=max(1.8, size / 14))
+            arrow_x = 18 * u
+            cls._stroke_lines(gc, [
+                ((arrow_x, 6 * u), (arrow_x, 18 * u)),
+                ((arrow_x, 6 * u), (15.5 * u, 8.7 * u)),
+                ((arrow_x, 6 * u), (20.5 * u, 8.7 * u)),
+                ((arrow_x, 18 * u), (15.5 * u, 15.3 * u)),
+                ((arrow_x, 18 * u), (20.5 * u, 15.3 * u)),
+            ])
+            cls._set_stroke(gc, c, size)
+        elif icon_type == "sticker":
+            gc.DrawRoundedRectangle(3 * u, 12 * u, 7 * u, 7 * u, 1.5 * u)
+            gc.DrawEllipse(13 * u, 4 * u, 7 * u, 7 * u)
+            path.MoveToPoint(14 * u, 20 * u)
+            path.AddLineToPoint(21 * u, 20 * u)
+            path.AddLineToPoint(17.5 * u, 13 * u)
+            path.CloseSubpath()
+            gc.StrokePath(path)
+        elif icon_type == "pencil":
+            fill = wx.Colour(c.Red(), c.Green(), c.Blue(), 58)
+            gc.SetBrush(gc.CreateBrush(wx.Brush(fill)))
+            body_a = (7 * u, 17 * u)
+            body_b = (16 * u, 8 * u)
+            body_c = (20 * u, 12 * u)
+            body_d = (11 * u, 21 * u)
+            tip = (3.5 * u, 21.5 * u)
+            path.MoveToPoint(*body_a)
+            path.AddLineToPoint(*body_b)
+            path.AddLineToPoint(*body_c)
+            path.AddLineToPoint(*body_d)
+            path.CloseSubpath()
+            gc.StrokePath(path)
+            cap = gc.CreatePath()
+            cap.MoveToPoint(16 * u, 8 * u)
+            cap.AddLineToPoint(18.5 * u, 5.5 * u)
+            cap.AddLineToPoint(22 * u, 9 * u)
+            cap.AddLineToPoint(20 * u, 12 * u)
+            cap.CloseSubpath()
+            gc.StrokePath(cap)
+            cls._stroke_lines(gc, [
+                (body_a, tip),
+                (tip, body_d),
+                ((15 * u, 9 * u), (19 * u, 13 * u)),
+                ((6 * u, 18 * u), (10 * u, 22 * u)),
+            ])
+            gc.SetBrush(wx.NullGraphicsBrush)
+        elif icon_type == "play":
+            path.MoveToPoint(m + 3, m)
+            path.AddLineToPoint(size - m, cy)
+            path.AddLineToPoint(m + 3, size - m)
+            path.CloseSubpath()
+            gc.StrokePath(path)
+        elif icon_type == "pause":
+            cls._stroke_lines(gc, [((cx - 5, m), (cx - 5, size - m)), ((cx + 5, m), (cx + 5, size - m))])
+        elif icon_type == "speed":
+            cls._set_stroke(gc, c, size, width=max(1.9, size / 13))
+            path.AddArc(12 * u, 16 * u, 8 * u, math.radians(205), math.radians(335), False)
+            gc.StrokePath(path)
+            cls._stroke_lines(gc, [
+                ((5.5 * u, 16.5 * u), (4 * u, 18 * u)),
+                ((7.2 * u, 10.5 * u), (5.5 * u, 9 * u)),
+                ((12 * u, 8 * u), (12 * u, 5.5 * u)),
+                ((16.8 * u, 10.5 * u), (18.5 * u, 9 * u)),
+                ((18.5 * u, 16.5 * u), (20 * u, 18 * u)),
+                ((7 * u, 20 * u), (17 * u, 20 * u)),
+            ])
+            cls._set_stroke(gc, c, size, width=max(2.2, size / 11))
+            cls._stroke_lines(gc, [((12 * u, 16 * u), (17.2 * u, 10.8 * u))])
+            gc.DrawEllipse(10.6 * u, 14.6 * u, 2.8 * u, 2.8 * u)
+            cls._set_stroke(gc, c, size)
+        elif icon_type == "reverse":
+            path.MoveToPoint(20 * u, 5 * u)
+            path.AddLineToPoint(12 * u, cy)
+            path.AddLineToPoint(20 * u, 19 * u)
+            path.CloseSubpath()
+            path.MoveToPoint(12 * u, 5 * u)
+            path.AddLineToPoint(4 * u, cy)
+            path.AddLineToPoint(12 * u, 19 * u)
+            path.CloseSubpath()
+            gc.StrokePath(path)
+        elif icon_type == "yoyo":
+            cls._draw_arrow(gc, (5 * u, 8 * u), (19 * u, 8 * u), head=4 * u)
+            cls._draw_arrow(gc, (19 * u, 16 * u), (5 * u, 16 * u), head=4 * u)
+        elif icon_type == "reduce":
+            gc.DrawRoundedRectangle(4 * u, 5 * u, 16 * u, 14 * u, 2 * u)
+            cls._stroke_lines(gc, [
+                ((7 * u, 5 * u), (7 * u, 19 * u)),
+                ((17 * u, 5 * u), (17 * u, 19 * u)),
+                ((5.5 * u, 8 * u), (7 * u, 8 * u)),
+                ((5.5 * u, 12 * u), (7 * u, 12 * u)),
+                ((5.5 * u, 16 * u), (7 * u, 16 * u)),
+                ((17 * u, 8 * u), (18.5 * u, 8 * u)),
+                ((17 * u, 12 * u), (18.5 * u, 12 * u)),
+                ((17 * u, 16 * u), (18.5 * u, 16 * u)),
+                ((9.5 * u, 12 * u), (14.5 * u, 12 * u)),
+            ])
+        elif icon_type == "frame":
+            gc.DrawRoundedRectangle(m, m, size - 2 * m, size - 2 * m, 2)
+            cls._stroke_lines(gc, [((cx, m), (cx, size - m)), ((m, cy), (size - m, cy))])
+        elif icon_type in {"time", "clock"}:
+            gc.DrawEllipse(m, m, size - 2 * m, size - 2 * m)
+            cls._stroke_lines(gc, [((cx, cy), (cx, m + 6)), ((cx, cy), (cx + 6, cy + 3))])
+        elif icon_type == "add":
+            cls._stroke_lines(gc, [((cx, m), (cx, size - m)), ((m, cy), (size - m, cy))])
+        elif icon_type == "outline":
+            gc.DrawRoundedRectangle(m, m, size - 2 * m, size - 2 * m, 3)
+            gc.DrawRoundedRectangle(m + 5, m + 5, size - 2 * m - 10, size - 2 * m - 10, 2)
+        elif icon_type == "animation":
+            for offset in (-5, 0, 5):
+                path = gc.CreatePath()
+                y = cy + offset
+                path.MoveToPoint(m, y)
+                path.AddCurveToPoint(m + 5, y - 4, cx - 4, y + 4, cx + 1, y)
+                path.AddCurveToPoint(cx + 7, y - 4, size - m - 5, y + 4, size - m, y)
+                gc.StrokePath(path)
+        elif icon_type == "blink":
+            cls._stroke_lines(gc, [
+                ((cx, m), (cx, size - m)), ((m, cy), (size - m, cy)),
+                ((m + 5, m + 5), (size - m - 5, size - m - 5)),
+                ((size - m - 5, m + 5), (m + 5, size - m - 5)),
+            ])
+        elif icon_type == "position":
+            gc.DrawEllipse(m + 3, m + 3, size - 2 * m - 6, size - 2 * m - 6)
+            cls._stroke_lines(gc, [((cx, m), (cx, size - m)), ((m, cy), (size - m, cy))])
+        elif icon_type == "target":
+            for offset in (0, 3, 6):
+                gc.DrawRoundedRectangle(m + offset, m + 6 - offset, size - 2 * m - 6, size - 2 * m - 8, 2)
+        elif icon_type == "color_palette":
+            for x, y in ((m + 2, m + 2), (size - m - 9, m + 2), (m + 2, size - m - 9), (size - m - 9, size - m - 9)):
+                gc.DrawEllipse(x, y, 7, 7)
+        elif icon_type == "style":
+            gc.DrawRoundedRectangle(size - m - 8, m, 7, 10, 2)
+            cls._stroke_lines(gc, [((size - m - 6, m + 10), (m + 4, size - m - 3))])
+            gc.DrawRoundedRectangle(m, size - m - 7, 11, 5, 2)
+        elif icon_type == "width":
+            cls._stroke_lines(gc, [
+                ((m, m + 3), (size - m, m + 3)),
+                ((m, cy), (size - m, cy)),
+                ((m, size - m - 3), (size - m, size - m - 3)),
+            ])
+
+        return True
 
     # ==================== 액션 아이콘 ====================
 
