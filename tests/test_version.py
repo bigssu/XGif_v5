@@ -29,6 +29,13 @@ class TestVersion:
         assert APP_VERSION.strip() != ""
         assert EDITOR_VERSION.strip() != ""
 
+    def test_ui_constants_reexport_app_identity(self):
+        from core.version import APP_NAME, APP_VERSION
+        from ui.constants import APP_NAME as UI_APP_NAME, VERSION
+
+        assert UI_APP_NAME == APP_NAME
+        assert VERSION == APP_VERSION
+
 
 class TestResourcePath:
     """리소스 경로 테스트"""

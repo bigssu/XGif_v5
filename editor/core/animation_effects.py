@@ -2,6 +2,7 @@
 AnimationEffects - 텍스트/스티커 애니메이션 효과
 페이드, 슬라이드, 타이핑, 회전, 스케일 등의 애니메이션 프리셋 제공
 """
+
 from __future__ import annotations
 from typing import List, Tuple, Optional
 from enum import Enum
@@ -12,32 +13,34 @@ import math
 
 class AnimationType(Enum):
     """애니메이션 타입"""
-    NONE = "none"                   # 정적 (애니메이션 없음)
-    FADE_IN = "fade_in"             # 페이드 인
-    FADE_OUT = "fade_out"           # 페이드 아웃
-    FADE_IN_OUT = "fade_in_out"     # 페이드 인 → 아웃
-    SLIDE_LEFT = "slide_left"       # 왼쪽으로 슬라이드
-    SLIDE_RIGHT = "slide_right"     # 오른쪽으로 슬라이드
-    SLIDE_UP = "slide_up"           # 위로 슬라이드
-    SLIDE_DOWN = "slide_down"       # 아래로 슬라이드
-    BOUNCE_IN = "bounce_in"         # 바운스 인
-    ZOOM_IN = "zoom_in"             # 줌 인
-    ZOOM_OUT = "zoom_out"           # 줌 아웃
-    ROTATE = "rotate"               # 회전
-    TYPING = "typing"               # 타이핑 (텍스트 전용)
-    SHAKE = "shake"                 # 흔들기
-    PULSE = "pulse"                 # 펄스 (크기 변화)
+
+    NONE = "none"  # 정적 (애니메이션 없음)
+    FADE_IN = "fade_in"  # 페이드 인
+    FADE_OUT = "fade_out"  # 페이드 아웃
+    FADE_IN_OUT = "fade_in_out"  # 페이드 인 → 아웃
+    SLIDE_LEFT = "slide_left"  # 왼쪽으로 슬라이드
+    SLIDE_RIGHT = "slide_right"  # 오른쪽으로 슬라이드
+    SLIDE_UP = "slide_up"  # 위로 슬라이드
+    SLIDE_DOWN = "slide_down"  # 아래로 슬라이드
+    BOUNCE_IN = "bounce_in"  # 바운스 인
+    ZOOM_IN = "zoom_in"  # 줌 인
+    ZOOM_OUT = "zoom_out"  # 줌 아웃
+    ROTATE = "rotate"  # 회전
+    TYPING = "typing"  # 타이핑 (텍스트 전용)
+    SHAKE = "shake"  # 흔들기
+    PULSE = "pulse"  # 펄스 (크기 변화)
 
 
 @dataclass
 class AnimationKeyframe:
     """애니메이션 키프레임"""
-    progress: float         # 진행률 (0.0 ~ 1.0)
-    x_offset: int = 0       # X 오프셋
-    y_offset: int = 0       # Y 오프셋
-    scale: float = 1.0      # 스케일
-    rotation: float = 0.0   # 회전 (도)
-    opacity: float = 1.0    # 투명도 (0.0 ~ 1.0)
+
+    progress: float  # 진행률 (0.0 ~ 1.0)
+    x_offset: int = 0  # X 오프셋
+    y_offset: int = 0  # Y 오프셋
+    scale: float = 1.0  # 스케일
+    rotation: float = 0.0  # 회전 (도)
+    opacity: float = 1.0  # 투명도 (0.0 ~ 1.0)
     text_visible_chars: Optional[int] = None  # 타이핑용: 보이는 문자 수
 
 
@@ -50,17 +53,17 @@ class AnimationPreset:
         num_frames: int,
         canvas_size: Tuple[int, int],
         element_size: Tuple[int, int],
-        text_length: int = 0
+        text_length: int = 0,
     ) -> List[AnimationKeyframe]:
         """애니메이션 키프레임 목록 생성
-        
+
         Args:
             animation_type: 애니메이션 타입
             num_frames: 총 프레임 수
             canvas_size: 캔버스 크기 (width, height)
             element_size: 요소 크기 (width, height)
             text_length: 텍스트 길이 (타이핑용)
-        
+
         Returns:
             List[AnimationKeyframe]: 키프레임 리스트
         """
@@ -176,10 +179,10 @@ class AnimatedOverlay:
         start_frame: int = 0,
         duration_frames: Optional[int] = None,
         outline_color: Optional[Tuple[int, int, int, int]] = None,
-        outline_width: int = 0
+        outline_width: int = 0,
     ) -> List[Image.Image]:
         """기본 이미지 목록에 애니메이션 텍스트 적용
-        
+
         Args:
             base_images: 기본 이미지 리스트
             text: 텍스트
@@ -191,7 +194,7 @@ class AnimatedOverlay:
             duration_frames: 애니메이션 지속 프레임 수 (None이면 끝까지)
             outline_color: 테두리 색상
             outline_width: 테두리 두께
-        
+
         Returns:
             List[Image.Image]: 애니메이션이 적용된 이미지 리스트
         """
@@ -202,7 +205,7 @@ class AnimatedOverlay:
         canvas_size = base_images[0].size
 
         # 텍스트 크기 측정
-        temp_img = Image.new('RGBA', (1, 1))
+        temp_img = Image.new("RGBA", (1, 1))
         temp_draw = ImageDraw.Draw(temp_img)
         bbox = temp_draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
@@ -219,11 +222,7 @@ class AnimatedOverlay:
 
         # 키프레임 생성
         keyframes = AnimationPreset.get_keyframes(
-            animation_type,
-            anim_frames,
-            canvas_size,
-            (text_width, text_height),
-            len(text)
+            animation_type, anim_frames, canvas_size, (text_width, text_height), len(text)
         )
 
         # 각 프레임에 텍스트 적용
@@ -235,22 +234,21 @@ class AnimatedOverlay:
             # 표시할 텍스트 결정 (타이핑 애니메이션)
             display_text = text
             if kf.text_visible_chars is not None:
-                display_text = text[:kf.text_visible_chars]
+                display_text = text[: kf.text_visible_chars]
 
             if not display_text or kf.opacity <= 0:
                 continue
 
             # 텍스트 이미지 생성
             text_img = AnimatedOverlay._create_text_image(
-                display_text, font, color,
-                outline_color, outline_width,
-                kf.scale, kf.rotation
+                display_text, font, color, outline_color, outline_width, kf.scale, kf.rotation
             )
 
             # 투명도 적용
             if kf.opacity < 1.0:
                 alpha = text_img.split()[3]
-                alpha = alpha.point(lambda x: int(x * kf.opacity))
+                opacity = kf.opacity
+                alpha = alpha.point(lambda x, opacity=opacity: int(x * opacity))
                 text_img.putalpha(alpha)
 
             # 위치 계산
@@ -265,9 +263,7 @@ class AnimatedOverlay:
                 y = y - (scaled_h - text_height) // 2
 
             # 합성
-            result[frame_idx] = AnimatedOverlay._composite(
-                result[frame_idx], text_img, (x, y)
-            )
+            result[frame_idx] = AnimatedOverlay._composite(result[frame_idx], text_img, (x, y))
 
         return result
 
@@ -279,10 +275,10 @@ class AnimatedOverlay:
         animation_type: AnimationType,
         start_frame: int = 0,
         duration_frames: Optional[int] = None,
-        target_size: Optional[Tuple[int, int]] = None
+        target_size: Optional[Tuple[int, int]] = None,
     ) -> List[Image.Image]:
         """기본 이미지 목록에 애니메이션 스티커 적용
-        
+
         Args:
             base_images: 기본 이미지 리스트
             sticker: 스티커 이미지
@@ -291,7 +287,7 @@ class AnimatedOverlay:
             start_frame: 시작 프레임
             duration_frames: 애니메이션 지속 프레임 수
             target_size: 목표 크기 (width, height)
-        
+
         Returns:
             List[Image.Image]: 애니메이션이 적용된 이미지 리스트
         """
@@ -317,12 +313,7 @@ class AnimatedOverlay:
             return result
 
         # 키프레임 생성
-        keyframes = AnimationPreset.get_keyframes(
-            animation_type,
-            anim_frames,
-            canvas_size,
-            sticker_size
-        )
+        keyframes = AnimationPreset.get_keyframes(animation_type, anim_frames, canvas_size, sticker_size)
 
         # 각 프레임에 스티커 적용
         for i, kf in enumerate(keyframes):
@@ -345,18 +336,14 @@ class AnimatedOverlay:
 
             # 회전 적용
             if kf.rotation != 0:
-                transformed = transformed.rotate(
-                    -kf.rotation,
-                    resample=Image.Resampling.BICUBIC,
-                    expand=True
-                )
+                transformed = transformed.rotate(-kf.rotation, resample=Image.Resampling.BICUBIC, expand=True)
 
             # 투명도 적용
-            if kf.opacity < 1.0:
-                if transformed.mode == 'RGBA':
-                    alpha = transformed.split()[3]
-                    alpha = alpha.point(lambda x: int(x * kf.opacity))
-                    transformed.putalpha(alpha)
+            if kf.opacity < 1.0 and transformed.mode == "RGBA":
+                alpha = transformed.split()[3]
+                opacity = kf.opacity
+                alpha = alpha.point(lambda x, opacity=opacity: int(x * opacity))
+                transformed.putalpha(alpha)
 
             # 위치 계산
             x = position[0] + kf.x_offset
@@ -368,9 +355,7 @@ class AnimatedOverlay:
                 y = y - (transformed.height - sticker_size[1]) // 2
 
             # 합성
-            result[frame_idx] = AnimatedOverlay._composite(
-                result[frame_idx], transformed, (x, y)
-            )
+            result[frame_idx] = AnimatedOverlay._composite(result[frame_idx], transformed, (x, y))
 
         return result
 
@@ -382,11 +367,11 @@ class AnimatedOverlay:
         outline_color: Optional[Tuple[int, int, int, int]],
         outline_width: int,
         scale: float,
-        rotation: float
+        rotation: float,
     ) -> Image.Image:
         """텍스트 이미지 생성"""
         # 텍스트 크기 측정
-        temp_img = Image.new('RGBA', (1, 1))
+        temp_img = Image.new("RGBA", (1, 1))
         temp_draw = ImageDraw.Draw(temp_img)
         bbox = temp_draw.textbbox((0, 0), text, font=font)
 
@@ -399,7 +384,7 @@ class AnimatedOverlay:
         img_height = text_height + padding * 2
 
         # 텍스트 이미지 생성
-        text_img = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 0))
+        text_img = Image.new("RGBA", (img_width, img_height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(text_img)
 
         x = padding - bbox[0]
@@ -423,24 +408,19 @@ class AnimatedOverlay:
 
         # 회전 적용
         if rotation != 0:
-            text_img = text_img.rotate(
-                -rotation,
-                resample=Image.Resampling.BICUBIC,
-                expand=True
-            )
+            text_img = text_img.rotate(-rotation, resample=Image.Resampling.BICUBIC, expand=True)
 
         return text_img
 
     @staticmethod
-    def _composite(base: Image.Image, overlay: Image.Image,
-                   position: Tuple[int, int]) -> Image.Image:
+    def _composite(base: Image.Image, overlay: Image.Image, position: Tuple[int, int]) -> Image.Image:
         """이미지 합성"""
         result = base.copy()
 
-        if result.mode != 'RGBA':
-            result = result.convert('RGBA')
-        if overlay.mode != 'RGBA':
-            overlay = overlay.convert('RGBA')
+        if result.mode != "RGBA":
+            result = result.convert("RGBA")
+        if overlay.mode != "RGBA":
+            overlay = overlay.convert("RGBA")
 
         # 위치가 이미지 범위 밖이면 클리핑
         x, y = position

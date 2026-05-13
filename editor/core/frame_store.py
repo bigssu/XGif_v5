@@ -13,6 +13,7 @@ from typing import Optional
 import numpy as np
 
 from ..utils.logger import get_logger
+import contextlib
 
 _logger = get_logger()
 
@@ -54,10 +55,8 @@ class FrameStore:
             self._on_disk.discard(frame_id)
             disk_path = self._frame_path(frame_id)
             if os.path.exists(disk_path):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(disk_path)
-                except OSError:
-                    pass
 
         # 캐시에 추가
         self._cache[frame_id] = data
@@ -93,10 +92,8 @@ class FrameStore:
             self._on_disk.discard(frame_id)
             disk_path = self._frame_path(frame_id)
             if os.path.exists(disk_path):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(disk_path)
-                except OSError:
-                    pass
 
     def contains(self, frame_id: int) -> bool:
         return frame_id in self._cache or frame_id in self._on_disk
@@ -119,10 +116,8 @@ class FrameStore:
         for fid in list(self._on_disk):
             path = self._frame_path(fid)
             if os.path.exists(path):
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(path)
-                except OSError:
-                    pass
         self._on_disk.clear()
 
     def cleanup(self) -> None:

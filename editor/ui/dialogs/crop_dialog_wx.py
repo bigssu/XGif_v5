@@ -97,7 +97,7 @@ class CropDialog(ThemedDialog):
             btn = wx.Button(self, label=label)
             btn.SetBackgroundColour(Colors.BORDER)
             btn.SetForegroundColour(Colors.TEXT_PRIMARY)
-            btn.Bind(wx.EVT_BUTTON, lambda e, l=label: self._apply_preset(l))
+            btn.Bind(wx.EVT_BUTTON, lambda e, preset_label=label: self._apply_preset(preset_label))
             btn_sizer.Add(btn, 1, wx.ALL, 3)
 
         preset_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 10)

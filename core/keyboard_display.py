@@ -9,6 +9,7 @@ import logging
 from typing import Optional, List, Tuple, TYPE_CHECKING
 import numpy as np
 from .utils import calculate_overlay_position, load_system_font
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 
 class KeyboardDisplay:
     """키보드 입력 표시 (Context Manager 지원)
-    
+
     사용 예:
         with KeyboardDisplay() as kbd:
             kbd.set_enabled(True)
@@ -96,10 +97,8 @@ class KeyboardDisplay:
     def stop_listening(self):
         """키보드 리스너 중지"""
         if self._listener:
-            try:
+            with contextlib.suppress(Exception):
                 self._listener.stop()
-            except Exception:
-                pass
             self._listener = None
 
         with self._lock:
@@ -270,7 +269,5 @@ class KeyboardDisplay:
 
     def __del__(self):
         """소멸자"""
-        try:
+        with contextlib.suppress(Exception):
             self.stop_listening()
-        except Exception:
-            pass  # 소멸자에서 예외 무시

@@ -10,6 +10,7 @@ import logging
 import threading
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -74,10 +75,8 @@ class EventBus:
         """이벤트 구독 해제."""
         with self._lock:
             if event in self._subscribers:
-                try:
+                with contextlib.suppress(ValueError):
                     self._subscribers[event].remove(callback)
-                except ValueError:
-                    pass
 
     def emit(self, event: AppEvent, *args: Any, **kwargs: Any) -> None:
         """이벤트 발행 (현재 스레드에서 콜백 실행)."""

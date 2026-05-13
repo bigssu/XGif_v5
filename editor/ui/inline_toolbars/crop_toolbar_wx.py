@@ -5,6 +5,7 @@ import wx
 from typing import TYPE_CHECKING, Tuple
 from ..style_constants_wx import Colors
 from .base_toolbar_wx import InlineToolbarBase
+import contextlib
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -112,8 +113,8 @@ class CropToolbar(InlineToolbarBase):
         if self._updating_from_canvas:
             return
 
-        w = self._w_spin.GetValue()
-        h = self._h_spin.GetValue()
+        self._w_spin.GetValue()
+        self._h_spin.GetValue()
 
         # W/H 최대값 조정
         max_w = self._original_width - self._x_value
@@ -137,15 +138,13 @@ class CropToolbar(InlineToolbarBase):
         canvas = self._safe_get_canvas()
         if not canvas or not hasattr(canvas, 'update_crop_rect'):
             return
-        try:
+        with contextlib.suppress(Exception):
             canvas.update_crop_rect(
                 self._x_value,
                 self._y_value,
                 self._w_spin.GetValue(),
                 self._h_spin.GetValue()
             )
-        except Exception:
-            pass
 
     def _on_canvas_crop_changed(self, event):
         """캔버스에서 크롭 영역이 변경됨 (wxPython 이벤트)"""
@@ -256,7 +255,7 @@ class CropToolbar(InlineToolbarBase):
             return
 
         # 4. 모든 프레임에 적용
-        for i, frame in enumerate(self.frames):
+        for _i, frame in enumerate(self.frames):
             if hasattr(frame, 'crop'):
                 frame.crop(x, y, w, h)
 

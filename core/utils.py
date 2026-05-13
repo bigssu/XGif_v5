@@ -14,6 +14,7 @@ import subprocess
 from typing import Tuple, Optional
 import numpy as np
 from PIL import ImageFont
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +105,8 @@ def ensure_system_site_packages():
         if hasattr(os, 'add_dll_directory'):
             for d in dll_dirs:
                 if os.path.isdir(d):
-                    try:
+                    with contextlib.suppress(OSError):
                         os.add_dll_directory(d)
-                    except OSError:
-                        pass
 
         # PATH 환경변수에도 추가 (일부 DLL 로더가 PATH를 사용)
         path_additions = [d for d in dll_dirs if os.path.isdir(d)]
@@ -149,7 +148,7 @@ def calculate_overlay_position(
     margin: int = 10
 ) -> Tuple[int, int]:
     """오버레이 위치 계산 (웹캠, 워터마크, 키보드 공통)
-    
+
     Args:
         frame_width: 프레임 너비
         frame_height: 프레임 높이
@@ -157,7 +156,7 @@ def calculate_overlay_position(
         overlay_height: 오버레이 높이
         position: 위치 ('top-left', 'top-right', 'bottom-left', 'bottom-right', 'center', 'top', 'bottom')
         margin: 여백 (픽셀)
-        
+
     Returns:
         Tuple[int, int]: (x, y) 좌표
     """
@@ -196,14 +195,14 @@ def apply_alpha_blend(
     opacity: float = 1.0
 ) -> np.ndarray:
     """알파 블렌딩을 사용하여 오버레이를 배경에 합성
-    
+
     Args:
         background: 배경 프레임 (BGR/RGB)
         overlay: 오버레이 이미지 (RGB 또는 RGBA)
         x: 오버레이 X 좌표
         y: 오버레이 Y 좌표
         opacity: 투명도 (0.0 ~ 1.0)
-        
+
     Returns:
         np.ndarray: 블렌딩된 프레임
     """
@@ -248,11 +247,11 @@ def apply_alpha_blend(
 
 def load_system_font(font_size: int, preferred_fonts: Optional[list] = None) -> ImageFont.FreeTypeFont:
     """시스템 폰트 로드 (우선순위 순으로 시도)
-    
+
     Args:
         font_size: 폰트 크기
         preferred_fonts: 선호 폰트 리스트 (경로 또는 이름)
-        
+
     Returns:
         ImageFont: 로드된 폰트 (실패 시 기본 폰트)
     """
@@ -288,16 +287,16 @@ def load_system_font(font_size: int, preferred_fonts: Optional[list] = None) -> 
 
 def parse_resolution(text: str) -> Optional[Tuple[int, int]]:
     """해상도 문자열 파싱
-    
+
     다양한 형식 지원:
     - "1920x1080"
     - "1920 x 1080"
     - "1920 × 1080"
     - "1920*1080"
-    
+
     Args:
         text: 해상도 문자열
-        
+
     Returns:
         Tuple[int, int]: (width, height) or None if parsing fails
     """
@@ -322,13 +321,13 @@ def parse_resolution(text: str) -> Optional[Tuple[int, int]]:
 
 def validate_resolution(width: int, height: int, min_res: int = 50, max_res: int = 3840) -> bool:
     """해상도 유효성 검증
-    
+
     Args:
         width: 너비
         height: 높이
         min_res: 최소 해상도
         max_res: 최대 해상도
-        
+
     Returns:
         bool: 유효한 해상도인지 여부
     """
@@ -344,10 +343,8 @@ def safe_delete_timer(timer):
     if timer is None:
         return
 
-    try:
+    with contextlib.suppress(TypeError, RuntimeError, AttributeError):
         timer.Stop()  # wxPython은 대문자 Stop()
-    except (TypeError, RuntimeError, AttributeError):
-        pass
 
     # wxPython Timer는 deleteLater()가 없음
     # 참조만 해제하면 됨
@@ -369,11 +366,11 @@ APP_SETTINGS_NAME = "XGif"
 
 def safe_rmtree(path: str, max_retries: int = 3) -> bool:
     """Windows에서 안전하게 디렉토리 삭제 (파일 잠금 문제 해결)
-    
+
     Args:
         path: 삭제할 디렉토리 경로
         max_retries: 최대 재시도 횟수
-        
+
     Returns:
         bool: 삭제 성공 여부
     """
@@ -407,12 +404,12 @@ def safe_rmtree(path: str, max_retries: int = 3) -> bool:
 
 def run_subprocess_silent(cmd: list, timeout: int = 60, **kwargs) -> subprocess.CompletedProcess:
     """Windows에서 콘솔 창 없이 서브프로세스 실행
-    
+
     Args:
         cmd: 명령어 리스트
         timeout: 타임아웃 (초)
         **kwargs: subprocess.run에 전달할 추가 인자
-        
+
     Returns:
         subprocess.CompletedProcess: 실행 결과
     """

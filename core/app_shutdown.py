@@ -6,6 +6,7 @@ import logging
 from typing import List
 
 import wx
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,7 @@ def _is_primary_window(win: wx.Window) -> bool:
     # 캡처 오버레이/툴 윈도우는 앱 생존의 기준 창으로 취급하지 않는다.
     if style & wx.FRAME_NO_TASKBAR:
         return False
-    if win.__class__.__name__ == "CaptureOverlay":
-        return False
-    return True
+    return win.__class__.__name__ != "CaptureOverlay"
 
 
 def ensure_exit_if_no_primary_windows(reason: str = "") -> bool:
@@ -59,14 +58,10 @@ def ensure_exit_if_no_primary_windows(reason: str = "") -> bool:
         return False
 
     for win in live_windows:
-        try:
+        with contextlib.suppress(Exception):
             win.Hide()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             win.Destroy()
-        except Exception:
-            pass
 
     try:
         app.ExitMainLoop()

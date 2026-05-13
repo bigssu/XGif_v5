@@ -42,14 +42,14 @@ class TransitionEffect:
         delay_ms: int = 50
     ) -> List[Frame]:
         """두 프레임 사이의 전환 효과 프레임들을 생성
-        
+
         Args:
             frame1: 시작 프레임
             frame2: 끝 프레임
             transition_type: 전환 효과 타입
             num_frames: 전환 프레임 수 (기본 5)
             delay_ms: 각 프레임의 딜레이 (기본 50ms)
-        
+
         Returns:
             List[Frame]: 전환 효과 프레임 리스트
         """
@@ -359,14 +359,14 @@ def insert_transition(
     delay_ms: int = 50
 ) -> bool:
     """프레임 컬렉션에 전환 효과 삽입
-    
+
     Args:
         collection: 프레임 컬렉션
         frame_index: 전환 효과를 삽입할 프레임 인덱스 (이 프레임과 다음 프레임 사이)
         transition_type: 전환 효과 타입
         num_frames: 전환 프레임 수
         delay_ms: 각 프레임의 딜레이
-    
+
     Returns:
         bool: 성공 여부
     """

@@ -8,6 +8,8 @@ def test_generated_pyinstaller_spec_keeps_size_guards(tmp_path, monkeypatch):
     resources.mkdir()
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("wxPython>=4.2.5\n", encoding="utf-8")
+    requirements_gpu = tmp_path / "requirements-gpu.txt"
+    requirements_gpu.write_text("cupy-cuda13x[ctk]==14.0.1\n", encoding="utf-8")
     main_script = tmp_path / "main.py"
     main_script.write_text("print('xgif')\n", encoding="utf-8")
 
@@ -26,6 +28,7 @@ def test_generated_pyinstaller_spec_keeps_size_guards(tmp_path, monkeypatch):
 
     assert "optimize=1" in spec
     assert "'_avif'" in spec
+    assert "requirements-gpu.txt" in spec
     assert "'cv2'" in spec
     assert "'skimage'" in spec
     assert "upx=True" in spec

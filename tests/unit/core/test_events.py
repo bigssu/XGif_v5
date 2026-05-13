@@ -21,7 +21,8 @@ class TestEventBus:
     def test_unsubscribe(self):
         bus = EventBus()
         results = []
-        cb = lambda: results.append("x")
+        def cb():
+            return results.append("x")
         bus.subscribe(AppEvent.RECORDING_STOP, cb)
         bus.unsubscribe(AppEvent.RECORDING_STOP, cb)
         bus.emit(AppEvent.RECORDING_STOP)
@@ -58,7 +59,8 @@ class TestEventBus:
     def test_no_duplicate_subscribe(self):
         bus = EventBus()
         results = []
-        cb = lambda: results.append("x")
+        def cb():
+            return results.append("x")
         bus.subscribe(AppEvent.RECORDING_START, cb)
         bus.subscribe(AppEvent.RECORDING_START, cb)
         bus.emit(AppEvent.RECORDING_START)

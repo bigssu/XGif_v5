@@ -7,6 +7,7 @@ import sys
 import os
 import time
 import logging
+import contextlib
 
 # Windows DPI Awareness 설정 (wx import 전에 호출해야 함)
 # SYSTEM_AWARE(1)로 설정: 캡처 좌표 정확도 확보 + wxPython 콤보박스 호환성 유지
@@ -17,20 +18,14 @@ if sys.platform == 'win32':
         # PROCESS_SYSTEM_DPI_AWARE = 1
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except (AttributeError, OSError):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             ctypes.windll.user32.SetProcessDPIAware()
-        except (AttributeError, OSError):
-            pass
 
 # Windows 등에서 한글 print/로깅 시 UnicodeEncodeError 방지: stdout/stderr를 UTF-8로 재설정
-try:
+with contextlib.suppress(AttributeError, OSError):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-except (AttributeError, OSError):
-    pass
-try:
+with contextlib.suppress(AttributeError, OSError):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-except (AttributeError, OSError):
-    pass
 
 
 # ── CLI 모드 조기 감지 (wx import 전에) ──
@@ -39,7 +34,8 @@ def _is_cli_mode() -> bool:
     if len(sys.argv) < 2:
         return False
     cli_commands = {'record', 'convert', 'config', 'doctor'}
-    return sys.argv[1] in cli_commands
+    cli_flags = {'--version', '-V', '--help', '-h'}
+    return sys.argv[1] in cli_commands or sys.argv[1] in cli_flags
 
 if _is_cli_mode():
     # CLI 모드: wx를 import하지 않고 CLI 진입점으로 직행
@@ -69,11 +65,9 @@ def _install_startup_crash_reporter():
             except Exception:
                 continue
         # 2) ctypes MessageBox (wx 없이도 동작)
-        try:
+        with contextlib.suppress(Exception):
             ctypes.windll.user32.MessageBoxW(
                 0, msg[:2000], "XGif Startup Error", 0x10)
-        except Exception:
-            pass
         _orig_excepthook(exc_type, exc_value, exc_tb)
 
     sys.excepthook = _crash_reporter
@@ -88,6 +82,7 @@ from core.utils import APP_SETTINGS_NAME
 
 # 크래시 핸들러
 from core.crash_handler import install_crash_handler
+import contextlib
 
 # 단일 인스턴스 체크용 이름
 APP_UNIQUE_NAME = f"{APP_SETTINGS_NAME}_SingleInstance_Lock"
@@ -157,7 +152,7 @@ class XGifApp(wx.App):
             if not os.path.exists(icon_path):
                 icon_path = get_resource_path(os.path.join('resources', 'Xgif_icon.png'))
             if os.path.exists(icon_path):
-                icon = wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
+                wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
                 self.SetTopWindow(None)  # SetTopWindow는 나중에 설정됨
                 self.SetAppDisplayName(APP_SETTINGS_NAME)
         except Exception as e:
@@ -283,8 +278,6 @@ if __name__ == '__main__':
                 break
             except Exception:
                 continue
-        try:
+        with contextlib.suppress(Exception):
             ctypes.windll.user32.MessageBoxW(0, msg[:2000], "XGif Startup Error", 0x10)
-        except Exception:
-            pass
         sys.exit(1)

@@ -1,0 +1,5 @@
+# Optional GPU dependencies for Windows CUDA 13.x environments
+# Verified on 2026-05-13 against CuPy 14.0.1 PyPI metadata.
+# The [ctk] extra installs the CUDA Toolkit runtime components from PyPI,
+# so a local CUDA Toolkit install is not required.
+cupy-cuda13x[ctk]==14.0.1

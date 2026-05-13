@@ -10,6 +10,7 @@ from .style_constants_wx import Colors
 from ..utils.wx_events import (
     FrameSelectedEvent, FrameDeletedEvent, FrameDelayChangedEvent
 )
+import contextlib
 
 if TYPE_CHECKING:
     from .main_window import MainWindow
@@ -133,10 +134,8 @@ class FrameListWidget(wx.Panel):
     def _on_frame_list_destroy(self, event):
         """윈도우 파괴 시 타이머 정리 (PyDeadObjectError 방지)"""
         if event.GetEventObject() is self:
-            try:
+            with contextlib.suppress(Exception):
                 self._selection_timer.Stop()
-            except Exception:
-                pass
         event.Skip()
 
     def _create_icon_button(self, icon_text: str, tooltip: str) -> wx.Button:
@@ -375,7 +374,7 @@ class FrameListWidget(wx.Panel):
 
     def _on_cell_double_clicked(self, event):
         """셀 더블클릭 처리"""
-        row = event.GetRow()
+        event.GetRow()
         col = event.GetCol()
 
         if col == 1:
@@ -458,7 +457,7 @@ class FrameListWidget(wx.Panel):
         blocks = self._grid.GetSelectionBlockTopLeft()
         if blocks:
             bottom_rights = self._grid.GetSelectionBlockBottomRight()
-            for (top_left, bottom_right) in zip(blocks, bottom_rights):
+            for (top_left, bottom_right) in zip(blocks, bottom_rights, strict=False):
                 for row in range(top_left[0], bottom_right[0] + 1):
                     selected.add(row)
 

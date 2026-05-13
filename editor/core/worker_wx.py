@@ -10,6 +10,7 @@ import traceback
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, Future
+import contextlib
 
 
 class WorkerSignals:
@@ -177,7 +178,7 @@ class FrameEffectWorker(BaseWorker):
         processed = 0
 
         try:
-            for i, frame in enumerate(self.frames):
+            for _i, frame in enumerate(self.frames):
                 if self.is_cancelled:
                     self.signals.emit_cancelled()
                     return
@@ -371,15 +372,11 @@ class WorkerManager:
     def shutdown(self) -> None:
         """워커 매니저 종료 (타이머 정리 + executor 종료)"""
         if self._timeout_timer is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._timeout_timer.Stop()
-            except Exception:
-                pass
         self.cancel_all()
-        try:
+        with contextlib.suppress(Exception):
             self._executor.shutdown(wait=False, cancel_futures=True)
-        except Exception:
-            pass
 
 
 # 전역 워커 매니저 인스턴스

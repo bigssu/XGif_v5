@@ -9,15 +9,24 @@ Each install function:
 
 import glob
 import os
+from pathlib import Path
+import re
 import shutil
 import subprocess
+import sys
 import threading
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from cupy_policy import GPU_REQUIREMENTS_FILE, cupy_packages_for_cuda_major, should_use_gpu_requirements
 import paths
 import deps_specs
 from download_utils import download_file
 from extract_utils import extract_zip
 from logging_setup import log_and_ui, log_subprocess_output, get_logger
+import contextlib
 
 SUBPROCESS_TIMEOUT_LONG = 600  # 10 min for big pip installs
 
@@ -63,10 +72,8 @@ def _stream_run(cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT_LONG, cwd=None
         return -3
     finally:
         if proc and proc.stdout:
-            try:
+            with contextlib.suppress(OSError):
                 proc.stdout.close()
-            except OSError:
-                pass
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -107,11 +114,10 @@ def install_python311(progress_cb=None) -> bool:
         for line in lines:
             stripped = line.strip()
             # Uncomment if commented
-            if stripped.startswith("#"):
-                 if stripped.lstrip("#").strip() == "import site":
-                     new_lines.append("import site\n")
-                     found_import_site = True
-                     continue
+            if stripped.startswith("#") and stripped.lstrip("#").strip() == "import site":
+                new_lines.append("import site\n")
+                found_import_site = True
+                continue
 
             # Keep existing if already uncommented
             if stripped == "import site":
@@ -131,10 +137,8 @@ def install_python311(progress_cb=None) -> bool:
             f.writelines(new_lines)
 
     # Cleanup
-    try:
+    with contextlib.suppress(OSError):
         os.remove(zip_dest)
-    except OSError:
-        pass
 
     log_and_ui("Python 3.11 설치 완료")
     return True
@@ -157,10 +161,8 @@ def install_pip(progress_cb=None) -> bool:
         return False
 
     # Cleanup
-    try:
+    with contextlib.suppress(OSError):
         os.remove(get_pip)
-    except OSError:
-        pass
 
     log_and_ui("pip 설치 완료")
     return True
@@ -239,10 +241,22 @@ def install_cupy(progress_cb=None) -> bool:
     log_and_ui("CuPy 설치 중… (시간이 다소 소요됩니다)")
     log_and_ui("인터넷 연결이 필요합니다.")
 
+    cuda_major = _detect_cuda_major()
+    if cuda_major is not None:
+        log_and_ui(f"CUDA {cuda_major}.x 드라이버 감지")
+
+    packages = list(cupy_packages_for_cuda_major(cuda_major))
+    if not packages:
+        log_and_ui("지원되지 않는 CUDA 버전입니다. CUDA 11 이상이 필요합니다.")
+        return False
+
+    requirements_path = _find_gpu_requirements_file() if should_use_gpu_requirements(cuda_major) else None
+    pip_args = ["-r", str(requirements_path)] if requirements_path else packages
+
     rc = _stream_run(
         [
             paths.VENV_PYTHON, "-m", "pip", "install",
-            "cupy-cuda12x",
+            *pip_args,
             "--no-cache-dir",
         ],
         timeout=SUBPROCESS_TIMEOUT_LONG,
@@ -253,6 +267,40 @@ def install_cupy(progress_cb=None) -> bool:
 
     log_and_ui("CuPy 패키지 설치 완료 – 검증은 재검사에서 수행됩니다.")
     return True
+
+
+def _detect_cuda_major() -> int | None:
+    """Detect CUDA driver major version from nvidia-smi."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+
+    match = re.search(r"CUDA Version:\s*(\d+)(?:\.\d+)?", result.stdout)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _find_gpu_requirements_file() -> Path | None:
+    """Locate the canonical GPU requirements file for source or bundled runs."""
+    candidates = [
+        Path(paths.get_exe_dir()) / GPU_REQUIREMENTS_FILE,
+        Path(__file__).resolve().parents[1] / GPU_REQUIREMENTS_FILE,
+        Path.cwd() / GPU_REQUIREMENTS_FILE,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -298,7 +346,7 @@ def install_ffmpeg(progress_cb=None) -> bool:
 
     if not ok:
         # Fallback: ffmpeg.exe를 재귀 탐색
-        for root, dirs, files in os.walk(paths.FFMPEG_DIR):
+        for root, _dirs, files in os.walk(paths.FFMPEG_DIR):
             if "ffmpeg.exe" in files:
                 src = os.path.join(root, "ffmpeg.exe")
                 dst = os.path.join(paths.FFMPEG_DIR, "ffmpeg.exe")
@@ -311,10 +359,8 @@ def install_ffmpeg(progress_cb=None) -> bool:
         return False
 
     # Cleanup zip
-    try:
+    with contextlib.suppress(OSError):
         os.remove(zip_dest)
-    except OSError:
-        pass
 
     log_and_ui("FFmpeg 설치 완료")
     return True

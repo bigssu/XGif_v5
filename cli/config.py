@@ -11,21 +11,22 @@ DEFAULT_SETTINGS = _defaults.to_dict()
 
 def load_config() -> Dict[str, str]:
     """config.ini에서 설정 로드"""
-    settings = AppSettings.load()
+    settings = AppSettings.load(get_config_path())
     return settings.to_dict()
 
 
 def save_config(settings_dict: Dict[str, str]):
     """config.ini에 설정 저장"""
-    settings = AppSettings.load()
+    path = get_config_path()
+    settings = AppSettings.load(path)
     for key, value in settings_dict.items():
         settings.set(key, value)
-    settings.save()
+    settings.save(path)
 
 
 def get_config_value(key: str) -> Optional[str]:
     """특정 설정 값 조회"""
-    settings = AppSettings.load()
+    settings = AppSettings.load(get_config_path())
     if not settings.has_key(key):
         return None
     return settings.get(key)
@@ -35,16 +36,17 @@ def set_config_value(key: str, value: str) -> bool:
     """특정 설정 값 변경. 유효한 키이면 True 반환."""
     if key not in AppSettings.valid_keys():
         return False
-    settings = AppSettings.load()
+    path = get_config_path()
+    settings = AppSettings.load(path)
     settings.set(key, value)
-    settings.save()
+    settings.save(path)
     return True
 
 
 def reset_config():
     """모든 설정을 기본값으로 복원"""
     settings = AppSettings()
-    settings.save()
+    settings.save(get_config_path())
 
 
 def handle_config_command(args) -> int:

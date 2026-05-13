@@ -3,10 +3,14 @@
 ## [Unreleased]
 
 ### 변경
-- 의존성 최소 버전을 현재 설치 가능한 조합으로 갱신 (`wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.19.0` 등)
+- 의존성 최소 버전을 현재 설치 가능한 조합으로 갱신 (`wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.20.0` 등)
+- CUDA 13.x GPU 가속 의존성을 기본 설치에서 분리하고 `requirements-gpu.txt`로 선택 설치하도록 정리
 - 프로젝트 문서를 현재 저장소 상태 기준으로 재정렬
 
 ### 수정
+- 메인 녹화 창의 실시간 프리뷰 UI와 BGR→RGB 렌더링 경로 복구
+- `xgif doctor --install-cupy`가 CUDA 13.x 검증 패키지 조합을 설치하도록 갱신
+- `ruff check .` 전체 실패 항목 정리 및 프리뷰/CuPy 설치 회귀 테스트 추가
 - 최신 `dxcam` 0.3.x가 OpenCV extra 없이 동작하도록 `processor_backend="numpy"` 경로 고정
 - 기존 가상환경에 구버전 `dxcam`이 남아 있어도 레거시 시그니처로 자동 재시도되도록 호환 가드 추가
 - Windows `where ffmpeg` 출력 디코딩 경고 제거

@@ -358,6 +358,12 @@ def _generate_spec_file(icon_ico, version_file, onefile=False, use_upx=False):
     """PyInstaller spec 파일 생성 (바이너리 필터링 포함)"""
     resources_data = os.path.join(PROJECT_ROOT, "resources")
     requirements_txt = os.path.join(PROJECT_ROOT, "requirements.txt")
+    requirements_gpu_txt = os.path.join(PROJECT_ROOT, "requirements-gpu.txt")
+    requirements_gpu_data = (
+        f", (r'{requirements_gpu_txt}', '.')"
+        if os.path.exists(requirements_gpu_txt)
+        else ""
+    )
 
     icon_line = f"icon=r'{icon_ico}'," if icon_ico and os.path.exists(icon_ico) else ""
     version_line = f"version=r'{version_file}'," if version_file and os.path.exists(version_file) else ""
@@ -402,7 +408,7 @@ a = Analysis(
     pathex=[r'{PROJECT_ROOT}'],
     binaries=[
 {vcrt_lines}    ],
-    datas=[(r'{resources_data}', 'resources'), (r'{requirements_txt}', '.')] + copy_metadata('imageio'),
+    datas=[(r'{resources_data}', 'resources'), (r'{requirements_txt}', '.'){requirements_gpu_data}] + copy_metadata('imageio'),
     hiddenimports=[
         'comtypes',
         'pynput.keyboard',

@@ -58,10 +58,9 @@ def run_convert(args) -> int:
         return EXIT_USER_ERROR
 
     # FPS 범위 검증
-    if args.fps is not None:
-        if not (1 <= args.fps <= 120):
-            print(f"xgif: 에러: FPS는 1~120 범위여야 합니다 -- '{args.fps}'", file=sys.stderr)
-            return EXIT_USER_ERROR
+    if args.fps is not None and not (1 <= args.fps <= 120):
+        print(f"xgif: 에러: FPS는 1~120 범위여야 합니다 -- '{args.fps}'", file=sys.stderr)
+        return EXIT_USER_ERROR
 
     # 변환 실행
     import subprocess

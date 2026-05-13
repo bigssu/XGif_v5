@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import List
 
 import numpy as np
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +59,8 @@ class OverlayPipeline:
 
     def remove(self, overlay: OverlayBase) -> None:
         """오버레이를 파이프라인에서 제거."""
-        try:
+        with contextlib.suppress(ValueError):
             self._overlays.remove(overlay)
-        except ValueError:
-            pass
 
     def apply(self, frame: np.ndarray, **kwargs) -> np.ndarray:
         """활성화된 모든 오버레이를 순차 적용."""

@@ -4,6 +4,7 @@ wxPython 기반 UI: 녹화 제어 버튼
 프로그램 시작 시 자동으로 캡처 영역 표시
 """
 
+import contextlib
 import os
 import logging
 import wx
@@ -20,14 +21,8 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-# GPU 유틸리티
-from core.gpu_utils import detect_gpu
-
 # Capability Manager (자동 최적화)
 from core.capability_manager import get_capability_manager
-
-# HDR 모니터 표시
-from core.hdr_utils import is_hdr_active
 
 # 오디오 녹음
 from core.audio_recorder import AudioRecorder
@@ -36,10 +31,54 @@ from core.audio_recorder import AudioRecorder
 from ui.constants import (
     MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT,
     APP_NAME, VERSION, MEMORY_WARNING_RATIO, SYSTEM_MEMORY_CRITICAL_MB,
-    ENCODING_STATUS_CLEAR_DELAY_MS,
+    ENCODING_STATUS_CLEAR_DELAY_MS, PREVIEW_UPDATE_INTERVAL_MS,
+    PREVIEW_WIDTH, PREVIEW_HEIGHT,
 )
 from ui.theme import Colors, Fonts
 from ui.i18n import tr, get_trans_manager
+
+
+def _preview_frame_to_rgb(frame: np.ndarray) -> np.ndarray | None:
+    """BGR/BGRA/gray capture frame을 wx.Image용 RGB uint8 배열로 정규화."""
+    if not isinstance(frame, np.ndarray) or frame.size == 0 or frame.ndim < 2:
+        return None
+
+    frame = np.asarray(frame)
+    if frame.dtype != np.uint8:
+        frame = np.clip(frame, 0, 255).astype(np.uint8)
+
+    if frame.ndim == 2:
+        rgb = np.repeat(frame[:, :, None], 3, axis=2)
+    elif frame.shape[2] >= 3:
+        rgb = frame[:, :, 2::-1]
+    else:
+        return None
+
+    return np.ascontiguousarray(rgb, dtype=np.uint8)
+
+
+def _fit_preview_size(
+    source_width: int,
+    source_height: int,
+    max_width: int = PREVIEW_WIDTH,
+    max_height: int = PREVIEW_HEIGHT,
+) -> tuple[int, int]:
+    """원본 비율을 유지하며 프리뷰 박스 안에 들어가는 크기 계산."""
+    if source_width <= 0 or source_height <= 0:
+        return 1, 1
+    scale = min(max_width / source_width, max_height / source_height)
+    return max(1, int(round(source_width * scale))), max(1, int(round(source_height * scale)))
+
+
+def _create_preview_bitmap(rgb_frame: np.ndarray) -> wx.Bitmap:
+    """RGB 프레임에서 고정 프리뷰 박스에 맞는 wx.Bitmap 생성."""
+    height, width = rgb_frame.shape[:2]
+    target_width, target_height = _fit_preview_size(width, height)
+    image = wx.Image(width, height)
+    image.SetData(rgb_frame.tobytes())
+    if (target_width, target_height) != (width, height):
+        image = image.Scale(target_width, target_height, wx.IMAGE_QUALITY_HIGH)
+    return wx.Bitmap(image)
 
 
 class EncodingThread(threading.Thread):
@@ -115,6 +154,7 @@ class MainWindow(wx.Frame):
         self.preview_timer = None
         self.preview_widget = None
         self.preview_label = None
+        self.preview_bitmap = None
 
         # 녹화 관련 변수 초기화
         self.record_timer = None
@@ -155,18 +195,8 @@ class MainWindow(wx.Frame):
             icon = wx.Icon(icon_path, wx.BITMAP_TYPE_ICO if icon_path.endswith('.ico') else wx.BITMAP_TYPE_PNG)
             self.SetIcon(icon)
 
-        # GPU 초기화 플래그 (버튼 클릭 시 지연 초기화)
-        self._gpu_initialized = False
-
         # 컨트롤러 초기화
-        from ui.controllers import (
-            RecordingController, EncodingController,
-            PreviewManager, OverlayManager, SystemDetector,
-        )
-        self._recording_ctrl = RecordingController(self)
-        self._encoding_ctrl = EncodingController(self)
-        self._preview_mgr = PreviewManager(self)
-        self._overlay_mgr = OverlayManager(self)
+        from ui.controllers import SystemDetector
         self._system_detector = SystemDetector(self)
 
         self._init_ui()
@@ -219,7 +249,7 @@ class MainWindow(wx.Frame):
         self._create_progress_area(main_sizer, main_panel)
 
         # 실시간 미리보기 영역 (선택적)
-        self._create_preview_area(main_sizer)
+        self._create_preview_area(main_sizer, main_panel)
         main_sizer.SetSizeHints(main_panel)
 
         # 커스텀 상태바 (Windows 11 Dark Theme)
@@ -407,10 +437,32 @@ class MainWindow(wx.Frame):
         outer.SetSizeHints(progress_panel)
         parent_layout.Add(progress_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
-    def _create_preview_area(self, parent_layout):
-        """실시간 미리보기 영역 생성 (미구현 — 스텁)"""
-        self.preview_label = None
-        self.preview_widget = None
+    def _create_preview_area(self, parent_layout, parent_window):
+        """실시간 미리보기 영역 생성."""
+        preview_panel = wx.Panel(parent_window)
+        preview_panel.SetBackgroundColour(Colors.BG_PRIMARY)
+        preview_panel.SetMinSize((-1, PREVIEW_HEIGHT + 12))
+
+        preview_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        preview_panel.SetSizer(preview_sizer)
+        preview_sizer.AddStretchSpacer()
+
+        self.preview_label = wx.StaticText(preview_panel, label=tr('preview'))
+        self.preview_label.SetForegroundColour(Colors.TEXT_SECONDARY)
+        self.preview_label.SetFont(Fonts.get_font(Fonts.SIZE_SMALL, bold=True))
+        self.preview_label.SetMinSize((120, -1))
+        preview_sizer.Add(self.preview_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+
+        self.preview_bitmap = wx.StaticBitmap(preview_panel, size=(PREVIEW_WIDTH, PREVIEW_HEIGHT))
+        self.preview_bitmap.SetMinSize((PREVIEW_WIDTH, PREVIEW_HEIGHT))
+        self.preview_bitmap.SetBackgroundColour(Colors.BG_SECONDARY)
+        preview_sizer.Add(self.preview_bitmap, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        preview_sizer.AddStretchSpacer()
+        parent_layout.Add(preview_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+
+        self.preview_widget = preview_panel
+        self.preview_widget.Hide()
 
     def _start_preview(self):
         """실시간 미리보기 시작"""
@@ -422,17 +474,21 @@ class MainWindow(wx.Frame):
 
         # 기존 타이머 정리 (레이스 컨디션 방지)
         if self.preview_timer is not None:
-            try:
+            with contextlib.suppress(TypeError, RuntimeError, AttributeError):
                 self.preview_timer.Stop()  # wxPython은 대문자
-            except (TypeError, RuntimeError, AttributeError):
-                pass
             self.preview_timer = None
 
         self.preview_timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, lambda e: self._update_preview(), self.preview_timer)
-        self.preview_timer.Start(100)  # 10 FPS 미리보기
+        self.Bind(wx.EVT_TIMER, self._on_preview_timer, self.preview_timer)
+        self.preview_timer.Start(PREVIEW_UPDATE_INTERVAL_MS)
 
         self.preview_widget.Show()
+        self._update_preview()
+        self.Layout()
+
+    def _on_preview_timer(self, event):
+        """실시간 미리보기 타이머."""
+        self._update_preview()
 
     def _stop_preview(self):
         """실시간 미리보기 중지"""
@@ -445,6 +501,9 @@ class MainWindow(wx.Frame):
             self.preview_widget.Hide()
             if hasattr(self, 'preview_label') and self.preview_label:
                 self.preview_label.SetLabel(tr('preview'))
+            if hasattr(self, 'preview_bitmap') and self.preview_bitmap:
+                self.preview_bitmap.SetBitmap(wx.NullBitmap)
+            self.Layout()
 
     def _update_preview(self):
         """미리보기 업데이트"""
@@ -453,37 +512,19 @@ class MainWindow(wx.Frame):
             if not self or self.recorder is None or not self.preview_enabled:
                 return
 
-            if not hasattr(self, 'preview_label') or self.preview_label is None:
+            if not hasattr(self, 'preview_bitmap') or self.preview_bitmap is None:
                 return
 
             frame = self.recorder.capture_single_frame()
-
-            # 프레임 유효성 검증
-            if frame is None:
+            rgb_frame = _preview_frame_to_rgb(frame)
+            if rgb_frame is None:
                 return
 
-            if not isinstance(frame, np.ndarray):
-                logger.warning(f"Invalid frame type: {type(frame)}")
-                return
-
-            if len(frame.shape) < 2 or frame.size == 0:
-                return
-
-            # 연속적인 배열로 변환 (메모리 접근 오류 방지)
-            frame = np.ascontiguousarray(frame, dtype=np.uint8)
-            h, w = frame.shape[:2]
-
-            # 유효한 크기 및 채널 확인
-            if h <= 0 or w <= 0:
-                return
-
-            if len(frame.shape) < 3 or frame.shape[2] < 3:
-                logger.warning(f"Invalid frame channels: {frame.shape}")
-                return
-
-            if h > 0 and w > 0:
-                    # 미리보기 비활성화 상태
-                    pass
+            bitmap = _create_preview_bitmap(rgb_frame)
+            self.preview_bitmap.SetBitmap(bitmap)
+            if hasattr(self, 'preview_label') and self.preview_label:
+                height, width = rgb_frame.shape[:2]
+                self.preview_label.SetLabel(f"{tr('preview')} {width}x{height}")
         except (AttributeError, ValueError, TypeError, RuntimeError) as e:
             # 예외 발생 시 로그 (미리보기 실패는 치명적이지 않음)
             logger.debug(f"미리보기 업데이트 실패: {e}")
@@ -624,7 +665,6 @@ class MainWindow(wx.Frame):
         """캡처 오버레이를 메인 윈도우 하단에 위치"""
         if self.capture_overlay:
             main_rect = self.GetRect()
-            overlay_rect = self.capture_overlay.GetRect()
 
             # 메인 윈도우 바로 아래, 왼쪽 정렬
             new_x = main_rect.x
@@ -639,13 +679,12 @@ class MainWindow(wx.Frame):
         if self._last_pos is None:
             self._last_pos = current_pos
             return
-        if self.capture_overlay and self.capture_overlay.IsShown():
-            if self.record_state == self.STATE_READY:
-                dx = current_pos.x - self._last_pos.x
-                dy = current_pos.y - self._last_pos.y
-                if dx != 0 or dy != 0:
-                    overlay_pos = self.capture_overlay.GetPosition()
-                    self.capture_overlay.SetPosition((overlay_pos.x + dx, overlay_pos.y + dy))
+        if self.capture_overlay and self.capture_overlay.IsShown() and self.record_state == self.STATE_READY:
+            dx = current_pos.x - self._last_pos.x
+            dy = current_pos.y - self._last_pos.y
+            if dx != 0 or dy != 0:
+                overlay_pos = self.capture_overlay.GetPosition()
+                self.capture_overlay.SetPosition((overlay_pos.x + dx, overlay_pos.y + dy))
         self._last_pos = current_pos
 
     def _on_region_changed(self, x, y, w, h):
@@ -799,11 +838,10 @@ class MainWindow(wx.Frame):
             # 키보드 입력 표시
             if self.recorder and self.recorder.keyboard_display:
                 keyboard_enabled = self.settings.get("keyboard_display", fallback="false") == "true"
-                if keyboard_enabled:
-                    if not self.recorder.keyboard_display.is_available():
-                        wx.MessageBox(tr('keyboard_unavailable'), tr('warning'), wx.OK | wx.ICON_WARNING)
-                        self.settings.set("keyboard_display", "false")
-                        return
+                if keyboard_enabled and not self.recorder.keyboard_display.is_available():
+                    wx.MessageBox(tr('keyboard_unavailable'), tr('warning'), wx.OK | wx.ICON_WARNING)
+                    self.settings.set("keyboard_display", "false")
+                    return
                 self.recorder.keyboard_display.set_enabled(keyboard_enabled)
 
             # 실시간 미리보기
@@ -1184,7 +1222,7 @@ class MainWindow(wx.Frame):
 
     def _open_editor_with_frames(self):
         """녹화된 프레임으로 GifEditor 열기
-        
+
         NOTE: editor 모듈은 wxPython 기반입니다.
         임시 GIF를 저장하고 별도 프로세스로 editor를 실행합니다.
         """
@@ -1352,12 +1390,13 @@ class MainWindow(wx.Frame):
                 try:
                     # 가용 메모리가 임계값 미만이면 강제 중지 (매우 위험한 수준)
                     available_mem_mb = psutil.virtual_memory().available / (1024 * 1024)
-                    if available_mem_mb < SYSTEM_MEMORY_CRITICAL_MB:
-                        if not hasattr(self, '_system_memory_warned') or not self._system_memory_warned:
-                            self._system_memory_warned = True
-                            wx.CallAfter(wx.MessageBox, tr('system_memory_low').format(available_mem_mb), tr('warning'), wx.OK | wx.ICON_WARNING)
-                            wx.CallAfter(self._stop_recording)
-                            return
+                    if available_mem_mb < SYSTEM_MEMORY_CRITICAL_MB and (
+                        not hasattr(self, '_system_memory_warned') or not self._system_memory_warned
+                    ):
+                        self._system_memory_warned = True
+                        wx.CallAfter(wx.MessageBox, tr('system_memory_low').format(available_mem_mb), tr('warning'), wx.OK | wx.ICON_WARNING)
+                        wx.CallAfter(self._stop_recording)
+                        return
                 except Exception:
                     pass
 
@@ -1674,134 +1713,28 @@ class MainWindow(wx.Frame):
         self._system_detector.detect_system_capabilities()
 
     def _apply_detected_capabilities(self, caps):
-        """감지된 시스템 능력을 UI에 적용 (메인 스레드)"""
-        try:
-            # 최적 파이프라인 적용
-            pipeline = caps.optimal_pipeline
-            if pipeline:
-                # 캡처 백엔드 설정
-                user_backend = self.settings.get("capture_backend", fallback="gdi")
-                if self.recorder:
-                    if user_backend == "auto":
-                        # Auto 모드: HDR 감지하여 백엔드 선택
-                        from core.hdr_utils import is_hdr_active
-                        hdr_active = is_hdr_active()
-                        actual_backend = "gdi" if hdr_active else "dxcam"
-                        logger.info(f"[MainWindow] Auto: HDR {'ON' if hdr_active else 'OFF'} → {actual_backend}")
-                        self.recorder.set_capture_backend(actual_backend)
-                    elif user_backend in ["dxcam", "gdi"]:
-                        # 명시적 설정 우선
-                        logger.info(f"[MainWindow] 사용자 설정 백엔드 유지: {user_backend}")
-                        self.recorder.set_capture_backend(user_backend)
-                    else:
-                        # 잘못된 설정 - 파이프라인 적용
-                        self.recorder.set_capture_backend(pipeline.capture_backend)
-
-                # 인코더 설정
-                if self.encoder:
-                    self.encoder.set_codec(pipeline.codec)
-                    # 인코더 타입 추출 (nvenc, qsv, amf, cpu)
-                    encoder_type = 'auto'
-                    if 'nvenc' in pipeline.encoder:
-                        encoder_type = 'nvenc'
-                    elif 'qsv' in pipeline.encoder:
-                        encoder_type = 'qsv'
-                    elif 'amf' in pipeline.encoder:
-                        encoder_type = 'amf'
-                    elif 'lib' in pipeline.encoder:
-                        encoder_type = 'cpu'
-                    self.encoder.set_preferred_encoder(encoder_type)
-
-                logger.info("[MainWindow] 최적 파이프라인 적용: %s", pipeline.name)
-
-            # GPU 하드웨어 감지 시 백그라운드에서 CuPy까지 확인하여 자동 활성화
-            if caps.has_nvidia_gpu:
-                def _detect_cupy_bg():
-                    try:
-                        info = detect_gpu(skip_cupy=False)
-                    except Exception:
-                        from core.gpu_utils import GpuInfo
-                        info = GpuInfo()
-                    wx.CallAfter(self._on_auto_gpu_detect_done, info)
-                threading.Thread(target=_detect_cupy_bg, daemon=True).start()
-
-        except Exception as e:
-            logger.warning("[MainWindow] 시스템 능력 감지 실패: %s", e)
+        """감지된 시스템 능력을 UI에 적용 — SystemDetector로 위임."""
+        self._system_detector._apply_detected_capabilities(caps)
 
     def _on_auto_gpu_detect_done(self, gpu_info):
-        """자동 GPU 감지 완료 (메인 스레드) — CuPy 가능 시 GPU 자동 활성화"""
-        self._gpu_initialized = True
-        has_gpu = gpu_info.has_cupy
-        self.capture_control_bar.set_gpu_status(has_gpu)
-        if has_gpu:
-            logger.info("[MainWindow] GPU 자동 활성화: CuPy 사용 가능")
-        else:
-            logger.info("[MainWindow] GPU 자동 감지 완료: CuPy 미사용")
+        """자동 GPU 감지 완료 — SystemDetector로 위임."""
+        self._system_detector._on_auto_gpu_detect_done(gpu_info)
 
     def _on_gpu_button_click(self):
-        """GPU 버튼 클릭 — 비동기 GPU 감지 후 정보 표시"""
-        if self._gpu_initialized:
-            # 이미 초기화됨 → GPU 정보 메시지박스 표시
-            self._show_gpu_info_dialog()
-            return
-
-        # 아직 초기화 안 됨 → 백그라운드에서 감지
-        self.capture_control_bar.gpu_status_button.SetLabel(tr('gpu_initializing'))
-        self.capture_control_bar.gpu_status_button.Enable(False)
-
-        def _detect_in_bg():
-            try:
-                info = detect_gpu()  # CuPy 포함 전체 감지
-            except Exception:
-                from core.gpu_utils import GpuInfo
-                info = GpuInfo()
-            wx.CallAfter(self._on_gpu_detect_done, info)
-
-        threading.Thread(target=_detect_in_bg, daemon=True).start()
+        """GPU 버튼 클릭 — SystemDetector로 위임."""
+        self._system_detector.on_gpu_button_click()
 
     def _on_gpu_detect_done(self, gpu_info):
-        """GPU 감지 완료 (메인 스레드)"""
-        self._gpu_initialized = True
-        self.capture_control_bar.gpu_status_button.Enable(True)
-        self.capture_control_bar.set_gpu_status(gpu_info.has_cuda)
-        self._show_gpu_info_dialog()
+        """GPU 감지 완료 — SystemDetector로 위임."""
+        self._system_detector._on_gpu_detect_done(gpu_info)
 
     def _show_gpu_info_dialog(self):
-        """GPU 정보 메시지박스 표시"""
-        try:
-            gpu_info = detect_gpu(skip_cupy=True)
-        except Exception:
-            from core.gpu_utils import GpuInfo
-            gpu_info = GpuInfo()
-
-        if not gpu_info.has_cuda:
-            wx.MessageBox(tr('gpu_not_found_msg'), tr('gpu_info_title'), wx.OK | wx.ICON_INFORMATION, self)
-            return
-
-        msg = tr('gpu_info_msg',
-                 name=gpu_info.gpu_name or "Unknown",
-                 memory=gpu_info.gpu_memory_mb,
-                 cupy="O" if gpu_info.has_cupy else "X",
-                 nvenc="O" if gpu_info.ffmpeg_nvenc else "X",
-                 driver=gpu_info.driver_version or "N/A")
-        wx.MessageBox(msg, tr('gpu_info_title'), wx.OK | wx.ICON_INFORMATION, self)
+        """GPU 정보 메시지박스 표시 — SystemDetector로 위임."""
+        self._system_detector._show_gpu_info_dialog()
 
     def _update_hdr_label(self):
-        """HDR 모드 레이블 업데이트 (상태바 필드 2 및 hdr_label)"""
-        try:
-            hdr_force = bool(self.recorder and getattr(self.recorder, 'hdr_correction_force', False))
-            if is_hdr_active() or hdr_force:
-                hdr_text = "HDR"
-            else:
-                hdr_text = ""
-            if self and hasattr(self, 'hdr_label') and self.hdr_label is not None:
-                self.hdr_label.SetLabel(hdr_text)
-                if hdr_text:
-                    self.hdr_label.Show()
-                else:
-                    self.hdr_label.Hide()
-        except (RuntimeError, AttributeError) as e:
-            logger.debug("HDR label update failed: %s", e)
+        """HDR 모드 레이블 업데이트 — SystemDetector로 위임."""
+        self._system_detector.update_hdr_label()
 
     def _setup_shortcuts(self):
         """키보드 단축키 설정 (글로벌 핫키는 capture_control_bar에서 처리)"""
@@ -1883,10 +1816,8 @@ class MainWindow(wx.Frame):
                 pass
 
         # 번역 콜백 등록 해제 (메모리 누수 및 PyDeadObjectError 방지)
-        try:
+        with contextlib.suppress(Exception):
             self.trans.unregister_callback(self.retranslateUi)
-        except Exception:
-            pass
 
         # 전체 리소스 정리
         self._cleanup_all_resources()

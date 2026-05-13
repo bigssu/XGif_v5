@@ -9,6 +9,7 @@ import time
 import urllib.request
 import urllib.error
 from logging_setup import log_and_ui, get_logger
+import contextlib
 
 DEFAULT_TIMEOUT = 120  # seconds per request
 MAX_RETRIES = 3
@@ -104,10 +105,8 @@ def download_file(
             # Clean up partial
             for p in (dest_path + ".part", dest_path):
                 if os.path.exists(p):
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(p)
-                    except OSError:
-                        pass
             if attempt < max_retries:
                 wait = 2 ** attempt
                 log_and_ui(f"{wait}초 후 재시도합니다…")

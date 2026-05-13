@@ -6,6 +6,7 @@ AI Effects - AI 기반 이미지 처리 효과
 - scikit-image: 고급 노이즈 제거
 """
 from __future__ import annotations
+import importlib.util
 from typing import Optional, Tuple, Callable, List
 from PIL import Image
 import numpy as np
@@ -14,26 +15,31 @@ from ..utils.logger import get_logger
 
 _logger = get_logger()
 
-# 선택적 의존성 확인
-_skimage_available = False
 
-try:
-    from skimage import restoration
-    from skimage import filters as sk_filters
-    from skimage.morphology import disk
+def _module_available(module_name: str) -> bool:
+    """선택적 모듈 존재 여부를 부모 패키지 누락까지 안전하게 확인."""
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except ModuleNotFoundError:
+        return False
+
+# 선택적 의존성 확인
+_skimage_available = _module_available("skimage")
+if _skimage_available:
     _skimage_available = True
     _logger.info("scikit-image 사용 가능 - 고급 노이즈 제거 지원")
-except ImportError:
+else:
     _logger.info("scikit-image 없음 - 기본 노이즈 제거만 사용")
 
 # cuCIM (GPU scikit-image) 확인
-_cucim_available = False
-try:
-    import cucim.skimage.filters
-    import cucim.skimage.restoration
+_cucim_available = (
+    _module_available("cucim.skimage.filters")
+    and _module_available("cucim.skimage.restoration")
+)
+if _cucim_available:
     _cucim_available = True
     _logger.debug("cuCIM 사용 가능 - GPU 가속 이미지 처리 지원")
-except ImportError:
+else:
     # 선택적 의존성이므로 DEBUG 레벨로만 로깅 (사용자가 실제로 사용할 때는 다른 메시지 출력)
     _logger.debug("cuCIM 없음 - 선택적 의존성 (CUDA 12.x 필요)")
 
@@ -75,15 +81,15 @@ def denoise_bilateral(image: Image.Image,
                       sigma_color: float = 75,
                       sigma_space: float = 75) -> Image.Image:
     """양방향 필터를 사용한 노이즈 제거 (OpenCV 기반)
-    
+
     에지를 보존하면서 노이즈를 제거합니다.
-    
+
     Args:
         image: 원본 이미지
         d: 필터 크기 (픽셀 이웃 직경)
         sigma_color: 색상 공간 시그마
         sigma_space: 좌표 공간 시그마
-    
+
     Returns:
         노이즈가 제거된 이미지
     """
@@ -123,16 +129,16 @@ def denoise_nlmeans(image: Image.Image,
                     template_window_size: int = 7,
                     search_window_size: int = 21) -> Image.Image:
     """Non-local Means 노이즈 제거 (고품질)
-    
+
     가장 효과적인 노이즈 제거 알고리즘 중 하나입니다.
     처리 시간이 오래 걸립니다.
-    
+
     Args:
         image: 원본 이미지
         h: 필터 강도 (높을수록 노이즈 제거 강함, 디테일 손실)
         template_window_size: 템플릿 패치 크기 (홀수)
         search_window_size: 검색 윈도우 크기 (홀수)
-    
+
     Returns:
         노이즈가 제거된 이미지
     """
@@ -169,12 +175,12 @@ def denoise_wavelet(image: Image.Image,
                     sigma: Optional[float] = None,
                     mode: str = 'soft') -> Image.Image:
     """웨이블릿 기반 노이즈 제거 (scikit-image)
-    
+
     Args:
         image: 원본 이미지
         sigma: 노이즈 표준편차 (None이면 자동 추정)
         mode: 'soft' 또는 'hard' 임계값
-    
+
     Returns:
         노이즈가 제거된 이미지
     """
@@ -218,14 +224,14 @@ def denoise_bilateral_gpu(image: Image.Image,
                           sigma_color: float = 0.05,
                           sigma_spatial: float = 15) -> Image.Image:
     """GPU 가속 양방향 필터 노이즈 제거 (cuCIM)
-    
+
     CPU 대비 10-100배 빠른 노이즈 제거를 제공합니다.
-    
+
     Args:
         image: 원본 이미지
         sigma_color: 색상 공간 시그마 (0.0~1.0 정규화)
         sigma_spatial: 공간 시그마 (픽셀 단위)
-    
+
     Returns:
         노이즈가 제거된 이미지
     """
@@ -281,11 +287,11 @@ def denoise_bilateral_gpu(image: Image.Image,
 
 def denoise_gaussian_gpu(image: Image.Image, sigma: float = 1.0) -> Image.Image:
     """GPU 가속 가우시안 노이즈 제거 (cuCIM)
-    
+
     Args:
         image: 원본 이미지
         sigma: 가우시안 시그마
-    
+
     Returns:
         노이즈가 제거된 이미지
     """
@@ -327,13 +333,13 @@ def denoise_gaussian_gpu(image: Image.Image, sigma: float = 1.0) -> Image.Image:
 
 def denoise_median_gpu(image: Image.Image, size: int = 3) -> Image.Image:
     """GPU 가속 미디언 필터 노이즈 제거 (cuCIM)
-    
+
     솔트앤페퍼 노이즈에 효과적입니다.
-    
+
     Args:
         image: 원본 이미지
         size: 필터 크기 (홀수)
-    
+
     Returns:
         노이즈가 제거된 이미지
     """
@@ -396,13 +402,13 @@ def denoise_median_gpu(image: Image.Image, size: int = 3) -> Image.Image:
 
 def denoise_auto_gpu(image: Image.Image, strength: str = 'medium') -> Image.Image:
     """자동 GPU 노이즈 제거 (최적 알고리즘 선택)
-    
+
     cuCIM이 설치된 경우 GPU를 사용하고, 그렇지 않으면 CPU 폴백합니다.
-    
+
     Args:
         image: 원본 이미지
         strength: 노이즈 제거 강도 ('light', 'medium', 'strong')
-    
+
     Returns:
         노이즈가 제거된 이미지
     """
@@ -431,13 +437,13 @@ def denoise_batch_gpu(images: List[Image.Image],
                        progress_callback: Optional[Callable[[int, int], None]] = None,
                        **kwargs) -> List[Image.Image]:
     """여러 이미지 일괄 GPU 노이즈 제거
-    
+
     Args:
         images: 이미지 목록
         method: 노이즈 제거 방법 ('bilateral', 'gaussian', 'median', 'auto')
         progress_callback: 진행률 콜백
         **kwargs: 메서드별 추가 인자
-    
+
     Returns:
         노이즈가 제거된 이미지 목록
     """
@@ -467,11 +473,11 @@ def denoise_batch_gpu(images: List[Image.Image],
 
 def upscale_lanczos(image: Image.Image, scale: float = 2.0) -> Image.Image:
     """Lanczos 업스케일링 (기본)
-    
+
     Args:
         image: 원본 이미지
         scale: 확대 배율
-    
+
     Returns:
         확대된 이미지
     """
@@ -485,9 +491,9 @@ def upscale_lanczos(image: Image.Image, scale: float = 2.0) -> Image.Image:
 def upscale_auto(image: Image.Image, scale: int = 2,
                   prefer: str = 'best') -> Image.Image:
     """자동 업스케일링 (최적 백엔드 자동 선택)
-    
+
     설치된 라이브러리 중 최적의 백엔드를 자동으로 선택합니다.
-    
+
     Args:
         image: 원본 이미지
         scale: 확대 배율
@@ -495,7 +501,7 @@ def upscale_auto(image: Image.Image, scale: int = 2,
             - 'best': Lanczos 사용
             - 'fast': Lanczos 사용
             - 'lanczos': Lanczos만 사용
-    
+
     Returns:
         업스케일된 이미지
     """
@@ -508,18 +514,19 @@ def upscale_batch(images: List[Image.Image], scale: int = 2,
                    progress_callback: Optional[Callable[[int, int], None]] = None
                    ) -> List[Image.Image]:
     """여러 이미지 일괄 업스케일링
-    
+
     Args:
         images: 이미지 목록
         scale: 확대 배율
         method: 업스케일 방법 ('auto', 'lanczos') - 현재는 모두 Lanczos 사용
         progress_callback: 진행률 콜백
-    
+
     Returns:
         업스케일된 이미지 목록
     """
     # 모든 AI 업스케일러가 제거되어 항상 Lanczos 사용
-    upscale_func = lambda img: upscale_lanczos(img, scale)
+    def upscale_func(img):
+        return upscale_lanczos(img, scale)
 
     results = []
     total = len(images)
@@ -541,13 +548,13 @@ def equalize_histogram(image: Image.Image,
                        clip_limit: float = 2.0,
                        tile_size: Tuple[int, int] = (8, 8)) -> Image.Image:
     """히스토그램 평활화 (대비 개선)
-    
+
     Args:
         image: 원본 이미지
         adaptive: True면 CLAHE (적응형 평활화) 사용
         clip_limit: CLAHE 클리핑 한계
         tile_size: CLAHE 타일 크기
-    
+
     Returns:
         대비가 개선된 이미지
     """
@@ -565,18 +572,18 @@ def equalize_histogram(image: Image.Image,
 
         # LAB 색공간으로 변환
         lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
+        lightness, a_channel, b_channel = cv2.split(lab)
 
         if adaptive:
             # CLAHE 적용
             clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
-            l = clahe.apply(l)
+            lightness = clahe.apply(lightness)
         else:
             # 일반 히스토그램 평활화
-            l = cv2.equalizeHist(l)
+            lightness = cv2.equalizeHist(lightness)
 
         # 다시 합치기
-        lab = cv2.merge([l, a, b])
+        lab = cv2.merge([lightness, a_channel, b_channel])
         result_bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
         if has_alpha:
@@ -603,7 +610,7 @@ def equalize_histogram(image: Image.Image,
 
 def apply_ai_effect(image: Image.Image, effect: str, **kwargs) -> Image.Image:
     """AI 효과 적용
-    
+
     Args:
         image: 원본 이미지
         effect: 효과 이름
@@ -618,7 +625,7 @@ def apply_ai_effect(image: Image.Image, effect: str, **kwargs) -> Image.Image:
             - 'upscale_lanczos': Lanczos 업스케일링
             - 'equalize': 히스토그램 평활화
         **kwargs: 효과별 추가 인자
-    
+
     Returns:
         처리된 이미지
     """

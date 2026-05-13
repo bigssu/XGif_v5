@@ -4,10 +4,10 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 
 ## 현재 기준
 
-- 문서 검증 기준일: `2026-04-22`
+- 문서 검증 기준일: `2026-05-13`
 - 검증 환경: Python 3.11 fresh `.venv`
-- 주요 의존성 floor: `wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.19.0`
-- 테스트 상태: `pytest tests/ -v` → `130 passed, 4 skipped`
+- 주요 의존성 floor: `wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.20.0`
+- 테스트 상태: `pytest tests/ -v` → `162 passed`
 - 빌드 참고: `build_optimized.py`가 `XGif.spec`를 빌드 시점에 동적 생성
 
 ## 주요 기능
@@ -34,7 +34,7 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 | 패키지 | 용도 |
 |--------|------|
 | `dxcam` | 고성능 화면 캡처 (현재 floor: `0.3.0`) |
-| `cupy-cuda12x` | GPU 가속 프레임 처리 (권장: `14.x`) |
+| `requirements-gpu.txt` | Windows CUDA 13.x용 GPU 가속 패키지 묶음 (`cupy-cuda13x[ctk]` 포함) |
 | `scipy` | 고급 오디오 믹싱 (권장: `1.17.x`) |
 
 ## 설치
@@ -51,6 +51,9 @@ py -3.11 -m venv .venv
 
 # 의존성 설치
 .venv\Scripts\pip install -r requirements.txt
+
+# 선택: NVIDIA GPU + CUDA 13.x 환경
+.venv\Scripts\pip install -r requirements-gpu.txt
 
 # 실행
 .venv\Scripts\python main.py

@@ -9,7 +9,7 @@ imageio>=2.37.3
 psutil>=7.2.2
 sounddevice>=0.5.5
 soundfile>=0.13.1
-pynput>=1.8.1
+pynput>=1.8.2
 # Optional modules (Removed for smaller build size):
 # cupy
 # scipy

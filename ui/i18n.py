@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from typing import Callable, Dict
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +82,8 @@ class TranslationManager:
         if lang in self._translations and lang != self._current_lang:
             self._current_lang = lang
             for callback in list(self._callbacks):
-                try:
+                with contextlib.suppress(Exception):
                     callback(lang)
-                except Exception:
-                    pass
 
     def register_callback(self, callback: Callable[[str], None]):
         """언어 변경 콜백 등록"""
@@ -124,10 +123,8 @@ class TranslationManager:
         )
 
         if kwargs:
-            try:
+            with contextlib.suppress(KeyError, ValueError):
                 text = text.format(**kwargs)
-            except (KeyError, ValueError):
-                pass
 
         return text
 

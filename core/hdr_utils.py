@@ -339,7 +339,7 @@ def apply_hdr_correction_obs(frame: np.ndarray) -> np.ndarray:
     HDR/선형 캡처 프레임을 SDR sRGB로 변환 (OBS Studio 방식, GPU 가속).
     DXGI Desktop Duplication API는 HDR에서 PQ 인코딩 또는 선형 스케일 문제가 있을 수 있음.
     OBS 방식: PQ → 선형 (EETF) → BT.2020 → BT.709 → 톤매핑 → sRGB
-    
+
     입력/출력: BGR, uint8, shape (H, W, 3).
     """
     if frame is None or frame.size == 0 or frame.dtype != np.uint8:

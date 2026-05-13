@@ -9,6 +9,7 @@ from ui.i18n import tr, get_trans_manager
 from ui.theme import Colors, Fonts
 from core.utils import parse_resolution, validate_resolution
 from core.events import AppEvent, get_event_bus
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -300,10 +301,8 @@ class CustomToggleSwitch(wx.Panel):
 
     def __del__(self):
         if hasattr(self, '_anim_timer') and self._anim_timer:
-            try:
+            with contextlib.suppress(Exception):
                 self._anim_timer.Stop()
-            except Exception:
-                pass
 
 
 class CaptureControlBar(wx.Panel):
@@ -728,10 +727,8 @@ class CaptureControlBar(wx.Panel):
     def _on_destroy(self, event):
         """윈도우 파괴 시 번역 콜백 해제"""
         if event.GetEventObject() is self:
-            try:
+            with contextlib.suppress(Exception):
                 self.trans.unregister_callback(self.retranslateUi)
-            except Exception:
-                pass
         event.Skip()
 
     def set_recording_state(self, is_recording, is_paused=False):

@@ -52,13 +52,13 @@ class GifDecoder:
              progress_callback: Optional[Callable[[int, int], None]] = None
              ) -> LoadResult:
         """GIF, 이미지 또는 비디오 파일 로드
-        
+
         Args:
             file_path: 파일 경로
             video_fps: 비디오 파일의 경우 추출할 FPS (기본 10)
             video_max_frames: 비디오 파일의 경우 최대 프레임 수 (기본 500)
             progress_callback: 진행률 콜백 (current, total)
-        
+
         Returns:
             LoadResult: 로드 결과
         """
@@ -221,13 +221,13 @@ class GifDecoder:
                          default_delay: int = 100,
                          sort_by_name: bool = True) -> LoadResult:
         """폴더에서 이미지 시퀀스 로드
-        
+
         Args:
             folder_path: 폴더 경로
             pattern: 파일 패턴 (예: "*.png", "frame_*.jpg")
             default_delay: 기본 프레임 딜레이 (밀리초)
             sort_by_name: 파일명으로 정렬 여부
-        
+
         Returns:
             LoadResult: 로드 결과
         """

@@ -42,7 +42,7 @@ class CrashHandler:
 
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """전역 예외 핸들러
-        
+
         Args:
             exc_type: 예외 타입
             exc_value: 예외 값
@@ -126,11 +126,11 @@ def install_crash_handler():
 
 def safe_execute(default_return=None, log_error=True):
     """함수 실행을 안전하게 감싸는 데코레이터
-    
+
     Args:
         default_return: 에러 발생 시 반환할 기본값
         log_error: 에러를 로깅할지 여부
-    
+
     사용 예:
         @safe_execute(default_return=False)
         def risky_function():
@@ -152,12 +152,12 @@ def safe_execute(default_return=None, log_error=True):
 
 def retry_on_failure(max_retries=3, delay=0.1, exceptions=(Exception,)):
     """실패 시 재시도하는 데코레이터
-    
+
     Args:
         max_retries: 최대 재시도 횟수
         delay: 재시도 간 지연 시간 (초)
         exceptions: 재시도할 예외 타입들
-    
+
     사용 예:
         @retry_on_failure(max_retries=3, delay=0.5)
         def unstable_function():

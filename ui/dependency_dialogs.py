@@ -5,13 +5,23 @@ Windows 11 Dark Theme 스타일
 """
 
 import logging
+import os
 import sys
 import wx
 
-from ui.theme import Colors, Fonts, ThemedDialog
-from ui.i18n import tr
-from ui.capture_control_bar import FlatButton
+from cupy_policy import (
+    GPU_REQUIREMENTS_FILE,
+    cupy_packages_for_driver_version,
+    format_gpu_requirements_command,
+    format_pip_install_command,
+    should_use_gpu_requirements,
+)
 from core.dependency_checker import DependencyState
+from core.utils import get_resource_path
+from ui.capture_control_bar import FlatButton
+from ui.i18n import tr
+from ui.theme import Colors, Fonts, ThemedDialog
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -224,18 +234,21 @@ def _detect_cuda_driver_version():
         return None
 
 
+def _get_cupy_packages():
+    """CUDA 드라이버 버전에 맞는 CuPy 패키지 목록 반환"""
+    version = _detect_cuda_driver_version()
+    return cupy_packages_for_driver_version(version)
+
+
 def _get_cupy_package_name():
     """CUDA 드라이버 버전에 맞는 CuPy 패키지명 반환"""
-    version = _detect_cuda_driver_version()
-    if version is None:
-        return "cupy-cuda12x"
-    major, _ = version
-    if major >= 12:
-        return "cupy-cuda12x"
-    elif major >= 11:
-        return "cupy-cuda11x"
-    else:
-        return "cupy-cuda12x"
+    return " ".join(_get_cupy_packages())
+
+
+def _get_gpu_requirements_path():
+    """번들 또는 소스 트리의 GPU requirements 파일 경로 반환."""
+    path = get_resource_path(GPU_REQUIREMENTS_FILE)
+    return path if os.path.exists(path) else None
 
 
 def _has_nvidia_gpu_hardware():
@@ -264,7 +277,12 @@ class CuPyInstallGuideDialog(ThemedDialog):
                           style=wx.DEFAULT_DIALOG_STYLE)
         self.SetBackgroundColour(Colors.BG_PANEL)
         self._is_frozen = getattr(sys, 'frozen', False)
-        self._package_name = _get_cupy_package_name()
+        self._cuda_version = _detect_cuda_driver_version()
+        self._cupy_packages = cupy_packages_for_driver_version(self._cuda_version)
+        self._package_name = " ".join(self._cupy_packages)
+        self._requirements_path = _get_gpu_requirements_path()
+        cuda_major = self._cuda_version[0] if self._cuda_version else None
+        self._use_requirements = bool(self._requirements_path and should_use_gpu_requirements(cuda_major))
         self._system_python = None
         if self._is_frozen:
             from core.dependency_checker import find_system_python_exe
@@ -277,7 +295,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
         # GPU / CUDA 정보 감지
         gpu_name = _detect_nvidia_gpu_name() or "N/A"
-        cuda_ver = _detect_cuda_driver_version()
+        cuda_ver = self._cuda_version
         cuda_ver_str = f"{cuda_ver[0]}.{cuda_ver[1]}" if cuda_ver else "N/A"
 
         # 제목
@@ -302,8 +320,19 @@ class CuPyInstallGuideDialog(ThemedDialog):
         sizer.Add((0, 12))
 
         # 명령어 영역 — frozen 모드에서는 시스템 Python 전체 경로 사용
-        if self._is_frozen and self._system_python:
-            cmd_text = f'"{self._system_python}" -m pip install {self._package_name}'
+        python_executable = self._system_python if self._is_frozen and self._system_python else None
+        if not self._cupy_packages:
+            cmd_text = tr('cupy_cuda_unsupported', cuda_version=cuda_ver_str)
+        elif self._is_frozen and self._system_python:
+            if self._use_requirements:
+                cmd_text = format_gpu_requirements_command(
+                    python_executable=python_executable,
+                    requirements_path=self._requirements_path,
+                )
+            else:
+                cmd_text = format_pip_install_command(self._cupy_packages, python_executable=python_executable)
+        elif self._use_requirements:
+            cmd_text = format_gpu_requirements_command(requirements_path=GPU_REQUIREMENTS_FILE)
         else:
             cmd_text = tr('cupy_guide_cmd', package=self._package_name)
         cmd_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -334,7 +363,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
         btn_sizer.AddStretchSpacer()
 
         # dev 모드에서만 직접 설치 버튼
-        if not self._is_frozen:
+        if not self._is_frozen and self._cupy_packages:
             direct_btn = FlatButton(self, label=tr('cupy_guide_direct_install'), size=(110, 32),
                                      bg_color=Colors.ACCENT.Get()[:3],
                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
@@ -373,10 +402,8 @@ class CuPyInstallGuideDialog(ThemedDialog):
         btn.SetLabel(tr('cupy_guide_copied'))
 
         def _restore_label():
-            try:
+            with contextlib.suppress(Exception):
                 btn.SetLabel(tr('cupy_guide_copy'))
-            except Exception:
-                pass
 
         wx.CallLater(1500, _restore_label)
 
@@ -403,12 +430,24 @@ class CuPyInstallGuideDialog(ThemedDialog):
         import subprocess
         import threading
 
-        self._busy_info = wx.BusyInfo(f"Installing {self._package_name}...")
+        if not self._cupy_packages:
+            cuda_ver = self._cuda_version
+            cuda_ver_str = f"{cuda_ver[0]}.{cuda_ver[1]}" if cuda_ver else "N/A"
+            wx.MessageBox(
+                tr('cupy_cuda_unsupported', cuda_version=cuda_ver_str),
+                tr('warning'),
+                wx.OK | wx.ICON_WARNING,
+            )
+            return
+
+        install_label = self._requirements_path if self._use_requirements else self._package_name
+        self._busy_info = wx.BusyInfo(f"Installing {install_label}...")
 
         def do_install():
             try:
+                pip_args = ["-r", self._requirements_path] if self._use_requirements else list(self._cupy_packages)
                 result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", self._package_name],
+                    [sys.executable, "-m", "pip", "install", *pip_args],
                     capture_output=True, text=True, timeout=600
                 )
                 success = result.returncode == 0
@@ -505,10 +544,8 @@ def _install_ffmpeg(parent, dep_status):
         # 단계 전환 감지
         if "압축 해제" in status:
             state['phase'] = 'extract'
-        try:
+        with contextlib.suppress(Exception):
             progress.Update(progress.GetValue(), status)
-        except Exception:
-            pass
 
     def on_finished(success, message):
         state['success'] = success
@@ -545,14 +582,10 @@ def _install_ffmpeg(parent, dep_status):
     if parent:
         parent.Enable()
 
-    try:
+    with contextlib.suppress(Exception):
         progress.Update(100, state['message'])
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         progress.Destroy()
-    except Exception:
-        pass
 
     if state['success']:
         wx.MessageBox(
@@ -625,10 +658,8 @@ def _install_dxcam(parent, dep_status):
         wx.CallAfter(_on_install_done, result, progress)
 
     def _on_install_done(res, dlg):
-        try:
+        with contextlib.suppress(Exception):
             dlg.Destroy()
-        except Exception:
-            pass
         if res['success']:
             wx.MessageBox(
                 tr('dxcam_install_success'),

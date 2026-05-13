@@ -964,7 +964,7 @@ class MainWindow(wx.Frame):
                     tooltip_lines.append(f"오류: {gpu_info.get('error')}")
                 else:
                     tooltip_lines.append("GPU를 사용할 수 없습니다")
-                    tooltip_lines.append("CuPy 설치 필요: pip install cupy-cuda12x")
+                    tooltip_lines.append("CuPy 설치 필요: pip install -r requirements-gpu.txt")
 
             self._gpu_label.SetToolTip("\n".join(tooltip_lines))
         except Exception as e:

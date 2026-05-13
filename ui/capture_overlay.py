@@ -17,14 +17,15 @@ from ui.constants import (
     OVERLAY_MOVE_SMALL, OVERLAY_MOVE_LARGE, DEBOUNCE_DELAY_MS,
     MIN_VISIBLE_PIXELS
 )
+import contextlib
 
 
 class CoordinateConverter:
     """논리적 좌표 <-> 물리적 픽셀 좌표 변환
-    
+
     wx는 논리적 좌표(DIP)를 사용하고, 캡처 라이브러리(dxcam, gdi)는
     물리적 픽셀 좌표를 사용합니다. 이 클래스는 두 좌표 체계 간 변환을 담당합니다.
-    
+
     다중 모니터 환경에서 각 모니터의 DPI가 다를 수 있으므로,
     좌표가 위치한 모니터의 DPI 스케일을 사용합니다.
     """
@@ -32,10 +33,10 @@ class CoordinateConverter:
     @staticmethod
     def get_screen_at(x: int, y: int) -> Optional[wx.Display]:
         """주어진 좌표가 위치한 화면 반환
-        
+
         Args:
             x, y: 논리적 좌표
-            
+
         Returns:
             wx.Display: 해당 화면 (없으면 기본 화면)
         """
@@ -64,12 +65,12 @@ class CoordinateConverter:
     def logical_to_physical(x: int, y: int, width: int, height: int,
                            display: Optional[wx.Display] = None) -> Tuple[int, int, int, int]:
         """논리적 좌표를 물리적 픽셀 좌표로 변환
-        
+
         Args:
             x, y: 논리적 좌표
             width, height: 논리적 크기
             display: 대상 화면 (None이면 자동 감지)
-            
+
         Returns:
             Tuple[int, int, int, int]: (물리적 x, y, width, height)
         """
@@ -104,12 +105,12 @@ class CoordinateConverter:
     def physical_to_logical(x: int, y: int, width: int, height: int,
                            display: Optional[wx.Display] = None) -> Tuple[int, int, int, int]:
         """물리적 픽셀 좌표를 논리적 좌표로 변환
-        
+
         Args:
             x, y: 물리적 좌표
             width, height: 물리적 크기
             display: 대상 화면 (None이면 기본 화면)
-            
+
         Returns:
             Tuple[int, int, int, int]: (논리적 x, y, width, height)
         """
@@ -219,18 +220,14 @@ class CaptureOverlay(wx.Frame):
     def _emit_region_changed(self, x, y, w, h):
         """영역 변경 이벤트 발생"""
         if self._region_changed_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._region_changed_callback(x, y, w, h)
-            except Exception:
-                pass
 
     def _emit_closed(self):
         """닫힘 이벤트 발생"""
         if self._closed_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._closed_callback()
-            except Exception:
-                pass
 
     def _init_ui(self):
         """UI 초기화 - __init__에서 호출"""
@@ -304,7 +301,7 @@ class CaptureOverlay(wx.Frame):
 
     def set_movable(self, movable: bool, allow_resize: bool = True):
         """이동/리사이즈 가능 여부 설정
-        
+
         Args:
             movable: 이동 가능 여부
             allow_resize: 리사이즈 가능 여부 (movable=True일 때만 적용)
@@ -314,7 +311,7 @@ class CaptureOverlay(wx.Frame):
 
     def set_recording_mode(self, recording: bool):
         """녹화 모드 설정 (투명도 조절)
-        
+
         Args:
             recording: 녹화 중 여부 (True면 30% 투명도)
         """
@@ -646,10 +643,10 @@ class CaptureOverlay(wx.Frame):
 
     def _validate_position(self, pos: wx.Point) -> wx.Point:
         """화면 경계 내로 위치 검증
-        
+
         Args:
             pos: 검증할 위치
-            
+
         Returns:
             wx.Point: 화면 내로 조정된 위치
         """
@@ -734,7 +731,7 @@ class CaptureOverlay(wx.Frame):
 
     def _get_dpi_scale(self) -> float:
         """현재 창이 위치한 화면의 DPI 스케일 팩터 반환
-        
+
         다중 모니터 환경에서 올바른 DPI를 사용하기 위해
         창의 중심 좌표가 위치한 화면의 DPI를 반환합니다.
         """
@@ -785,13 +782,13 @@ class CaptureOverlay(wx.Frame):
 
     def set_capture_region(self, x: int, y: int, width: int, height: int):
         """캡처 영역 설정 (외부에서 호출) - 논리적 픽셀 좌표
-        
+
         Args:
             x: 논리적 X 좌표
             y: 논리적 Y 좌표
             width: 논리적 너비
             height: 논리적 높이
-            
+
         Note:
             입력값은 논리적 픽셀 좌표입니다. (DPI 스케일링 적용 전)
             get_capture_region()은 물리적 픽셀 좌표를 반환합니다.

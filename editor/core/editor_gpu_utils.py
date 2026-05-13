@@ -12,11 +12,13 @@ CuPy를 사용하여 GPU 가속 지원
     # GPU 가속 효과 적용
     result = gpu_utils.gpu_sepia(image_array)
 """
+
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 import os
 import threading
 
+from cupy_policy import cupy_packages_for_driver_version, format_cupy_install_hint
 from ..utils.logger import get_logger
 
 # 로거 초기화
@@ -30,24 +32,24 @@ _gpu_init_error: Optional[str] = None  # 초기화 실패 시 에러 메시지
 _gpu_lock = threading.Lock()  # 스레드 안전성을 위한 Lock
 
 
-
 def _check_gpu() -> bool:
     """CUDA GPU 사용 가능 여부 확인
-    
+
     Returns:
         bool: GPU 사용 가능 시 True, 아니면 False
     """
     global _cupy_module, _gpu_init_error
 
     # CUDA_VISIBLE_DEVICES 환경 변수 확인
-    cuda_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '')
-    if cuda_devices == '-1':
+    cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if cuda_devices == "-1":
         _gpu_init_error = "CUDA_VISIBLE_DEVICES가 -1로 설정됨 (GPU 비활성화)"
         _logger.info(f"GPU 초기화 건너뜀: {_gpu_init_error}")
         return False
 
     try:
         from core.utils import ensure_system_site_packages
+
         ensure_system_site_packages()
     except Exception:
         pass
@@ -93,7 +95,7 @@ def _check_gpu() -> bool:
     except ImportError as e:
         _gpu_init_error = f"CuPy가 설치되지 않음: {str(e)}"
         _logger.info(f"GPU 가속 사용 불가: {_gpu_init_error}")
-        _logger.info("GPU 가속을 사용하려면: pip install cupy-cuda12x (CUDA 12.x) 또는 cupy-cuda11x (CUDA 11.x)")
+        _logger.info(f"GPU 가속을 사용하려면: {format_cupy_install_hint()}")
         return False
     except Exception as e:
         _gpu_init_error = f"GPU 초기화 실패: {str(e)}"
@@ -103,10 +105,10 @@ def _check_gpu() -> bool:
 
 def is_gpu_available() -> bool:
     """GPU 사용 가능 여부 반환 (캐싱됨)
-    
+
     첫 호출 시 GPU 검사를 수행하고 결과를 캐싱합니다.
     스레드 안전합니다.
-    
+
     Returns:
         bool: GPU 사용 가능 시 True
     """
@@ -120,9 +122,9 @@ def is_gpu_available() -> bool:
 
 def is_gpu_enabled() -> bool:
     """GPU 사용 활성화 여부
-    
+
     GPU가 사용 가능하고 사용자가 활성화했는지 확인합니다.
-    
+
     Returns:
         bool: GPU 사용이 활성화되었으면 True
     """
@@ -131,7 +133,7 @@ def is_gpu_enabled() -> bool:
 
 def set_gpu_enabled(enabled: bool) -> None:
     """GPU 사용 설정
-    
+
     Args:
         enabled: True면 GPU 사용 활성화, False면 비활성화
     """
@@ -143,7 +145,7 @@ def set_gpu_enabled(enabled: bool) -> None:
 
 def get_gpu_init_error() -> Optional[str]:
     """GPU 초기화 실패 시 에러 메시지 반환
-    
+
     Returns:
         str 또는 None: 에러 메시지, 성공 시 None
     """
@@ -152,7 +154,7 @@ def get_gpu_init_error() -> Optional[str]:
 
 def get_gpu_info() -> Dict[str, Any]:
     """GPU 정보 반환
-    
+
     Returns:
         dict: GPU 정보를 담은 딕셔너리
             - available: GPU 사용 가능 여부
@@ -175,7 +177,7 @@ def get_gpu_info() -> Dict[str, Any]:
         "memory_free": 0,
         "compute_capability": "N/A",
         "cuda_version": "N/A",
-        "cupy_version": "N/A"
+        "cupy_version": "N/A",
     }
 
     if not is_gpu_available():
@@ -214,7 +216,7 @@ def get_gpu_info() -> Dict[str, Any]:
 
 def get_gpu_memory_info() -> Dict[str, int]:
     """GPU 메모리 정보 반환
-    
+
     Returns:
         dict: 메모리 정보 (단위: MB)
             - total: 총 메모리
@@ -241,7 +243,7 @@ def get_gpu_memory_info() -> Dict[str, int]:
 
 def clear_gpu_memory() -> None:
     """GPU 메모리 정리
-    
+
     사용하지 않는 GPU 메모리 블록을 해제합니다.
     """
     if not is_gpu_available():
@@ -267,52 +269,54 @@ def clear_gpu_memory() -> None:
         _logger.warning(f"GPU 메모리 정리 실패: {e}")
 
 
-def to_gpu(arr: np.ndarray) -> 'cp.ndarray':
+def to_gpu(arr: np.ndarray) -> Any:
     """NumPy 배열을 GPU로 전송
-    
+
     Args:
         arr: NumPy 배열
-        
+
     Returns:
         CuPy 배열 (GPU 메모리에 위치)
-        
+
     Raises:
         RuntimeError: GPU가 비활성화된 경우
     """
     if not is_gpu_enabled():
         raise RuntimeError("GPU가 활성화되지 않았습니다. is_gpu_enabled()를 먼저 확인하세요.")
     import cupy as cp
+
     return cp.asarray(arr)
 
 
 def to_cpu(arr) -> np.ndarray:
     """GPU 배열을 CPU로 전송
-    
+
     Args:
         arr: CuPy 배열 또는 NumPy 배열
-        
+
     Returns:
         NumPy 배열 (CPU 메모리에 위치)
     """
-    if hasattr(arr, 'get'):
+    if hasattr(arr, "get"):
         return arr.get()
     return np.asarray(arr)
 
 
 def get_array_module(arr):
     """배열에 맞는 모듈 반환 (numpy 또는 cupy)
-    
+
     CuPy의 get_array_module을 래핑하여 안전하게 사용합니다.
-    
+
     Args:
         arr: 배열 (NumPy 또는 CuPy)
-        
+
     Returns:
         numpy 또는 cupy 모듈
     """
     if is_gpu_enabled():
         try:
             import cupy as cp
+
             return cp.get_array_module(arr)
         except Exception:
             pass
@@ -321,14 +325,14 @@ def get_array_module(arr):
 
 def should_use_gpu(image_size: Tuple[int, int], frame_count: int = 1) -> bool:
     """GPU 사용 권장 여부 판단
-    
+
     이미지 크기와 프레임 수를 기반으로 GPU 사용이 유리한지 판단합니다.
     작은 이미지나 적은 프레임에서는 CPU가 더 빠를 수 있습니다.
-    
+
     Args:
         image_size: (width, height) 튜플
         frame_count: 처리할 프레임 수
-        
+
     Returns:
         bool: GPU 사용을 권장하면 True
     """
@@ -353,12 +357,13 @@ def should_use_gpu(image_size: Tuple[int, int], frame_count: int = 1) -> bool:
 
 # === GPU 가속 이미지 처리 함수들 ===
 
+
 def gpu_sepia(img_array: np.ndarray) -> np.ndarray:
     """GPU 가속 세피아 효과
-    
+
     Args:
         img_array: RGBA 이미지 배열 (H, W, 4)
-    
+
     Returns:
         세피아 효과가 적용된 이미지 배열
     """
@@ -385,11 +390,7 @@ def gpu_sepia(img_array: np.ndarray) -> np.ndarray:
         gpu_arr = cp.asarray(img_array, dtype=cp.float32)
 
         # 세피아 매트릭스
-        sepia_matrix = cp.array([
-            [0.393, 0.769, 0.189],
-            [0.349, 0.686, 0.168],
-            [0.272, 0.534, 0.131]
-        ], dtype=cp.float32)
+        sepia_matrix = cp.array([[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]], dtype=cp.float32)
 
         # RGB 채널만 추출
         rgb = gpu_arr[:, :, :3]
@@ -423,11 +424,7 @@ def _numpy_sepia(img_array: np.ndarray) -> np.ndarray:
     """NumPy 기반 세피아 효과 (기본 폴백)"""
     arr = img_array.astype(np.float32)
 
-    sepia_matrix = np.array([
-        [0.393, 0.769, 0.189],
-        [0.349, 0.686, 0.168],
-        [0.272, 0.534, 0.131]
-    ])
+    sepia_matrix = np.array([[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]])
 
     rgb = arr[:, :, :3]
     sepia = np.dot(rgb, sepia_matrix.T)
@@ -439,15 +436,13 @@ def _numpy_sepia(img_array: np.ndarray) -> np.ndarray:
     return result.astype(np.uint8)
 
 
-
-
 def gpu_vignette(img_array: np.ndarray, strength: float = 0.5) -> np.ndarray:
     """GPU 가속 비네트 효과
-    
+
     Args:
         img_array: RGBA 이미지 배열 (H, W, 4)
         strength: 비네트 강도 (0.0 ~ 1.0)
-    
+
     Returns:
         비네트 효과가 적용된 이미지 배열
     """
@@ -533,15 +528,13 @@ def _numpy_vignette(img_array: np.ndarray, strength: float = 0.5) -> np.ndarray:
     return np.clip(arr, 0, 255).astype(np.uint8)
 
 
-
-
 def gpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
     """GPU 가속 Hue 조절
-    
+
     Args:
         img_array: RGBA 이미지 배열 (H, W, 4)
         shift: Hue 이동값 (-180 ~ 180)
-    
+
     Returns:
         Hue가 조절된 이미지 배열
     """
@@ -615,10 +608,7 @@ def gpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
         g_new = cp.zeros_like(h)
         b_new = cp.zeros_like(h)
 
-        for i, (r_v, g_v, b_v) in enumerate([
-            (c, x, 0), (x, c, 0), (0, c, x),
-            (0, x, c), (x, 0, c), (c, 0, x)
-        ]):
+        for i, (r_v, g_v, b_v) in enumerate([(c, x, 0), (x, c, 0), (0, c, x), (0, x, c), (x, 0, c), (c, 0, x)]):
             mask_i = h_i == i
             if isinstance(r_v, (int, float)):
                 r_new[mask_i] = r_v
@@ -656,11 +646,11 @@ def cpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
     """CPU Hue 조절 (폴백용) - PIL 사용"""
     from PIL import Image
 
-    img = Image.fromarray(img_array, 'RGBA')
+    img = Image.fromarray(img_array, "RGBA")
     r, g, b, a = img.split()
-    rgb = Image.merge('RGB', (r, g, b))
+    rgb = Image.merge("RGB", (r, g, b))
 
-    hsv = rgb.convert('HSV')
+    hsv = rgb.convert("HSV")
     h, s, v = hsv.split()
 
     h_array = np.array(h, dtype=np.int32)
@@ -669,21 +659,21 @@ def cpu_hue_shift(img_array: np.ndarray, shift: int) -> np.ndarray:
     h_array = (h_array + shift_normalized) % 256
     h = Image.fromarray(h_array.astype(np.uint8))
 
-    hsv = Image.merge('HSV', (h, s, v))
-    rgb = hsv.convert('RGB')
+    hsv = Image.merge("HSV", (h, s, v))
+    rgb = hsv.convert("RGB")
     r, g, b = rgb.split()
 
-    result = Image.merge('RGBA', (r, g, b, a))
+    result = Image.merge("RGBA", (r, g, b, a))
     return np.array(result)
 
 
 def gpu_calculate_similarity(arr1: np.ndarray, arr2: np.ndarray) -> float:
     """GPU 가속 이미지 유사도 계산
-    
+
     Args:
         arr1: 첫 번째 이미지 배열 (H, W, C)
         arr2: 두 번째 이미지 배열 (H, W, C)
-    
+
     Returns:
         유사도 (0.0 ~ 1.0)
     """
@@ -730,24 +720,22 @@ def _numpy_similarity(arr1: np.ndarray, arr2: np.ndarray) -> float:
     return 1.0 - (diff / 255.0)
 
 
-
-
 def gpu_batch_process(images: list, operation: str, **kwargs) -> list:
     """GPU 배치 이미지 처리
-    
+
     여러 이미지에 동일한 효과를 적용합니다.
     GPU 메모리를 효율적으로 관리하면서 배치 처리합니다.
-    
+
     Args:
         images: 이미지 배열 리스트 (numpy.ndarray)
         operation: 적용할 효과 ('sepia', 'vignette', 'hue_shift')
         **kwargs: 연산별 추가 인자
             - vignette: strength (float, 0.0~1.0)
             - hue_shift: shift (int, -180~180)
-    
+
     Returns:
         처리된 이미지 배열 리스트
-        
+
     Example:
         >>> images = [frame.numpy_array for frame in frames]
         >>> results = gpu_batch_process(images, 'sepia')
@@ -757,9 +745,9 @@ def gpu_batch_process(images: list, operation: str, **kwargs) -> list:
         return []
 
     operations = {
-        'sepia': lambda img, **kw: gpu_sepia(img),
-        'vignette': lambda img, **kw: gpu_vignette(img, kw.get('strength', 0.5)),
-        'hue_shift': lambda img, **kw: gpu_hue_shift(img, kw.get('shift', 0)),
+        "sepia": lambda img, **kw: gpu_sepia(img),
+        "vignette": lambda img, **kw: gpu_vignette(img, kw.get("strength", 0.5)),
+        "hue_shift": lambda img, **kw: gpu_hue_shift(img, kw.get("shift", 0)),
     }
 
     if operation not in operations:
@@ -784,7 +772,7 @@ def gpu_batch_process(images: list, operation: str, **kwargs) -> list:
     # (apply_effect_gpu_batch에서 큰 배치로 나누고, 여기서는 GPU 메모리 관리를 위해 작은 단위로 처리)
     internal_batch_size = 10  # GPU 메모리 관리를 위한 내부 배치 크기
     for i in range(0, len(images), internal_batch_size):
-        batch = images[i:i + internal_batch_size]
+        batch = images[i : i + internal_batch_size]
         batch_results = [op_func(img, **kwargs) for img in batch]
         results.extend(batch_results)
 
@@ -801,15 +789,16 @@ def gpu_batch_process(images: list, operation: str, **kwargs) -> list:
 
 # === 초기화 및 진단 유틸리티 ===
 
+
 def initialize_gpu(force: bool = False) -> bool:
     """GPU 초기화
-    
+
     명시적으로 GPU 초기화를 수행합니다.
     보통은 자동으로 초기화되지만, 진단 목적으로 수동 호출할 수 있습니다.
-    
+
     Args:
         force: True면 캐시된 결과를 무시하고 재검사
-        
+
     Returns:
         bool: GPU 사용 가능 여부
     """
@@ -844,22 +833,26 @@ def get_diagnostic_info() -> str:
 
     if is_gpu_available():
         info = get_gpu_info()
-        lines.extend([
-            f"GPU 이름: {info.get('name', 'N/A')}",
-            f"CUDA 버전: {info.get('cuda_version', 'N/A')}",
-            f"CuPy 버전: {info.get('cupy_version', 'N/A')}",
-            f"Compute Capability: {info.get('compute_capability', 'N/A')}",
-            f"총 메모리: {info.get('memory_total', 0):,} MB",
-            f"사용 중: {info.get('memory_used', 0):,} MB",
-            f"여유: {info.get('memory_free', 0):,} MB",
-        ])
+        lines.extend(
+            [
+                f"GPU 이름: {info.get('name', 'N/A')}",
+                f"CUDA 버전: {info.get('cuda_version', 'N/A')}",
+                f"CuPy 버전: {info.get('cupy_version', 'N/A')}",
+                f"Compute Capability: {info.get('compute_capability', 'N/A')}",
+                f"총 메모리: {info.get('memory_total', 0):,} MB",
+                f"사용 중: {info.get('memory_used', 0):,} MB",
+                f"여유: {info.get('memory_free', 0):,} MB",
+            ]
+        )
 
     # 환경 변수 정보
-    lines.extend([
-        "",
-        "--- 환경 ---",
-    ])
-    cuda_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '(설정되지 않음)')
+    lines.extend(
+        [
+            "",
+            "--- 환경 ---",
+        ]
+    )
+    cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "(설정되지 않음)")
     lines.append(f"CUDA_VISIBLE_DEVICES: {cuda_devices}")
 
     lines.append("=" * 25)
@@ -867,6 +860,7 @@ def get_diagnostic_info() -> str:
 
 
 # === NVIDIA GPU / CUDA 감지 (CuPy 없이) ===
+
 
 def has_nvidia_gpu_hardware() -> bool:
     """NVIDIA GPU 하드웨어 존재 여부 확인 (pynvml 사용, CuPy 불필요)
@@ -876,6 +870,7 @@ def has_nvidia_gpu_hardware() -> bool:
     """
     try:
         import pynvml
+
         pynvml.nvmlInit()
         count = pynvml.nvmlDeviceGetCount()
         pynvml.nvmlShutdown()
@@ -892,6 +887,7 @@ def detect_cuda_driver_version() -> Optional[Tuple[int, int]]:
     """
     try:
         import pynvml
+
         pynvml.nvmlInit()
         try:
             cuda_ver = pynvml.nvmlSystemGetCudaDriverVersion_v2()
@@ -909,15 +905,8 @@ def get_cupy_package_name() -> Optional[str]:
     """CUDA 드라이버 버전에 맞는 CuPy 패키지명 반환
 
     Returns:
-        패키지명 (예: 'cupy-cuda12x') 또는 None (감지 실패/미지원)
+        패키지명 (예: 'cupy-cuda13x[ctk]==14.0.1') 또는 None (미지원)
     """
     version = detect_cuda_driver_version()
-    if version is None:
-        return None
-    major, _ = version
-    if major >= 12:
-        return "cupy-cuda12x"
-    elif major >= 11:
-        return "cupy-cuda11x"
-    else:
-        return None
+    packages = cupy_packages_for_driver_version(version)
+    return packages[0] if packages else None

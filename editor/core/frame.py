@@ -14,12 +14,13 @@ import tempfile
 import threading
 
 from . import editor_gpu_utils as gpu_utils
+import contextlib
 
 
 # 전역 메모리 관리자
 class FrameMemoryManager:
     """프레임 메모리 관리자
-    
+
     현재는 Frame의 등록/해제만 담당하며, 죽은 weakref를 정리합니다.
     get_swap_path()는 스왑 파일 경로만 반환하며, 디스크 스왑 로직은 미구현입니다.
     """
@@ -48,7 +49,7 @@ class FrameMemoryManager:
 
     def set_memory_limit_mb(self, limit_mb: int) -> None:
         """메모리 제한 설정 (MB)
-        
+
         Args:
             limit_mb: 메모리 제한 (MB)
         """
@@ -94,7 +95,7 @@ def get_memory_manager() -> FrameMemoryManager:
 
 class Frame:
     """단일 GIF 프레임을 나타내는 클래스
-    
+
     메모리 최적화 기능:
     - Lazy Loading: 이미지를 필요할 때만 메모리에 로드
     - 압축 저장: 메모리에 PNG 바이트로 압축 저장 (옵션)
@@ -208,7 +209,7 @@ class Frame:
     def from_file(cls, path: str, delay_ms: int = 100,
                   lazy_load: bool = False) -> 'Frame':
         """파일에서 프레임 로드
-        
+
         Args:
             path: 이미지 파일 경로
             delay_ms: 딜레이 (밀리초)
@@ -431,7 +432,7 @@ class Frame:
 
     def apply_vignette(self, strength: float = 0.5) -> None:
         """비네트 효과 (GPU 가속 지원)
-        
+
         Args:
             strength: 비네트 강도 (0.0 ~ 1.0)
         """
@@ -442,7 +443,7 @@ class Frame:
 
     def adjust_hue(self, shift: int) -> None:
         """색조 조절 (GPU 가속 지원)
-        
+
         Args:
             shift: Hue 이동값 (-180 ~ 180)
         """
@@ -493,7 +494,7 @@ class Frame:
     # === 펜슬 그리기 ===
     def draw_lines(self, paths: list) -> None:
         """선 그리기
-        
+
         Args:
             paths: 경로 목록 [(점들, RGBA튜플, 두께), ...]
                    점들: [(x1, y1), (x2, y2), ...]
@@ -528,10 +529,10 @@ class Frame:
     # === 썸네일 ===
     def get_thumbnail(self, max_size: int = 80) -> Image.Image:
         """썸네일 반환 (크기별 캐싱)
-        
+
         Args:
             max_size: 썸네일 최대 크기
-        
+
         Returns:
             썸네일 이미지
         """
@@ -575,7 +576,5 @@ class Frame:
 
     def __del__(self):
         """소멸자: 메모리 관리자에서 등록 해제"""
-        try:
+        with contextlib.suppress(Exception):
             get_memory_manager().unregister_frame(self._id)
-        except Exception:
-            pass

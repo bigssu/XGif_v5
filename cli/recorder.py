@@ -14,6 +14,7 @@ from cli import EXIT_SUCCESS, EXIT_USER_ERROR, EXIT_DEPENDENCY, EXIT_RUNTIME_ERR
 from cli.config import load_config
 from cli.progress import TerminalProgress
 from cli.signal_handler import install_signal_handlers, restore_signal_handlers
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -280,10 +281,8 @@ class CLIRecordingSession:
                     self._audio_recorder.cleanup()
             except Exception:
                 pass
-            try:
+            with contextlib.suppress(Exception):
                 restore_signal_handlers()
-            except Exception:
-                pass
 
     def _detect_format(self, output_path: str) -> str:
         """출력 파일 확장자로 포맷 결정"""

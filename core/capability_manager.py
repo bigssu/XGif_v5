@@ -86,10 +86,10 @@ class CapabilityManager:
 
     def detect_capabilities(self, force_refresh: bool = False) -> SystemCapabilities:
         """시스템 능력 감지
-        
+
         Args:
             force_refresh: True면 캐시 무시하고 재감지
-            
+
         Returns:
             SystemCapabilities: 감지된 시스템 능력
         """

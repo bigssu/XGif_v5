@@ -13,6 +13,7 @@ import tempfile
 import logging
 from pathlib import Path
 import threading
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -180,10 +181,8 @@ class FFmpegDownloader(threading.Thread):
 
         finally:
             # 임시 파일 정리
-            try:
+            with contextlib.suppress(Exception):
                 shutil.rmtree(temp_dir)
-            except Exception:
-                pass
 
     def _download_file(self, url: str, dest_path: str) -> bool:
         """파일 다운로드 (진행률 표시, 전체 타임아웃 300초)"""
@@ -325,10 +324,10 @@ class FFmpegManager:
     @staticmethod
     def get_ffmpeg_env() -> dict:
         """FFmpeg 실행을 위한 환경 변수 딕셔너리 반환
-        
+
         포함된 ffmpeg를 사용하는 경우, 해당 디렉토리를 PATH에 추가합니다.
         시스템 ffmpeg를 사용하는 경우, 기존 환경 변수를 그대로 사용합니다.
-        
+
         Returns:
             dict: 환경 변수 딕셔너리 (subprocess 실행 시 env 파라미터로 사용)
         """

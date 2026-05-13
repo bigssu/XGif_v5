@@ -55,13 +55,13 @@ class SpeechBubble:
     def create(width: int, height: int, config: SpeechBubbleConfig,
                font_path: Optional[str] = None) -> Image.Image:
         """말풍선 이미지 생성
-        
+
         Args:
             width: 말풍선 너비
             height: 말풍선 높이
             config: 말풍선 설정
             font_path: 폰트 경로 (None이면 기본 폰트)
-        
+
         Returns:
             말풍선 이미지 (RGBA)
         """
@@ -133,7 +133,7 @@ class SpeechBubble:
         # 여러 개의 원을 합쳐서 구름 형태 생성
         bump_radius = min(w, h) // 6
         num_bumps_x = max(3, w // (bump_radius * 2))
-        num_bumps_y = max(2, h // (bump_radius * 2))
+        max(2, h // (bump_radius * 2))
 
         # 배경 채우기
         draw.rounded_rectangle(
@@ -310,7 +310,7 @@ class SpeechBubble:
                 font = ImageFont.load_default()
 
         # 텍스트 영역
-        text_area = (
+        (
             x + config.padding,
             y + config.padding,
             x + w - config.padding,

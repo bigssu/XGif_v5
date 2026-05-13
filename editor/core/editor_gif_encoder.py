@@ -3,6 +3,7 @@ GifEncoder - GIF 파일 인코딩
 pygifsicle을 사용한 GIF 최적화 지원
 """
 from __future__ import annotations
+import importlib.util
 from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass
@@ -22,12 +23,10 @@ _logger = get_logger()
 _gifsicle_available = False
 _gifsicle_path = None
 
-try:
-    # pygifsicle 사용
-    import pygifsicle
+if importlib.util.find_spec("pygifsicle") is not None:
     _gifsicle_available = True
     _logger.info("pygifsicle 사용 가능 - GIF 최적화 지원")
-except ImportError:
+else:
     # gifsicle CLI 직접 확인
     _gifsicle_path = shutil.which("gifsicle")
     if _gifsicle_path:
@@ -91,7 +90,7 @@ class GifEncoder:
     def save(cls, collection: FrameCollection, file_path: str,
              settings: Optional[EncoderSettings] = None) -> SaveResult:
         """애니메이션 또는 이미지 파일로 저장
-        
+
         지원 형식:
         - GIF: 애니메이션 GIF
         - WebP: 애니메이션 WebP (더 나은 압축률)
@@ -133,7 +132,7 @@ class GifEncoder:
     @classmethod
     def _rgba_to_rgb(cls, img: Image.Image) -> Image.Image:
         """RGBA 이미지를 RGB로 변환 (알파 채널 제거, 흰색 배경 사용)
-        
+
         모든 양자화 알고리즘에 대해 일관된 전처리를 제공합니다.
         """
         if img.mode == 'RGBA':
@@ -147,12 +146,11 @@ class GifEncoder:
     @classmethod
     def _quantize_image(cls, img: Image.Image, settings: EncoderSettings) -> Image.Image:
         """이미지 양자화
-        
+
         모든 양자화 알고리즘에 대해 일관된 처리를 제공합니다.
         프리뷰와 저장이 동일한 결과를 생성하도록 보장합니다.
         """
         # 원본 모드 저장
-        original_mode = img.mode
 
         # 양자화 방법에 따른 처리
         method = settings.quantization
@@ -267,12 +265,12 @@ class GifEncoder:
     def _optimize_with_gifsicle(cls, file_path: str, lossy: int = 0,
                                   opt_level: int = 3) -> int:
         """gifsicle을 사용하여 GIF 최적화
-        
+
         Args:
             file_path: GIF 파일 경로
             lossy: lossy 압축 레벨 (0=비활성화, 30-200)
             opt_level: 최적화 레벨 (1, 2, 3)
-        
+
         Returns:
             최적화된 파일 크기 (바이트), 실패 시 0
         """
@@ -331,12 +329,12 @@ class GifEncoder:
     def optimize_existing_gif(cls, file_path: str, lossy: int = 30,
                                opt_level: int = 3) -> Optional[int]:
         """기존 GIF 파일 최적화
-        
+
         Args:
             file_path: GIF 파일 경로
             lossy: lossy 압축 레벨 (30-200 권장)
             opt_level: 최적화 레벨 (1, 2, 3)
-        
+
         Returns:
             최적화된 파일 크기 (바이트), 실패 시 None
         """
@@ -358,7 +356,7 @@ class GifEncoder:
     def _save_webp(cls, collection: FrameCollection, path: Path,
                    settings: EncoderSettings) -> SaveResult:
         """WebP 파일로 저장 (애니메이션 지원)
-        
+
         WebP는 GIF보다 더 나은 압축률과 색상 품질을 제공합니다.
         """
         try:
@@ -399,7 +397,7 @@ class GifEncoder:
     def _save_apng(cls, collection: FrameCollection, path: Path,
                    settings: EncoderSettings) -> SaveResult:
         """APNG 파일로 저장 (애니메이션 PNG)
-        
+
         APNG는 무손실 압축으로 고품질 애니메이션을 제공합니다.
         """
         try:
@@ -433,7 +431,7 @@ class GifEncoder:
     @classmethod
     def create_preview(cls, frame: Frame, settings: EncoderSettings) -> Image.Image:
         """양자화 프리뷰 생성
-        
+
         실제 저장 시와 동일한 방식으로 양자화를 적용하여 프리뷰를 생성합니다.
         저장 시와 정확히 동일한 과정을 거쳐 프리뷰와 저장 결과가 일치하도록 합니다.
         """
@@ -465,7 +463,7 @@ class GifEncoder:
     @classmethod
     def estimate_gif_size(cls, collection: FrameCollection, settings: EncoderSettings) -> int:
         """GIF 파일 크기 추정 (바이트 단위로 메모리에서 인코딩)
-        
+
         성능 최적화: 프레임이 많을 경우 샘플링하여 추정
         """
         if collection.is_empty:

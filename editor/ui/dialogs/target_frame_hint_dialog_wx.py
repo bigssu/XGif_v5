@@ -85,10 +85,14 @@ class TargetFrameHintDialog(ThemedDialog):
 
     def _on_accept(self, event):
         """확인 버튼 클릭"""
-        if self._settings and self._dont_show_checkbox and self._dont_show_checkbox.GetValue():
+        if (
+            self._settings
+            and self._dont_show_checkbox
+            and self._dont_show_checkbox.GetValue()
+            and hasattr(self._settings, 'Write')
+        ):
             # wx.Config에 설정 저장
-            if hasattr(self._settings, 'Write'):
-                self._settings.Write(self.SETTINGS_KEY_HIDDEN, "True")
+            self._settings.Write(self.SETTINGS_KEY_HIDDEN, "True")
 
         self.EndModal(wx.ID_OK)
 

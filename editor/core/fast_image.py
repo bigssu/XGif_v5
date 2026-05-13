@@ -11,10 +11,10 @@ pyvips가 설치되지 않은 경우 Pillow로 자동 폴백됩니다.
 
 사용법:
     from src.core.fast_image import FastImage
-    
+
     # 단일 이미지 처리
     result = FastImage.resize(image, (800, 600))
-    
+
     # 배치 처리
     results = FastImage.batch_resize(images, (800, 600))
 """
@@ -56,7 +56,7 @@ def get_backend_info() -> dict:
 
 class FastImage:
     """고성능 이미지 처리 클래스
-    
+
     pyvips가 설치된 경우 pyvips를 사용하고,
     그렇지 않으면 Pillow로 자동 폴백합니다.
     """
@@ -88,21 +88,16 @@ class FastImage:
         mode = image.mode
         if mode == 'RGBA':
             bands = 4
-            interpretation = 'srgb'
         elif mode == 'RGB':
             bands = 3
-            interpretation = 'srgb'
         elif mode == 'L':
             bands = 1
-            interpretation = 'b-w'
         elif mode == 'LA':
             bands = 2
-            interpretation = 'b-w'
         else:
             # 지원하지 않는 모드는 RGBA로 변환
             image = image.convert('RGBA')
             bands = 4
-            interpretation = 'srgb'
 
         # numpy 배열로 변환
         data = np.array(image)
@@ -157,12 +152,12 @@ class FastImage:
     def resize(cls, image: Image.Image, size: Tuple[int, int],
                resample: int = Image.Resampling.LANCZOS) -> Image.Image:
         """고속 리사이즈
-        
+
         Args:
             image: 원본 이미지
             size: 목표 크기 (width, height)
             resample: 리샘플링 방법 (Pillow 폴백 시 사용)
-        
+
         Returns:
             리사이즈된 이미지
         """
@@ -197,12 +192,12 @@ class FastImage:
     def thumbnail(cls, image: Image.Image, size: Tuple[int, int],
                   resample: int = Image.Resampling.LANCZOS) -> Image.Image:
         """고속 썸네일 생성 (비율 유지)
-        
+
         Args:
             image: 원본 이미지
             size: 최대 크기 (width, height)
             resample: 리샘플링 방법
-        
+
         Returns:
             썸네일 이미지
         """
@@ -235,13 +230,13 @@ class FastImage:
     def rotate(cls, image: Image.Image, angle: float,
                expand: bool = True, fillcolor: Tuple = (0, 0, 0, 0)) -> Image.Image:
         """고속 회전
-        
+
         Args:
             image: 원본 이미지
             angle: 회전 각도 (도)
             expand: 이미지 크기 확장 여부
             fillcolor: 빈 공간 채우기 색상
-        
+
         Returns:
             회전된 이미지
         """
@@ -288,11 +283,11 @@ class FastImage:
     @classmethod
     def crop(cls, image: Image.Image, box: Tuple[int, int, int, int]) -> Image.Image:
         """고속 크롭
-        
+
         Args:
             image: 원본 이미지
             box: 크롭 영역 (left, top, right, bottom)
-        
+
         Returns:
             크롭된 이미지
         """
@@ -318,11 +313,11 @@ class FastImage:
     @classmethod
     def gaussian_blur(cls, image: Image.Image, radius: float = 2.0) -> Image.Image:
         """고속 가우시안 블러
-        
+
         Args:
             image: 원본 이미지
             radius: 블러 반경
-        
+
         Returns:
             블러 처리된 이미지
         """
@@ -347,12 +342,12 @@ class FastImage:
     def sharpen(cls, image: Image.Image, sigma: float = 1.0,
                 amount: float = 1.0) -> Image.Image:
         """고속 샤프닝 (언샵 마스크)
-        
+
         Args:
             image: 원본 이미지
             sigma: 블러 시그마
             amount: 샤프닝 강도
-        
+
         Returns:
             샤프닝된 이미지
         """
@@ -382,12 +377,12 @@ class FastImage:
                      progress_callback: Optional[Callable[[int, int], None]] = None
                      ) -> List[Image.Image]:
         """여러 이미지 일괄 리사이즈
-        
+
         Args:
             images: 이미지 목록
             size: 목표 크기
             progress_callback: 진행률 콜백 (current, total)
-        
+
         Returns:
             리사이즈된 이미지 목록
         """
@@ -409,12 +404,12 @@ class FastImage:
                     progress_callback: Optional[Callable[[int, int], None]] = None
                     ) -> List[Image.Image]:
         """여러 이미지에 함수 일괄 적용
-        
+
         Args:
             images: 이미지 목록
             func: 적용할 함수
             progress_callback: 진행률 콜백
-        
+
         Returns:
             처리된 이미지 목록
         """
@@ -437,10 +432,10 @@ class FastImage:
     @classmethod
     def load(cls, file_path: str) -> Image.Image:
         """고속 이미지 로드
-        
+
         Args:
             file_path: 파일 경로
-        
+
         Returns:
             PIL Image
         """
@@ -463,7 +458,7 @@ class FastImage:
     def save(cls, image: Image.Image, file_path: str,
              quality: int = 85, **kwargs) -> None:
         """고속 이미지 저장
-        
+
         Args:
             image: 저장할 이미지
             file_path: 파일 경로
@@ -509,12 +504,12 @@ class FastImage:
     def get_memory_usage_estimate(cls, width: int, height: int,
                                    bands: int = 4) -> dict:
         """이미지 메모리 사용량 추정
-        
+
         Args:
             width: 이미지 너비
             height: 이미지 높이
             bands: 채널 수 (기본 4 = RGBA)
-        
+
         Returns:
             메모리 사용량 추정 (bytes)
         """

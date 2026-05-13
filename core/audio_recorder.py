@@ -12,6 +12,7 @@ import logging
 from typing import Optional, List
 import numpy as np
 from .utils import run_subprocess_silent
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ HAS_PYDUB = False
 
 class AudioRecorder:
     """시스템 오디오 및 마이크 오디오 녹음기 (Context Manager 지원)
-    
+
     사용 예:
         with AudioRecorder() as recorder:
             recorder.start()
@@ -103,12 +104,14 @@ class AudioRecorder:
             # 시스템 오디오 (loopback) 디바이스 찾기
             for i, device in enumerate(devices):
                 name = device['name'].lower()
-                if 'loopback' in name or 'stereo mix' in name or 'what u hear' in name:
-                    if device['max_input_channels'] > 0:
-                        self._loopback_device = i
-                        self.system_sample_rate = int(device.get('default_samplerate', 44100))
-                        self.system_channels = self._safe_channels(device, 2)
-                        break
+                if (
+                    ('loopback' in name or 'stereo mix' in name or 'what u hear' in name)
+                    and device['max_input_channels'] > 0
+                ):
+                    self._loopback_device = i
+                    self.system_sample_rate = int(device.get('default_samplerate', 44100))
+                    self.system_channels = self._safe_channels(device, 2)
+                    break
 
             # 마이크 디바이스 찾기 (기본 입력 장치)
             try:
@@ -157,11 +160,13 @@ class AudioRecorder:
             with self._lock:
                 if self._buffer_limit_reached:
                     return
-                if self._max_buffer_bytes is not None:
-                    if self._current_audio_buffer_bytes() + indata.nbytes > self._max_buffer_bytes:
-                        self._buffer_limit_reached = True
-                        logger.warning("오디오 버퍼 상한에 도달하여 추가 녹음을 중단합니다.")
-                        return
+                if (
+                    self._max_buffer_bytes is not None
+                    and self._current_audio_buffer_bytes() + indata.nbytes > self._max_buffer_bytes
+                ):
+                    self._buffer_limit_reached = True
+                    logger.warning("오디오 버퍼 상한에 도달하여 추가 녹음을 중단합니다.")
+                    return
                 chunk = indata.copy()
                 self.system_audio_data.append(chunk)
                 self._audio_buffer_total_bytes += chunk.nbytes
@@ -172,11 +177,13 @@ class AudioRecorder:
             with self._lock:
                 if self._buffer_limit_reached:
                     return
-                if self._max_buffer_bytes is not None:
-                    if self._current_audio_buffer_bytes() + indata.nbytes > self._max_buffer_bytes:
-                        self._buffer_limit_reached = True
-                        logger.warning("오디오 버퍼 상한에 도달하여 추가 녹음을 중단합니다.")
-                        return
+                if (
+                    self._max_buffer_bytes is not None
+                    and self._current_audio_buffer_bytes() + indata.nbytes > self._max_buffer_bytes
+                ):
+                    self._buffer_limit_reached = True
+                    logger.warning("오디오 버퍼 상한에 도달하여 추가 녹음을 중단합니다.")
+                    return
                 chunk = indata.copy()
                 self.mic_audio_data.append(chunk)
                 self._audio_buffer_total_bytes += chunk.nbytes
@@ -292,7 +299,7 @@ class AudioRecorder:
     def stop(self) -> Optional[str]:
         """
         오디오 녹음 중지 및 WAV 파일 저장 (시스템 + 마이크 병합)
-        
+
         Returns:
             저장된 WAV 파일 경로 또는 None (실패 시)
         """
@@ -453,18 +460,14 @@ class AudioRecorder:
             # 임시 파일 항상 정리
             for f in [system_file, mic_file, merged_file]:
                 if f and os.path.exists(f):
-                    try:
+                    with contextlib.suppress(Exception):
                         os.remove(f)
-                    except Exception:
-                        pass
 
     def cleanup(self):
         """임시 파일 정리"""
         if self._temp_file and os.path.exists(self._temp_file):
-            try:
+            with contextlib.suppress(Exception):
                 os.remove(self._temp_file)
-            except Exception:
-                pass
             self._temp_file = None
 
     def is_recording(self) -> bool:

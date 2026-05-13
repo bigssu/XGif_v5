@@ -1,10 +1,19 @@
 """환경 진단 (xgif doctor)"""
+import importlib
 import os
 import sys
 import subprocess
 import logging
 
 from cli import EXIT_SUCCESS, EXIT_DEPENDENCY
+from cupy_policy import (
+    CUDA11_CUPY_PACKAGE,
+    CUDA12_CUPY_PACKAGE,
+    CUDA13_CUPY_PACKAGE,
+    CUDA13_CUPY_PACKAGES,
+    GPU_REQUIREMENTS_FILE,
+    cupy_packages_for_cuda_major,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +50,6 @@ def run_doctor(args) -> int:
 
     # ── Pillow ──
     try:
-        from PIL import Image
         import PIL
         _check("Pillow", PIL.__version__, True)
     except ImportError:
@@ -60,10 +68,10 @@ def run_doctor(args) -> int:
     _check("GDI", "Windows 기본", True)
 
     try:
-        import dxcam
+        importlib.import_module("dxcam")
         _check("dxcam", "설치됨", True)
-    except ImportError:
-        _check("dxcam", "미설치 -- 'xgif doctor --install-dxcam' 으로 설치", False)
+    except Exception as e:
+        _check("dxcam", f"사용 불가: {e} -- 'xgif doctor --install-dxcam' 으로 설치", False)
         if getattr(args, "install_dxcam", False):
             return _install_dxcam()
 
@@ -181,10 +189,10 @@ def run_doctor(args) -> int:
     print()
     print("  오디오:")
     try:
-        import sounddevice
+        importlib.import_module("sounddevice")
         _check("sounddevice", "설치됨 (마이크 녹음 가능)", True)
-    except ImportError:
-        _check("sounddevice", "미설치 (마이크 녹음 불가)", False)
+    except Exception as e:
+        _check("sounddevice", f"사용 불가: {e} (마이크 녹음 불가)", False)
 
     print()
     print("  " + "─" * 40)
@@ -222,8 +230,11 @@ def _suggest_cupy_install():
     print("          GPU 가속을 위해 CuPy를 설치하세요:")
     print("          → xgif doctor --install-cupy  (자동 감지 및 설치)")
     print("          또는 수동 설치:")
-    print("          → pip install cupy-cuda12x     (CUDA 12.x)")
-    print("          → pip install cupy-cuda11x     (CUDA 11.x)")
+    if not getattr(sys, 'frozen', False):
+        print(f"          → pip install -r {GPU_REQUIREMENTS_FILE}  (CUDA 13.x, Windows 검증 조합)")
+    print(f"          → pip install \"{CUDA13_CUPY_PACKAGE}\"  (CUDA 13.x)")
+    print(f"          → pip install {CUDA12_CUPY_PACKAGE}     (CUDA 12.x)")
+    print(f"          → pip install {CUDA11_CUPY_PACKAGE}     (CUDA 11.x)")
 
 
 def _detect_cuda_version() -> str:
@@ -358,24 +369,21 @@ def _install_cupy() -> int:
     if cuda_ver:
         print(f"  감지된 CUDA 버전: {cuda_ver}")
         major = int(cuda_ver.split(".")[0])
-        if major >= 12:
-            cupy_pkg = "cupy-cuda12x"
-        elif major == 11:
-            cupy_pkg = "cupy-cuda11x"
-        else:
+        packages = list(cupy_packages_for_cuda_major(major))
+        if not packages:
             print(f"  경고: CUDA {cuda_ver}은 지원되지 않습니다. CUDA 11+ 필요.", file=sys.stderr)
             return EXIT_DEPENDENCY
     else:
-        # CUDA 버전 감지 실패 — 최신(12.x) 시도
-        print("  CUDA 버전 자동 감지 실패. cupy-cuda12x 설치를 시도합니다...")
-        cupy_pkg = "cupy-cuda12x"
+        # CUDA 버전 감지 실패 — 최신 Windows 검증 조합(CUDA 13.x) 시도
+        print("  CUDA 버전 자동 감지 실패. CUDA 13.x 검증 조합 설치를 시도합니다...")
+        packages = list(CUDA13_CUPY_PACKAGES)
 
-    print(f"  패키지: {cupy_pkg}")
+    print(f"  패키지: {' '.join(packages)}")
     print("  설치 중... (수 분이 소요될 수 있습니다)")
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", cupy_pkg],
+            [sys.executable, "-m", "pip", "install", *packages],
             timeout=600,  # 10분
         )
         if result.returncode == 0:
@@ -417,7 +425,10 @@ def _install_cupy() -> int:
         else:
             print()
             print(f"  CuPy 설치 실패 (종료 코드: {result.returncode})", file=sys.stderr)
-            print(f"  수동 설치를 시도하세요: pip install {cupy_pkg}", file=sys.stderr)
+            print(
+                f"  수동 설치를 시도하세요: pip install {' '.join(packages)}",
+                file=sys.stderr,
+            )
             return EXIT_DEPENDENCY
     except subprocess.TimeoutExpired:
         print("\n  CuPy 설치 시간 초과 (10분)", file=sys.stderr)

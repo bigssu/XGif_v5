@@ -18,6 +18,7 @@ from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr, get_trans_manager
 from ui.capture_control_bar import FlatButton
 from core.settings import AppSettings
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +412,7 @@ class SettingsDialog(ThemedDialog):
         if not options_map or not value:
             return 0
         try:
-            for idx, (key, val) in enumerate(options_map.items()):
+            for idx, (_key, val) in enumerate(options_map.items()):
                 if val == value:
                     return idx
         except (TypeError, ValueError):
@@ -560,10 +561,8 @@ class SettingsDialog(ThemedDialog):
             self._show_status(tr('settings_saved'), success=True)
 
             def do_close():
-                try:
+                with contextlib.suppress(RuntimeError, AttributeError):
                     self.EndModal(wx.ID_OK)
-                except (RuntimeError, AttributeError):
-                    pass
             wx.CallLater(300, do_close)
         else:
             self._show_status(tr('save_failed'), success=False)
@@ -575,10 +574,8 @@ class SettingsDialog(ThemedDialog):
 
     def _on_close(self, event):
         """다이얼로그 닫힐 때 번역 콜백 해제"""
-        try:
+        with contextlib.suppress(Exception):
             self.trans.unregister_callback(self.retranslateUi)
-        except Exception:
-            pass
         event.Skip()
 
     def retranslateUi(self, lang=None):

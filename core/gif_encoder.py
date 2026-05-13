@@ -43,10 +43,9 @@ def _create_temp_dir(prefix: str = 'giffy_') -> str:
 
         try:
             # 이미 존재하면 삭제 시도
-            if os.path.exists(temp_dir):
-                if not safe_rmtree(temp_dir):
-                    logger.warning(f"Failed to remove existing temp dir: {temp_dir}")
-                    continue
+            if os.path.exists(temp_dir) and not safe_rmtree(temp_dir):
+                logger.warning(f"Failed to remove existing temp dir: {temp_dir}")
+                continue
 
             os.makedirs(temp_dir, exist_ok=True)
 
@@ -71,13 +70,14 @@ def _create_temp_dir(prefix: str = 'giffy_') -> str:
         return tempfile.mkdtemp(prefix=prefix)
     except (OSError, PermissionError) as e:
         logger.critical(f"Cannot create temp directory: {e}")
-        raise RuntimeError(f"임시 디렉토리를 생성할 수 없습니다: {e}")
+        raise RuntimeError(f"임시 디렉토리를 생성할 수 없습니다: {e}") from e
 
 # GPU 유틸리티 (FFmpeg GPU 가속용)
 from .gpu_utils import detect_gpu
 
 # 이미지 I/O 최적화: imageio 우선, 폴백으로 PIL
 from PIL import Image  # Pillow fallback용 (항상 필요)
+import contextlib
 
 try:
     import imageio
@@ -188,26 +188,20 @@ class GifEncoder:
     def _emit_progress(self, current: int, total: int):
         """진행률 이벤트 발생"""
         if self._progress_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._progress_callback(current, total)
-            except Exception:
-                pass
 
     def _emit_finished(self, output_path: str):
         """완료 이벤트 발생"""
         if self._finished_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._finished_callback(output_path)
-            except Exception:
-                pass
 
     def _emit_error(self, error_msg: str):
         """에러 이벤트 발생"""
         if self._error_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._error_callback(error_msg)
-            except Exception:
-                pass
 
     def refresh_ffmpeg_path(self):
         """FFmpeg 경로 새로고침 (설치 후 호출)"""
@@ -275,7 +269,7 @@ class GifEncoder:
 
     def detect_available_encoders(self) -> dict:
         """사용 가능한 인코더 감지
-        
+
         Returns:
             dict: {
                 'h264': ['h264_nvenc', 'libx264', ...],
@@ -329,7 +323,7 @@ class GifEncoder:
 
     def _test_encoder(self, encoder_name: str) -> bool:
         """인코더 실제 사용 가능 여부 테스트
-        
+
         짧은 테스트 인코딩을 수행하여 실제 작동 여부 확인
         (드라이버 문제 등으로 목록에는 있지만 작동 안 하는 경우 방지)
         """
@@ -356,7 +350,7 @@ class GifEncoder:
 
     def _get_best_encoder(self, codec: str = None) -> str:
         """최적 인코더 반환
-        
+
         Args:
             codec: 'h264' 또는 'h265' (None이면 self._codec 사용)
         """
@@ -433,10 +427,8 @@ class GifEncoder:
                 except (RuntimeError, asyncio.CancelledError):
                     pass
                 finally:
-                    try:
+                    with contextlib.suppress(RuntimeError):
                         loop.close()
-                    except RuntimeError:
-                        pass
 
     async def _async_run_ffmpeg(self, cmd: List[str], input_data: Optional[bytes] = None) -> subprocess.CompletedProcess:
         """비동기 FFmpeg 실행 (입력 데이터 지원)"""
@@ -481,7 +473,7 @@ class GifEncoder:
 
     def _write_frames_to_pipe(self, process, frames: List[np.ndarray], total_steps: int = 0):
         """FFmpeg 프로세스의 stdin으로 프레임 데이터 스트리밍
-        
+
         Args:
             process: FFmpeg 서브프로세스
             frames: 프레임 리스트
@@ -525,10 +517,8 @@ class GifEncoder:
                     break
 
             # stdin EOF 전송 — FFmpeg가 인코딩 완료를 감지하도록
-            try:
+            with contextlib.suppress(BrokenPipeError, OSError):
                 process.stdin.close()
-            except (BrokenPipeError, OSError):
-                pass
             logger.info(f"[Pipe] Total frames written: {frames_written}/{total_frames}")
         except (IOError, OSError, ValueError) as e:
             logger.error(f"[GifEncoder] Pipe write error: {e}")
@@ -665,10 +655,8 @@ class GifEncoder:
             except subprocess.TimeoutExpired:
                 logger.error("Palette generation timeout")
                 process.kill()
-                try:
+                with contextlib.suppress(subprocess.TimeoutExpired):
                     process.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
                 self._emit_error("팔레트 생성 시간 초과")
                 return False
             except Exception:
@@ -688,7 +676,8 @@ class GifEncoder:
 
             # Pass 2: GIF Generation via Pipe
             paletteuse_opts = [f"dither={preset['dither']}"]
-            if 'bayer_scale' in preset: paletteuse_opts.append(f"bayer_scale={preset['bayer_scale']}")
+            if 'bayer_scale' in preset:
+                paletteuse_opts.append(f"bayer_scale={preset['bayer_scale']}")
             if preset.get('diff_mode') and preset['diff_mode'] != 'none':
                 paletteuse_opts.append(f"diff_mode={preset['diff_mode']}")
             paletteuse_filter = f"paletteuse={':'.join(paletteuse_opts)}"
@@ -719,10 +708,8 @@ class GifEncoder:
             except subprocess.TimeoutExpired:
                 logger.error("GIF generation timeout")
                 process.kill()
-                try:
+                with contextlib.suppress(subprocess.TimeoutExpired):
                     process.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
                 self._emit_error("GIF 생성 시간 초과")
                 return False
             except Exception:
@@ -751,11 +738,11 @@ class GifEncoder:
     def _encode_with_ffmpeg(self, frames_dir: str, output_path: str, fps: int, frame_count: int) -> bool:
         """
         FFmpeg를 사용한 고화질 GIF 인코딩
-        
+
         2-pass 방식:
         - Pass 1: palettegen으로 영상 전체에서 최적 256색 팔레트 생성
         - Pass 2: paletteuse로 팔레트 적용하여 GIF 생성
-        
+
         GPU 가속 (NVENC 사용 가능 시):
         - hwaccel cuda로 디코딩 가속
         """

@@ -366,12 +366,12 @@ def get_handle_rects(rect: wx.Rect, handle_size: int = 8) -> dict:
     # Edge handles (center of each edge)
     t = wx.Rect(rect.x + rect.width // 2 - half_size, rect.y - half_size, handle_size, handle_size)
     b = wx.Rect(rect.x + rect.width // 2 - half_size, rect.GetBottom() - half_size, handle_size, handle_size)
-    l = wx.Rect(rect.x - half_size, rect.y + rect.height // 2 - half_size, handle_size, handle_size)
+    left_handle = wx.Rect(rect.x - half_size, rect.y + rect.height // 2 - half_size, handle_size, handle_size)
     r = wx.Rect(rect.GetRight() - half_size, rect.y + rect.height // 2 - half_size, handle_size, handle_size)
 
     return {
         'tl': tl, 'tr': tr, 'bl': bl, 'br': br,
-        't': t, 'b': b, 'l': l, 'r': r
+        't': t, 'b': b, 'l': left_handle, 'r': r
     }
 
 

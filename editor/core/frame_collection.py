@@ -17,12 +17,12 @@ _logger = get_logger()
 
 class FrameCollection:
     """GIF 프레임 컬렉션 관리 클래스
-    
+
     메모리 최적화 기능:
     - 총 메모리 사용량 추적
     - 불필요한 프레임 언로드
     - 썸네일 캐시 일괄 정리
-    
+
     스레드 안전성:
     - 멀티스레드 환경에서 공유될 경우 락을 사용하여 안전하게 접근 가능
     """
@@ -142,11 +142,11 @@ class FrameCollection:
     # === 프레임 감소 ===
     def reduce_frames(self, keep_every_n: int, target_indices: Optional[List[int]] = None) -> int:
         """N개 중 1개만 유지
-        
+
         Args:
             keep_every_n: N개마다 1개 유지
             target_indices: 적용할 프레임 인덱스 리스트 (None이면 모든 프레임)
-        
+
         Returns:
             제거된 프레임 수
         """
@@ -199,13 +199,13 @@ class FrameCollection:
 
     def remove_duplicates(self, threshold: float = 0.95) -> int:
         """중복 프레임 제거 (최적화됨)
-        
+
         인접한 프레임만 비교하여 O(n) 복잡도로 처리합니다.
         대용량 GIF에서도 빠르게 처리됩니다.
-        
+
         Args:
             threshold: 유사도 임계값 (0.0~1.0, 기본값: 0.95)
-        
+
         Returns:
             제거된 프레임 수
         """
@@ -288,7 +288,6 @@ class FrameCollection:
     @current_index.setter
     def current_index(self, value: int) -> None:
         if self._is_valid_index(value):
-            old_index = self._current_index
             self._current_index = value
 
     @property
@@ -390,11 +389,11 @@ class FrameCollection:
                                 batch_size: Optional[int] = None,
                                 **kwargs) -> int:
         """GPU 배치 처리로 효과 적용 (최적화됨, 스레드 안전)
-        
+
         여러 프레임에 동일한 효과를 GPU 배치 처리로 적용합니다.
         메모리 효율적인 배치 처리로 대용량 GIF도 안전하게 처리합니다.
         CPU 순차 처리 대비 10배 이상 빠릅니다. (대량 프레임, 고해상도 시)
-        
+
         Args:
             effect: 적용할 효과 ('sepia', 'vignette', 'hue_shift')
             target: 적용 대상 ('all', 'selected')
@@ -402,10 +401,10 @@ class FrameCollection:
             **kwargs: 효과별 추가 인자
                 - vignette: strength (float, 0.0~1.0, default=0.5)
                 - hue_shift: shift (int, -180~180, default=0)
-        
+
         Returns:
             int: 처리된 프레임 수
-            
+
         Example:
             >>> collection.apply_effect_gpu_batch('sepia')
             >>> collection.apply_effect_gpu_batch('vignette', strength=0.7)
@@ -486,10 +485,10 @@ class FrameCollection:
 
     def apply_sepia_batch(self, target: str = 'all') -> int:
         """세피아 효과 GPU 배치 적용
-        
+
         Args:
             target: 'all' 또는 'selected'
-            
+
         Returns:
             처리된 프레임 수
         """
@@ -498,11 +497,11 @@ class FrameCollection:
     def apply_vignette_batch(self, strength: float = 0.5,
                               target: str = 'all') -> int:
         """비네트 효과 GPU 배치 적용
-        
+
         Args:
             strength: 비네트 강도 (0.0 ~ 1.0)
             target: 'all' 또는 'selected'
-            
+
         Returns:
             처리된 프레임 수
         """
@@ -511,11 +510,11 @@ class FrameCollection:
 
     def apply_hue_shift_batch(self, shift: int, target: str = 'all') -> int:
         """Hue 조절 GPU 배치 적용
-        
+
         Args:
             shift: Hue 이동값 (-180 ~ 180)
             target: 'all' 또는 'selected'
-            
+
         Returns:
             처리된 프레임 수
         """
@@ -631,11 +630,11 @@ class FrameCollection:
 
     def unload_frames(self, keep_current: bool = True, keep_selected: bool = True) -> int:
         """프레임을 메모리에서 언로드 (lazy_load 모드에서만 동작)
-        
+
         Args:
             keep_current: 현재 프레임은 유지
             keep_selected: 선택된 프레임은 유지
-        
+
         Returns:
             언로드된 프레임 수
         """
@@ -661,11 +660,11 @@ class FrameCollection:
 
     def preload_range(self, start: int, end: int) -> int:
         """범위 내 프레임 미리 로드
-        
+
         Args:
             start: 시작 인덱스
             end: 끝 인덱스 (포함)
-        
+
         Returns:
             로드된 프레임 수
         """
@@ -700,13 +699,13 @@ class FrameCollection:
     def resize_all_fast(self, size: Tuple[int, int],
                         progress_callback: Optional[Callable[[int, int], None]] = None) -> int:
         """모든 프레임 고속 리사이즈 (pyvips 가속)
-        
+
         pyvips가 설치된 경우 Pillow 대비 2배 빠르고 메모리 90% 절약됩니다.
-        
+
         Args:
             size: 목표 크기 (width, height)
             progress_callback: 진행률 콜백 (current, total)
-        
+
         Returns:
             리사이즈된 프레임 수
         """
@@ -728,11 +727,11 @@ class FrameCollection:
     def resize_selected_fast(self, size: Tuple[int, int],
                              progress_callback: Optional[Callable[[int, int], None]] = None) -> int:
         """선택된 프레임 고속 리사이즈 (pyvips 가속)
-        
+
         Args:
             size: 목표 크기 (width, height)
             progress_callback: 진행률 콜백 (current, total)
-        
+
         Returns:
             리사이즈된 프레임 수
         """
@@ -756,12 +755,12 @@ class FrameCollection:
     def apply_blur_fast(self, radius: float = 2.0, target: str = 'all',
                         progress_callback: Optional[Callable[[int, int], None]] = None) -> int:
         """고속 가우시안 블러 적용 (pyvips 가속)
-        
+
         Args:
             radius: 블러 반경
             target: 'all' 또는 'selected'
             progress_callback: 진행률 콜백
-        
+
         Returns:
             처리된 프레임 수
         """
@@ -790,13 +789,13 @@ class FrameCollection:
                            target: str = 'all',
                            progress_callback: Optional[Callable[[int, int], None]] = None) -> int:
         """고속 샤프닝 적용 (pyvips 가속)
-        
+
         Args:
             sigma: 블러 시그마
             amount: 샤프닝 강도
             target: 'all' 또는 'selected'
             progress_callback: 진행률 콜백
-        
+
         Returns:
             처리된 프레임 수
         """
@@ -852,12 +851,12 @@ class FrameCollection:
     def rotate_all(self, angle: float, expand: bool = True,
                    progress_callback: Optional[Callable[[int, int], None]] = None) -> int:
         """모든 프레임 회전 (고속)
-        
+
         Args:
             angle: 회전 각도 (도)
             expand: 이미지 크기 확장 여부
             progress_callback: 진행률 콜백
-        
+
         Returns:
             회전된 프레임 수
         """
@@ -876,11 +875,11 @@ class FrameCollection:
     def crop_all(self, box: Tuple[int, int, int, int],
                  progress_callback: Optional[Callable[[int, int], None]] = None) -> int:
         """모든 프레임 크롭 (고속)
-        
+
         Args:
             box: 크롭 영역 (left, top, right, bottom)
             progress_callback: 진행률 콜백
-        
+
         Returns:
             크롭된 프레임 수
         """

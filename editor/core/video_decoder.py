@@ -3,6 +3,7 @@ VideoDecoder - 비디오 파일 디코딩 (MP4, AVI, WebM 등)
 GIF 변환을 위한 비디오 프레임 추출
 """
 from __future__ import annotations
+import importlib.util
 from typing import Optional, Tuple, Callable
 from pathlib import Path
 from dataclasses import dataclass
@@ -42,7 +43,7 @@ class VideoLoadResult:
 
 class VideoDecoder:
     """비디오 파일 디코딩 클래스
-    
+
     MP4, AVI, WebM, MOV 등의 비디오 파일을 GIF 프레임으로 변환합니다.
     imageio-ffmpeg 또는 PyAV를 사용합니다.
     """
@@ -54,11 +55,7 @@ class VideoDecoder:
         """비디오 디코딩 가능 여부 확인 (시스템 FFmpeg 또는 imageio-ffmpeg)"""
         # imageio가 시스템 FFmpeg를 사용하도록 환경변수 설정
         cls._setup_ffmpeg_env()
-        try:
-            import imageio.v3 as iio
-            return True
-        except ImportError:
-            return False
+        return importlib.util.find_spec("imageio.v3") is not None
 
     @classmethod
     def _setup_ffmpeg_env(cls):
@@ -84,7 +81,7 @@ class VideoDecoder:
              progress_callback: Optional[Callable[[int, int], None]] = None
              ) -> VideoLoadResult:
         """비디오 파일을 프레임 컬렉션으로 로드
-        
+
         Args:
             file_path: 비디오 파일 경로
             target_fps: 추출할 FPS (기본 10fps - GIF에 적합)
@@ -93,7 +90,7 @@ class VideoDecoder:
             end_time: 종료 시간 (초, None이면 끝까지)
             resize: 리사이즈 크기 (width, height), None이면 원본
             progress_callback: 진행률 콜백 (current, total)
-        
+
         Returns:
             VideoLoadResult: 로드 결과
         """
@@ -173,10 +170,9 @@ class VideoDecoder:
                 continue
 
             # RGB → RGBA
-            if frame_data.ndim == 3:
-                if frame_data.shape[2] == 3:
-                    alpha = np.full((*frame_data.shape[:2], 1), 255, dtype=np.uint8)
-                    frame_data = np.concatenate([frame_data, alpha], axis=2)
+            if frame_data.ndim == 3 and frame_data.shape[2] == 3:
+                alpha = np.full((*frame_data.shape[:2], 1), 255, dtype=np.uint8)
+                frame_data = np.concatenate([frame_data, alpha], axis=2)
 
             img = Image.fromarray(frame_data, 'RGBA')
 

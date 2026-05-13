@@ -89,20 +89,20 @@ class ImageEffects:
                 alpha = cv_img[:, :, 3]
                 # LAB 색공간에서 대비 조절
                 lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
-                l, a, b = cv2.split(lab)
+                lightness, a, b = cv2.split(lab)
                 # CLAHE 적용
                 clahe = cv2.createCLAHE(clipLimit=factor * 2.0, tileGridSize=(8, 8))
-                l = clahe.apply(l)
-                lab = cv2.merge([l, a, b])
+                lightness = clahe.apply(lightness)
+                lab = cv2.merge([lightness, a, b])
                 adjusted = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
                 result = np.dstack([adjusted, alpha])
                 return cv2_to_pil(result, has_alpha=True)
             else:
                 lab = cv2.cvtColor(cv_img, cv2.COLOR_BGR2LAB)
-                l, a, b = cv2.split(lab)
+                lightness, a, b = cv2.split(lab)
                 clahe = cv2.createCLAHE(clipLimit=factor * 2.0, tileGridSize=(8, 8))
-                l = clahe.apply(l)
-                lab = cv2.merge([l, a, b])
+                lightness = clahe.apply(lightness)
+                lab = cv2.merge([lightness, a, b])
                 adjusted = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
                 return cv2_to_pil(adjusted)
 
@@ -503,12 +503,12 @@ class ImageEffects:
     def apply_mosaic(image: Image.Image, region: Tuple[int, int, int, int],
                      block_size: int = 10) -> Image.Image:
         """모자이크/검열 효과 적용 (OpenCV 가속)
-        
+
         Args:
             image: 원본 이미지
             region: 모자이크 영역 (x1, y1, x2, y2)
             block_size: 모자이크 블록 크기 (픽셀)
-        
+
         Returns:
             모자이크가 적용된 이미지
         """
@@ -565,11 +565,11 @@ class ImageEffects:
     @staticmethod
     def apply_mosaic_full(image: Image.Image, block_size: int = 10) -> Image.Image:
         """전체 이미지에 모자이크 효과 적용
-        
+
         Args:
             image: 원본 이미지
             block_size: 모자이크 블록 크기 (픽셀)
-        
+
         Returns:
             모자이크가 적용된 이미지
         """
@@ -583,12 +583,12 @@ class ImageEffects:
     def apply_blur_region(image: Image.Image, region: Tuple[int, int, int, int],
                           radius: int = 10) -> Image.Image:
         """영역에 블러 효과 적용 (검열용, OpenCV 가속)
-        
+
         Args:
             image: 원본 이미지
             region: 블러 영역 (x1, y1, x2, y2)
             radius: 블러 반경
-        
+
         Returns:
             블러가 적용된 이미지
         """
@@ -631,12 +631,12 @@ class ImageEffects:
     def apply_black_bar(image: Image.Image, region: Tuple[int, int, int, int],
                         color: Tuple[int, int, int] = (0, 0, 0)) -> Image.Image:
         """영역에 검정/색상 바 적용 (검열용)
-        
+
         Args:
             image: 원본 이미지
             region: 검열 영역 (x1, y1, x2, y2)
             color: 바 색상 (R, G, B)
-        
+
         Returns:
             검열 바가 적용된 이미지
         """

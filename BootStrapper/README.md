@@ -59,7 +59,7 @@ pip install -r requirements.txt
 
 **방법 C: 수동 PyInstaller 빌드**
 ```powershell
-pyinstaller --noconfirm --clean --onedir --windowed --name "XGif_Bootstrapper" --collect-all wx app_entry.py
+pyinstaller --noconfirm --clean --onedir --windowed --name "XGif_Bootstrapper" --paths .. --add-data "..\requirements-gpu.txt;." --collect-all wx app_entry.py
 ```
 
 ## 빌드 결과

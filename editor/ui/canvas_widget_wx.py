@@ -293,7 +293,7 @@ class CanvasWidget(wx.Panel):
                            (self.GetSize().GetHeight() - th) // 2)
                 return
 
-            current_index = getattr(frames, 'current_index', 0)
+            getattr(frames, 'current_index', 0)
             frame = getattr(frames, 'current_frame', None) if hasattr(frames, 'current_frame') else None
             if not frame:
                 return
@@ -362,7 +362,7 @@ class CanvasWidget(wx.Panel):
                 return
 
             # 캐시 키: (프레임 ID, 줌, 표시 크기) — GDI 객체 생성 최소화
-            frames = getattr(self._main_window, 'frames', None)
+            getattr(self._main_window, 'frames', None)
             cache_key = (id(pil_image), self._zoom, scaled_width, scaled_height)
             if hasattr(self, '_scaled_bitmap_cache_key') and self._scaled_bitmap_cache_key == cache_key:
                 scaled_bitmap = self._scaled_bitmap_cache
@@ -552,7 +552,7 @@ class CanvasWidget(wx.Panel):
             screen_rect = self._image_rect_to_screen(self._text_rect)
             handles = get_handle_rects(screen_rect, self.HANDLE_SIZE)
 
-            for handle_name, handle_rect in handles.items():
+            for _handle_name, handle_rect in handles.items():
                 draw_handle(dc,
                            handle_rect.x + handle_rect.width // 2,
                            handle_rect.y + handle_rect.height // 2,
@@ -563,7 +563,7 @@ class CanvasWidget(wx.Panel):
             screen_rect = self._image_rect_to_screen(self._crop_rect)
             handles = get_handle_rects(screen_rect, self.HANDLE_SIZE)
 
-            for handle_name, handle_rect in handles.items():
+            for _handle_name, handle_rect in handles.items():
                 draw_handle(dc,
                            handle_rect.x + handle_rect.width // 2,
                            handle_rect.y + handle_rect.height // 2,

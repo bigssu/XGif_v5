@@ -13,8 +13,10 @@ try:
 except ImportError:
     Colors = None
     Spacing = None
-    apply_panel_style = lambda p: None
-    apply_spin_ctrl_style = lambda s: None
+    def apply_panel_style(p):
+        return None
+    def apply_spin_ctrl_style(s):
+        return None
     ThemedPanel = wx.Panel
 
 

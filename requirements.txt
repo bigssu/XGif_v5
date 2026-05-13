@@ -26,12 +26,12 @@ soundfile>=0.13.1,<1.0.0
 # pydub removed (uses FFmpeg subprocess instead)
 
 # Keyboard Input Detection
-pynput>=1.8.1,<2.0.0
+pynput>=1.8.2,<2.0.0
 
 # ===================================================================
 # Optional (not in requirements, install manually if needed)
 # ===================================================================
 # GPU Acceleration (NVIDIA):
-#   pip install "cupy-cuda12x>=14.0.1,<15.0.0"
+#   pip install -r requirements-gpu.txt
 # Audio mixing without FFmpeg:
 #   pip install "scipy>=1.17.1,<2.0.0"
