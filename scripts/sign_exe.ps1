@@ -1,18 +1,20 @@
 # sign_exe.ps1 — XGif EXE/인스톨러 코드 서명
 #
-# 사용법 (권장: 환경변수 XGIF_SIGN_PASSWORD 사용):
-#   $env:XGIF_SIGN_PASSWORD = '<your-pfx-password>'
+# 사용법 (권장 1 — 환경변수, 명령행 노출 없음):
+#   $env:XGIF_SIGN_PASSWORD = '<your-pfx-password>'  # 또는 XGIF_PFX_PASSWORD (alias)
 #   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx
 #
-# 사용법 (대안 — 명령행에서 비밀번호 노출됨, 디버그용으로만 사용):
-#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx -Password '<your-pfx-password>'
-#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx -Password '<your-pfx-password>' -ExePaths "dist\XGif.exe","dist\XGif_Setup_0.56.exe"
+# 사용법 (권장 2 — Read-Host -AsSecureString 으로 대화형 입력):
+#   $sp = Read-Host 'PFX password' -AsSecureString
+#   powershell.exe -ExecutionPolicy Bypass -File scripts\sign_exe.ps1 -PfxPath signing\XGif_CodeSign.pfx -Password $sp
+#
+# 비권장: 평문 -Password 파라미터는 더 이상 지원하지 않습니다. SecureString 만 허용.
 
 param(
     [Parameter(Mandatory=$true)]
     [string]$PfxPath,
 
-    [string]$Password,
+    [System.Security.SecureString]$Password,
 
     [string[]]$ExePaths = @("dist\XGif.exe"),
 
@@ -21,16 +23,24 @@ param(
     [string]$Description = "XGif Screen Recorder"
 )
 
-# 비밀번호: 파라미터 > 환경변수 (커맨드라인 노출 방지)
+$ErrorActionPreference = "Stop"
+
+# 환경변수 fallback: XGIF_SIGN_PASSWORD 우선, 없으면 XGIF_PFX_PASSWORD (alias) 시도.
+# 평문 환경변수는 즉시 SecureString 으로 승격하고 원본 변수에서 지운다.
 if (-not $Password) {
-    $Password = $env:XGIF_SIGN_PASSWORD
+    $envPlain = $env:XGIF_SIGN_PASSWORD
+    if (-not $envPlain) { $envPlain = $env:XGIF_PFX_PASSWORD }
+    if ($envPlain) {
+        $Password = ConvertTo-SecureString -String $envPlain -Force -AsPlainText
+        Remove-Variable envPlain -ErrorAction SilentlyContinue
+        $env:XGIF_SIGN_PASSWORD = $null
+        $env:XGIF_PFX_PASSWORD = $null
+    }
 }
 if (-not $Password) {
-    Write-Host "[ERROR] Password not provided. Use -Password param or set XGIF_SIGN_PASSWORD env var."
+    Write-Host "[ERROR] Password not provided. Pass -Password as SecureString, or set XGIF_SIGN_PASSWORD / XGIF_PFX_PASSWORD env var."
     exit 1
 }
-
-$ErrorActionPreference = "Stop"
 
 # ── signtool.exe 자동 감지 ──
 function Find-SignTool {
@@ -95,14 +105,22 @@ foreach ($exePath in $ExePaths) {
 
     Write-Host "Signing: $exePath"
 
-    & $signtool sign `
-        /f "$PfxFullPath" `
-        /p "$Password" `
-        /fd SHA256 `
-        /td SHA256 `
-        /tr "$TimestampUrl" `
-        /d "$Description" `
-        "$exePath"
+    # SecureString → 평문 추출은 signtool 호출 직전에만, 변수는 즉시 폐기.
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+    try {
+        $plain = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        & $signtool sign `
+            /f "$PfxFullPath" `
+            /p "$plain" `
+            /fd SHA256 `
+            /td SHA256 `
+            /tr "$TimestampUrl" `
+            /d "$Description" `
+            "$exePath"
+    } finally {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        Remove-Variable plain -ErrorAction SilentlyContinue
+    }
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[ERROR] Failed to sign: $exePath"

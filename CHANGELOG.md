@@ -8,6 +8,9 @@
 ### 보안 / 안전성
 - 도움말 다이얼로그의 `mailto` 주제 문자열을 `urllib.parse.quote` 로 인코딩하여 향후 사용자 입력 확장 시 URL 인젝션 위험을 사전 차단.
 - `scripts/sign_exe.ps1` 문서 예시에서 유사-실제 PFX 비밀번호를 `<your-pfx-password>` placeholder 로 치환하고 환경변수 `XGIF_SIGN_PASSWORD` 사용을 권장 사용법으로 격상.
+- `scripts/sign_exe.ps1` 와 `scripts/create_selfsign_cert.ps1` 의 `-Password` 파라미터를 `[System.Security.SecureString]` 으로 강제. 평문 `[string]` 입력 경로 제거.
+- 양 스크립트가 `XGIF_SIGN_PASSWORD` 와 `XGIF_PFX_PASSWORD` 환경변수 alias 를 모두 인식, 받은 평문은 즉시 SecureString 으로 승격하고 원본 env 변수를 비움.
+- signtool 호출 직전에만 BSTR 추출 + 호출 직후 `ZeroFreeBSTR` 로 메모리 zero out, 평문 잔류 위험 최소화.
 
 ### 수정
 - `pyproject.toml` 의 `version` 을 `core/version.py` 의 SSoT(`2.1.0`) 에 맞춰 동기화.

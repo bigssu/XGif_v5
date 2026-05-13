@@ -1,18 +1,39 @@
 # create_selfsign_cert.ps1 — XGif 코드 서명용 셀프 서명 인증서 생성
 # 용도: 로컬 개발/테스트용
 #
-# 사용법:
+# 사용법 (대화형 — 권장):
 #   powershell.exe -ExecutionPolicy Bypass -File scripts\create_selfsign_cert.ps1
-#   powershell.exe -ExecutionPolicy Bypass -File scripts\create_selfsign_cert.ps1 -Password "MyPass123"
+#
+# 사용법 (환경변수):
+#   $env:XGIF_PFX_PASSWORD = '<your-pfx-password>'  # 또는 XGIF_SIGN_PASSWORD (alias)
+#   powershell.exe -ExecutionPolicy Bypass -File scripts\create_selfsign_cert.ps1
+#
+# 사용법 (SecureString):
+#   $sp = Read-Host 'PFX password' -AsSecureString
+#   powershell.exe -ExecutionPolicy Bypass -File scripts\create_selfsign_cert.ps1 -Password $sp
+#
+# 비권장: 평문 -Password 파라미터는 더 이상 지원하지 않습니다. SecureString 만 허용.
 
 param(
     [string]$CertName = "XGif Code Signing",
-    [string]$Password = "",
+    [System.Security.SecureString]$Password,
     [string]$OutputDir = (Join-Path $PSScriptRoot "..\signing"),
     [int]$ValidYears = 3
 )
 
 $ErrorActionPreference = "Stop"
+
+# 환경변수 fallback: XGIF_PFX_PASSWORD / XGIF_SIGN_PASSWORD alias.
+if (-not $Password) {
+    $envPlain = $env:XGIF_PFX_PASSWORD
+    if (-not $envPlain) { $envPlain = $env:XGIF_SIGN_PASSWORD }
+    if ($envPlain) {
+        $Password = ConvertTo-SecureString -String $envPlain -Force -AsPlainText
+        Remove-Variable envPlain -ErrorAction SilentlyContinue
+        $env:XGIF_PFX_PASSWORD = $null
+        $env:XGIF_SIGN_PASSWORD = $null
+    }
+}
 
 # 출력 디렉토리 생성
 if (-not (Test-Path $OutputDir)) {
@@ -58,12 +79,10 @@ try {
 
 # PFX로 내보내기
 try {
-    if ([string]::IsNullOrWhiteSpace($Password)) {
-        $securePassword = Read-Host "PFX password" -AsSecureString
-    } else {
-        $securePassword = ConvertTo-SecureString -String $Password -Force -AsPlainText
+    if (-not $Password) {
+        $Password = Read-Host "PFX password" -AsSecureString
     }
-    Export-PfxCertificate -Cert $cert -FilePath $PfxPath -Password $securePassword | Out-Null
+    Export-PfxCertificate -Cert $cert -FilePath $PfxPath -Password $Password | Out-Null
     Write-Host "[OK] PFX exported: $PfxPath"
 } catch {
     Write-Host "[ERROR] Failed to export PFX: $_"
