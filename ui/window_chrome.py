@@ -15,17 +15,32 @@ def _colorref(colour: wx.Colour) -> int:
     return colour.Red() | (colour.Green() << 8) | (colour.Blue() << 16)
 
 
+_APPLIED_ATTR = "_xgif_dark_title_bar_signature"
+
+
 def apply_dark_title_bar(window: wx.Window) -> None:
     """Apply dark DWM caption colors when available.
 
     wx.SystemOptions dark mode does not reliably affect the native titlebar on
     all Windows builds. DWM attributes are best-effort and harmless elsewhere.
+
+    Idempotent: callers may invoke this from both `__init__` and an EVT_SHOW
+    handler without paying the 5 ctypes calls twice. The signature includes
+    the colour palette so a future theme switch will re-apply correctly.
     """
     if sys.platform != "win32":
         return
 
     hwnd = int(window.GetHandle())
     if not hwnd:
+        return
+
+    signature = (
+        hwnd,
+        _colorref(Colors.BG_PRIMARY),
+        _colorref(Colors.TEXT_PRIMARY),
+    )
+    if getattr(window, _APPLIED_ATTR, None) == signature:
         return
 
     dwmapi = ctypes.windll.dwmapi
@@ -52,3 +67,5 @@ def apply_dark_title_bar(window: wx.Window) -> None:
             ctypes.byref(value),
             ctypes.sizeof(value),
         )
+
+    setattr(window, _APPLIED_ATTR, signature)

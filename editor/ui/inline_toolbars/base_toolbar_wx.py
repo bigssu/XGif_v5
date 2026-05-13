@@ -57,6 +57,9 @@ class InlineToolbarBase(wx.Panel):
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
         self.Bind(wx.EVT_SIZE, self._on_size)
         self._layout_sync_pending = False
+        # _calculate_wrapped_height cache: maps client_width → height,
+        # invalidated when children change via add_control/add_label/etc.
+        self._wrapped_height_cache: dict[int, int] = {}
 
         # 성능 모드 설정 (저사양 모드 감지)
         self._is_low_end_mode = getattr(main_window, '_is_low_end_mode', False)
@@ -134,6 +137,10 @@ class InlineToolbarBase(wx.Panel):
             parent = self.GetParent()
             client_width = parent.GetClientSize().GetWidth() if parent else 0
 
+        cached = self._wrapped_height_cache.get(client_width)
+        if cached is not None:
+            return cached
+
         available_width = max(1, client_width - 14)
         total_height = 0
         row_width = 0
@@ -157,7 +164,17 @@ class InlineToolbarBase(wx.Panel):
         if row_width or row_height:
             total_height += row_height
 
-        return max(self.TOOLBAR_MIN_HEIGHT, total_height + 14)
+        result = max(self.TOOLBAR_MIN_HEIGHT, total_height + 14)
+        self._wrapped_height_cache[client_width] = result
+        return result
+
+    def _invalidate_wrapped_height_cache(self):
+        """Drop cached wrap heights after the child set changes.
+
+        Visibility toggles by subclasses must call this explicitly — there is
+        no observer hook for Show/Hide.
+        """
+        self._wrapped_height_cache.clear()
 
     def _on_paint(self, event):
         dc = wx.PaintDC(self)
@@ -273,6 +290,7 @@ class InlineToolbarBase(wx.Panel):
             widget.SetForegroundColour(Colors.TEXT_PRIMARY)
             self._use_best_control_height(widget, preserve_explicit_height=True)
         self._controls_sizer.Add(widget, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 4)
+        self._invalidate_wrapped_height_cache()
 
     def _use_best_control_height(self, widget: wx.Window, *, preserve_explicit_height: bool = False):
         """Keep native controls at their best height so text stays vertically centered."""
@@ -295,6 +313,7 @@ class InlineToolbarBase(wx.Panel):
             label.SetToolTip(tooltip)
 
         self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 4)
+        self._invalidate_wrapped_height_cache()
         return label
 
     def add_separator(self):
@@ -303,12 +322,14 @@ class InlineToolbarBase(wx.Panel):
         separator.SetMinSize((1, 30))
         separator.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
         self._controls_sizer.Add(separator, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 7)
+        self._invalidate_wrapped_height_cache()
 
     def add_label(self, text: str) -> wx.StaticText:
         """라벨 추가"""
         label = wx.StaticText(self._controls_widget, label=text)
         label.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._controls_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 4)
+        self._invalidate_wrapped_height_cache()
         return label
 
     def add_target_combo(

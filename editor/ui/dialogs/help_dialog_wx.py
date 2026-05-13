@@ -30,6 +30,12 @@ class HelpDialog(ThemedDialog):
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._wrap_labels = []
+        # Per-page label index avoids the O(L·D) parent chain walk that
+        # _wrap_visible_labels used to do for every label on every EVT_SIZE.
+        self._page_wrap_labels: dict[wx.Window, list] = {}
+        # Last-applied wrap width per page (and for the dialog as a whole),
+        # so noisy resize events that don't actually change width skip the work.
+        self._last_wrap_widths: dict[object, int] = {}
         self._setup_ui()
         self.SetMinSize((560, 480))
         self.Bind(wx.EVT_SIZE, self._on_size)
@@ -216,12 +222,15 @@ class HelpDialog(ThemedDialog):
         heading.SetForegroundColour(Colors.TEXT_PRIMARY)
         card_sizer.Add(heading, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
 
+        page_labels = self._page_wrap_labels.setdefault(page, [])
         for line in lines:
             label = wx.StaticText(card, label=line)
             label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
             label.SetForegroundColour(Colors.TEXT_SECONDARY)
             card_sizer.Add(label, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
-            self._wrap_labels.append((label, 500))
+            entry = (label, 500)
+            self._wrap_labels.append(entry)
+            page_labels.append(entry)
 
         card_sizer.AddSpacer(14)
         card.SetSizer(card_sizer)
@@ -239,23 +248,19 @@ class HelpDialog(ThemedDialog):
 
     def _wrap_visible_labels(self, page):
         width = max(260, page.GetClientSize().GetWidth() - 54)
-        for label, max_width in self._wrap_labels:
-            if self._is_descendant_of(label, page):
-                label.Wrap(min(width, max_width))
+        if self._last_wrap_widths.get(page) == width:
+            return
+        self._last_wrap_widths[page] = width
+        for label, max_width in self._page_wrap_labels.get(page, ()):
+            label.Wrap(min(width, max_width))
 
     def _wrap_all_labels(self):
         width = max(260, self.GetClientSize().GetWidth() - 80)
+        if self._last_wrap_widths.get("__all__") == width:
+            return
+        self._last_wrap_widths["__all__"] = width
         for label, max_width in self._wrap_labels:
             label.Wrap(min(width, max_width))
-
-    @staticmethod
-    def _is_descendant_of(child, ancestor):
-        parent = child.GetParent()
-        while parent:
-            if parent is ancestor:
-                return True
-            parent = parent.GetParent()
-        return False
 
 
 class AboutDialog(ThemedDialog):
