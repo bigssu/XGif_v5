@@ -250,6 +250,7 @@ def run_nuitka_build():
         "--follow-imports",
         "--windows-disable-console",
         f"--output-dir={os.path.join(PROJECT_DIR, 'dist_optimized')}",
+        "--output-filename=XGif.exe",
         "--onefile", # 필요 시 단일 파일 빌드 (더 느리지만 배포 용이)
         "--no-pyi-file",
         "--remove-output",
@@ -593,11 +594,15 @@ def run_sign(pfx_path, pfx_password, exe_paths=None):
     subprocess.run(cmd, check=True, cwd=PROJECT_DIR, env=sign_env)
 
 
-def run_installer():
+def run_installer(exe_path):
     """Inno Setup 인스톨러 빌드 (ISCC.exe 호출)"""
     iss_path = os.path.join(PROJECT_DIR, "installer", "xgif_setup.iss")
     if not os.path.isfile(iss_path):
         print(f"[ERROR] Installer script not found: {iss_path}")
+        sys.exit(1)
+    exe_path = os.path.abspath(exe_path)
+    if not os.path.isfile(exe_path):
+        print(f"[ERROR] Installer source EXE not found: {exe_path}")
         sys.exit(1)
 
     iscc = _find_iscc()
@@ -607,10 +612,29 @@ def run_installer():
         print("        Or add ISCC.exe to PATH.")
         sys.exit(1)
 
+    sys.path.insert(0, PROJECT_DIR)
+    from core.version import APP_VERSION
+    sys.path.pop(0)
+
     print("\n=== Building Installer ===")
     print(f"  ISCC: {iscc}")
     print(f"  Script: {iss_path}")
-    subprocess.run([iscc, iss_path], check=True, cwd=PROJECT_DIR)
+    print(f"  Version: {APP_VERSION}")
+    print(f"  Source EXE: {exe_path}")
+    env = os.environ.copy()
+    env["XGIF_APP_VERSION"] = APP_VERSION
+    env["XGIF_APP_EXE_SOURCE"] = exe_path
+    subprocess.run(
+        [
+            iscc,
+            f"/DMyAppVersion={APP_VERSION}",
+            f"/DMyAppExeSource={exe_path}",
+            iss_path,
+        ],
+        check=True,
+        cwd=PROJECT_DIR,
+        env=env,
+    )
     print("  Installer created successfully!")
 
 
@@ -656,6 +680,10 @@ def _parse_args():
         "--installer", action="store_true",
         help="Create Inno Setup installer after build (requires ISCC.exe)"
     )
+    parser.add_argument(
+        "--diagnostic-launcher", action="store_true",
+        help="Keep XGif_Debug.bat in dist for support diagnostics"
+    )
     return parser.parse_args()
 
 
@@ -700,6 +728,9 @@ if __name__ == "__main__":
         else:
             # onedir 모드: dist/XGif/XGif.exe
             exe_path = os.path.join(PROJECT_DIR, "dist", "XGif", "XGif.exe")
+        if not os.path.isfile(exe_path):
+            print(f"[ERROR] Expected build output not found: {exe_path}")
+            sys.exit(1)
 
         # 진단용 런처 배치 파일 생성 (ASCII only — 다국어 Windows 호환)
         dist_dir = os.path.dirname(exe_path)
@@ -1011,13 +1042,17 @@ if __name__ == "__main__":
         with open(diag_bat, "w", encoding="ascii", newline="") as f:
             for line in bat_lines:
                 f.write(line + "\r\n")
-        print(f"  Diagnostic launcher: {diag_bat}")
+        if args.diagnostic_launcher:
+            print(f"  Diagnostic launcher: {diag_bat}")
+        else:
+            with contextlib.suppress(OSError):
+                os.remove(diag_bat)
 
         if args.sign:
             run_sign(args.sign_pfx, args.sign_password, [exe_path])
 
         if args.installer:
-            run_installer()
+            run_installer(exe_path)
 
             # 인스톨러 EXE도 서명
             if args.sign:

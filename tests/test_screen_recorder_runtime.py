@@ -277,3 +277,79 @@ def test_capture_thread_failure_resets_recording_state(monkeypatch):
 
     recorder.stop_recording()
 
+
+def test_start_recording_keeps_previous_thread_ref_when_join_times_out():
+    import threading
+
+    from core.screen_recorder import ScreenRecorder
+
+    class _StuckThread:
+        dropped_frames = 0
+
+        def __init__(self):
+            self.join_timeout = None
+
+        def is_alive(self):
+            return True
+
+        def join(self, timeout=None):
+            self.join_timeout = timeout
+
+    stuck = _StuckThread()
+    recorder = ScreenRecorder()
+    recorder._capture_thread = stuck
+    recorder._thread_stop_event = threading.Event()
+
+    recorder.start_recording()
+
+    assert recorder.is_recording is False
+    assert recorder.last_error == "이전 캡처 스레드가 종료되지 않았습니다."
+    assert recorder._capture_thread is stuck
+    assert stuck.join_timeout == 2.0
+
+
+def test_stop_recording_keeps_alive_thread_refs_and_resources():
+    import threading
+    import time
+
+    from core.screen_recorder import ScreenRecorder
+
+    class _Thread:
+        def __init__(self, alive, dropped_frames=0):
+            self._alive = alive
+            self.dropped_frames = dropped_frames
+            self.join_timeout = None
+
+        def is_alive(self):
+            return self._alive
+
+        def join(self, timeout=None):
+            self.join_timeout = timeout
+
+    capture_thread = _Thread(alive=True, dropped_frames=3)
+    collector_thread = _Thread(alive=False)
+    frame_buffer = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    recorder = ScreenRecorder()
+    recorder.is_recording = True
+    recorder.frames = [frame_buffer.copy()]
+    recorder._recording_start_time = time.perf_counter()
+    recorder._capture_thread = capture_thread
+    recorder._collector_thread = collector_thread
+    recorder._frame_buffer = frame_buffer
+    recorder._thread_stop_event = threading.Event()
+    recorder._thread_pause_event = threading.Event()
+    recorder._thread_frame_ready_event = threading.Event()
+    recorder._thread_frame_consumed_event = threading.Event()
+
+    frames = recorder.stop_recording()
+
+    assert frames == recorder.frames
+    assert recorder._capture_thread is capture_thread
+    assert recorder._collector_thread is None
+    assert recorder._frame_buffer is frame_buffer
+    assert recorder._thread_stop_event is not None
+    assert recorder._last_dropped_frames == 3
+    assert capture_thread.join_timeout == 3.0
+    assert collector_thread.join_timeout == 2.0
+

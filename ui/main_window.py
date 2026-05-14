@@ -25,7 +25,7 @@ except ImportError:
 from core.capability_manager import get_capability_manager
 
 # 오디오 녹음
-from core.audio_recorder import AudioRecorder
+from core.audio_recorder import AudioRecorder, derive_audio_buffer_limit_mb
 
 # 상수 정의
 from ui.constants import (
@@ -290,7 +290,7 @@ class MainWindow(wx.Frame):
 
         # HDR 상태 주기적 갱신 (2초)
         self._hdr_check_timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, lambda e: self._update_hdr_label(), self._hdr_check_timer)
+        self.Bind(wx.EVT_TIMER, self._on_hdr_check_timer, self._hdr_check_timer)
         self._hdr_check_timer.Start(2000)
 
         # 초기 상태 동기화
@@ -484,6 +484,7 @@ class MainWindow(wx.Frame):
         # 기존 타이머 정리 (레이스 컨디션 방지)
         if self.preview_timer is not None:
             with contextlib.suppress(TypeError, RuntimeError, AttributeError):
+                self.Unbind(wx.EVT_TIMER, handler=self._on_preview_timer, source=self.preview_timer)
                 self.preview_timer.Stop()  # wxPython은 대문자
             self.preview_timer = None
 
@@ -503,6 +504,8 @@ class MainWindow(wx.Frame):
         """실시간 미리보기 중지"""
         from core.utils import safe_delete_timer
         if self.preview_timer:
+            with contextlib.suppress(TypeError, RuntimeError, AttributeError):
+                self.Unbind(wx.EVT_TIMER, handler=self._on_preview_timer, source=self.preview_timer)
             safe_delete_timer(self.preview_timer)
             self.preview_timer = None
 
@@ -513,6 +516,27 @@ class MainWindow(wx.Frame):
             if hasattr(self, 'preview_bitmap') and self.preview_bitmap:
                 self.preview_bitmap.SetBitmap(wx.NullBitmap)
             self.Layout()
+
+    def _get_memory_limit_mb(self) -> int:
+        try:
+            return int(self.settings.get("memory_limit_mb", fallback="1024"))
+        except (TypeError, ValueError):
+            return 1024
+
+    def _get_audio_buffer_limit_mb(self) -> int:
+        return derive_audio_buffer_limit_mb(self._get_memory_limit_mb())
+
+    def _dispose_timer(self, attr_name: str, handler=None):
+        from core.utils import safe_delete_timer
+
+        timer = getattr(self, attr_name, None)
+        if timer is None:
+            return
+        if handler is not None:
+            with contextlib.suppress(TypeError, RuntimeError, AttributeError):
+                self.Unbind(wx.EVT_TIMER, handler=handler, source=timer)
+        safe_delete_timer(timer)
+        setattr(self, attr_name, None)
 
     def _update_preview(self):
         """미리보기 업데이트"""
@@ -568,7 +592,7 @@ class MainWindow(wx.Frame):
         logger.info("Screen recorder initialized with pre-warming")
 
         # 오디오 녹음기 초기화 (MP4용)
-        self.audio_recorder = AudioRecorder()
+        self.audio_recorder = AudioRecorder(max_buffer_mb=self._get_audio_buffer_limit_mb())
         self.audio_file_path = None  # 녹음된 오디오 파일 경로
 
         # 콜백 연결 (수집/캡처 스레드에서 호출되므로 wx.CallAfter로 메인 스레드에서 실행)
@@ -866,6 +890,8 @@ class MainWindow(wx.Frame):
             hdr_on = self.settings.get("hdr_correction", fallback="false") == "true"
             if self.recorder:
                 self.recorder.set_hdr_correction(hdr_on)
+            if self.audio_recorder:
+                self.audio_recorder.set_max_buffer_mb(self._get_audio_buffer_limit_mb())
             self._update_hdr_label()
         except Exception as e:
             logger.warning("설정 적용 오류: %s", e)
@@ -1035,6 +1061,22 @@ class MainWindow(wx.Frame):
 
         # 녹화 시작 (에러 처리)
         try:
+            output_format = self.capture_control_bar.get_format() if hasattr(self, 'capture_control_bar') else "GIF"
+            self.audio_file_path = None
+            if (
+                output_format == "MP4"
+                and self.settings.get("mic_audio", fallback="false") == "true"
+                and self.audio_recorder
+            ):
+                self.audio_recorder.set_max_buffer_mb(self._get_audio_buffer_limit_mb())
+                self.audio_recorder.set_record_mic(True)
+                if not self.audio_recorder.start():
+                    logger.warning("Audio recording start failed; continuing with video only")
+                    audio_warning = tr('audio_recording_unavailable')
+                    if hasattr(self, 'status_msg_label') and self.status_msg_label:
+                        self.status_msg_label.SetLabel(audio_warning)
+                    wx.MessageBox(audio_warning, tr('warning'), wx.OK | wx.ICON_WARNING)
+
             self.recorder.start_recording()
 
             # 녹화가 실제로 시작되었는지 확인
@@ -1061,14 +1103,13 @@ class MainWindow(wx.Frame):
                 logger.info("Backend not pre-warmed, using 500ms delay")
 
             # 기존 타이머 정리 (안전)
-            from core.utils import safe_delete_timer
             if self.record_timer is not None:
-                safe_delete_timer(self.record_timer)
+                self._dispose_timer("record_timer", self._on_record_timer)
 
             # 녹화 시간 타이머 생성
             self.record_timer = wx.Timer(self)
             self.record_elapsed = 0
-            self.Bind(wx.EVT_TIMER, lambda e: self._update_record_time(), self.record_timer)
+            self.Bind(wx.EVT_TIMER, self._on_record_timer, self.record_timer)
             self.record_timer.Start(1000)
         except Exception as e:
             # 녹화 시작 실패 시 상태 복원
@@ -1136,10 +1177,8 @@ class MainWindow(wx.Frame):
             return
 
         # 녹화 타이머 안전하게 중지
-        from core.utils import safe_delete_timer
         if self.record_timer is not None:
-            safe_delete_timer(self.record_timer)
-            self.record_timer = None
+            self._dispose_timer("record_timer", self._on_record_timer)
 
         self.record_state = self.STATE_READY
         self._update_button_states()
@@ -1386,7 +1425,7 @@ class MainWindow(wx.Frame):
                 memory_mb = 0.0
 
             # 사용자 설정 메모리 제한 확인
-            max_mem_mb = int(self.settings.get("memory_limit_mb", fallback="1024"))
+            max_mem_mb = self._get_memory_limit_mb()
 
             # 메모리 임계값 도달 시 강제 중지
             if memory_mb >= max_mem_mb:
@@ -1410,7 +1449,7 @@ class MainWindow(wx.Frame):
                     pass
 
             # 메모리 경고 (임계값 비율 초과 시)
-            if memory_mb > max_mem_mb * MEMORY_WARNING_RATIO and not hasattr(self, '_memory_warned'):
+            if memory_mb > max_mem_mb * MEMORY_WARNING_RATIO and not self._memory_warned:
                 self._memory_warned = True
                 if hasattr(self, 'status_msg_label') and self.status_msg_label:
                     self.status_msg_label.SetLabel(tr('mem_warning').format(memory_mb, max_mem_mb))
@@ -1745,6 +1784,12 @@ class MainWindow(wx.Frame):
         """HDR 모드 레이블 업데이트 — SystemDetector로 위임."""
         self._system_detector.update_hdr_label()
 
+    def _on_hdr_check_timer(self, event):
+        self._update_hdr_label()
+
+    def _on_record_timer(self, event):
+        self._update_record_time()
+
     def _setup_shortcuts(self):
         """키보드 단축키 설정 (글로벌 핫키는 capture_control_bar에서 처리)"""
         pass
@@ -1842,20 +1887,14 @@ class MainWindow(wx.Frame):
 
     def _cleanup_all_resources(self):
         """모든 리소스 정리 - 메모리 누수 방지"""
-        from core.utils import safe_delete_timer
-
         # 미리보기 중지
         self._stop_preview()
 
         # HDR 체크 타이머 정리
-        if getattr(self, '_hdr_check_timer', None) is not None:
-            safe_delete_timer(self._hdr_check_timer)
-            self._hdr_check_timer = None
+        self._dispose_timer("_hdr_check_timer", self._on_hdr_check_timer)
 
         # 녹화 타이머 정리
-        if self.record_timer is not None:
-            safe_delete_timer(self.record_timer)
-            self.record_timer = None
+        self._dispose_timer("record_timer", self._on_record_timer)
 
         # 인코딩 스레드 정리 (threading.Thread 기반)
         if self.encoding_thread is not None:

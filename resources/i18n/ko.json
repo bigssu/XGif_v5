@@ -177,6 +177,7 @@
     "mem_limit_reached": "메모리 한계 도달",
     "mem_limit_msg": "설정된 메모리 한계({}MB)에 도달하여 녹화를 자동으로 중지합니다.",
     "audio_buffer_limit_reached": "오디오 버퍼 한계에 도달하여 녹화를 자동으로 중지합니다.",
+    "audio_recording_unavailable": "마이크 오디오 녹음을 시작하지 못했습니다. 이번 녹화는 영상만 저장됩니다.",
     "low_fps_warning_title": "캡처 성능 경고",
     "low_fps_warning_msg": "실제 캡처 FPS({actual_fps:.1f})가 목표 FPS({target_fps})보다 낮습니다.\n\n권장 사항:\n• 해상도를 낮추기\n• 품질을 낮추기\n• 오버레이 기능 비활성화\n• 다른 프로그램 종료",
     "mem_warning": "⚠ 메모리 사용량이 한계치에 가깝습니다 ({} / {} MB)",

@@ -171,9 +171,16 @@ class CLIRecordingSession:
         # 11. 오디오 녹음 시작 (MP4 + --mic)
         if getattr(self.args, "mic", False) and output_format == "mp4":
             try:
-                from core.audio_recorder import AudioRecorder, is_audio_available
+                from core.audio_recorder import (
+                    AudioRecorder,
+                    derive_audio_buffer_limit_mb,
+                    is_audio_available,
+                )
                 if is_audio_available():
-                    self._audio_recorder = AudioRecorder()
+                    audio_limit_mb = derive_audio_buffer_limit_mb(
+                        config.get("memory_limit_mb", "1024")
+                    )
+                    self._audio_recorder = AudioRecorder(max_buffer_mb=audio_limit_mb)
                     self._audio_recorder.set_record_mic(True)
                     if self._audio_recorder.start():
                         self._progress.print("  오디오: 마이크 녹음 활성화")

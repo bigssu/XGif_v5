@@ -1,8 +1,19 @@
 ; XGif Inno Setup Installer Script
-; Build: ISCC.exe installer\xgif_setup.iss
+; Build through build_optimized.py so MyAppVersion comes from core/version.py.
 
 #define MyAppName "XGif"
-#define MyAppVersion "0.56"
+#ifndef MyAppVersion
+  #define MyAppVersion GetEnv("XGIF_APP_VERSION")
+#endif
+#if MyAppVersion == ""
+  #error "MyAppVersion is required. Run build_optimized.py --installer or set XGIF_APP_VERSION."
+#endif
+#ifndef MyAppExeSource
+  #define MyAppExeSource GetEnv("XGIF_APP_EXE_SOURCE")
+#endif
+#if MyAppExeSource == ""
+  #error "MyAppExeSource is required. Run build_optimized.py --installer or set XGIF_APP_EXE_SOURCE."
+#endif
 #define MyAppPublisher "XGif"
 #define MyAppExeName "XGif.exe"
 #define MyAppURL "https://github.com/bigssu/XGif_v5"
@@ -38,7 +49,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\XGif.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#MyAppExeSource}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

@@ -343,7 +343,7 @@ class CaptureThread(threading.Thread):
                             avg_cursor = sum(timing_samples['cursor']) / max(1, len(timing_samples['cursor']))
                             avg_overlay = sum(timing_samples['overlay']) / max(1, len(timing_samples['overlay']))
                             total_avg = avg_grab + avg_hdr + avg_cursor + avg_overlay
-                            logger.info(
+                            logger.debug(
                                 f"[Perf] Frame {self.frame_count}: "
                                 f"grab={avg_grab*1000:.1f}ms, "
                                 f"hdr={avg_hdr*1000:.1f}ms, "

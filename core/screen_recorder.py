@@ -367,6 +367,9 @@ class ScreenRecorder:
             if self._thread_stop_event:
                 self._thread_stop_event.set()
             self._capture_thread.join(timeout=2.0)
+            if self._capture_thread.is_alive():
+                self._handle_capture_failure("이전 캡처 스레드가 종료되지 않았습니다.")
+                return
             self._capture_thread = None
 
         if self._collector_thread and self._collector_thread.is_alive():
@@ -374,6 +377,9 @@ class ScreenRecorder:
             if self._thread_stop_event:
                 self._thread_stop_event.set()
             self._collector_thread.join(timeout=2.0)
+            if self._collector_thread.is_alive():
+                self._handle_capture_failure("이전 프레임 수집 스레드가 종료되지 않았습니다.")
+                return
             self._collector_thread = None
 
         self.is_recording = True
@@ -571,14 +577,21 @@ class ScreenRecorder:
         dropped = getattr(capture_thread, 'dropped_frames', 0) if capture_thread else 0
         self._last_dropped_frames = dropped
 
-        # 스레드 참조 해제 (스냅샷 이후)
-        self._capture_thread = None
-        self._collector_thread = None
-
-        # 버퍼/이벤트 정리 - 스레드가 아직 살아있으면 None 접근 크래시 방지를 위해 스킵
         if threads_alive:
             logger.warning("Skipping buffer/event cleanup - threads still alive")
+            self._capture_thread = (
+                capture_thread
+                if capture_thread and capture_thread.is_alive()
+                else None
+            )
+            self._collector_thread = (
+                collector_thread
+                if collector_thread and collector_thread.is_alive()
+                else None
+            )
         else:
+            self._capture_thread = None
+            self._collector_thread = None
             self._frame_buffer = None
             self._thread_frame_ready_event = None
             self._thread_frame_consumed_event = None

@@ -177,6 +177,7 @@
     "mem_limit_reached": "Memory Limit Reached",
     "mem_limit_msg": "Recording automatically stopped as set memory limit ({}MB) was reached.",
     "audio_buffer_limit_reached": "Recording stopped automatically because the audio buffer limit was reached.",
+    "audio_recording_unavailable": "Microphone audio could not be started. This recording will be saved without audio.",
     "low_fps_warning_title": "Capture Performance Warning",
     "low_fps_warning_msg": "Actual capture FPS ({actual_fps:.1f}) is lower than target FPS ({target_fps}).\n\nRecommendations:\n\u2022 Lower resolution\n\u2022 Lower quality\n\u2022 Disable overlay features\n\u2022 Close other programs",
     "mem_warning": "\u26a0 Memory usage is near the limit ({} / {} MB)",

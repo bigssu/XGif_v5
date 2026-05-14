@@ -16,6 +16,26 @@ import contextlib
 
 logger = logging.getLogger(__name__)
 
+MIN_AUDIO_BUFFER_LIMIT_MB = 64
+DEFAULT_AUDIO_BUFFER_LIMIT_MB = 256
+MAX_AUDIO_BUFFER_LIMIT_MB = 512
+AUDIO_BUFFER_MEMORY_RATIO = 0.25
+
+
+def derive_audio_buffer_limit_mb(memory_limit_mb: object) -> int:
+    """Derive a bounded audio buffer limit from the app memory limit."""
+    try:
+        memory_limit = float(memory_limit_mb)
+    except (TypeError, ValueError):
+        memory_limit = 1024.0
+
+    if memory_limit <= 0:
+        memory_limit = 1024.0
+
+    derived = int(memory_limit * AUDIO_BUFFER_MEMORY_RATIO)
+    return max(MIN_AUDIO_BUFFER_LIMIT_MB, min(MAX_AUDIO_BUFFER_LIMIT_MB, derived))
+
+
 # 오디오 라이브러리 (선택적)
 try:
     import sounddevice as sd
@@ -38,7 +58,7 @@ class AudioRecorder:
             audio_file = recorder.stop()
     """
 
-    def __init__(self, max_buffer_mb: Optional[float] = None):
+    def __init__(self, max_buffer_mb: Optional[float] = DEFAULT_AUDIO_BUFFER_LIMIT_MB):
         self.recording = False
         self.record_system = True  # 시스템 오디오 녹음 여부
         self.record_mic = False    # 마이크 오디오 녹음 여부
@@ -143,6 +163,13 @@ class AudioRecorder:
         """현재 오디오 버퍼 총 바이트 수. 반드시 self._lock 내에서 호출해야 합니다."""
         return self._audio_buffer_total_bytes
 
+    def _clear_audio_buffers_locked(self) -> None:
+        """Clear accumulated audio buffers. Must be called while holding self._lock."""
+        self.system_audio_data = []
+        self.mic_audio_data = []
+        self._audio_buffer_total_bytes = 0
+        self._buffer_limit_reached = False
+
     def set_max_buffer_mb(self, max_buffer_mb: Optional[float]) -> None:
         """오디오 버퍼 상한 설정 (MB). None이면 무제한."""
         self._max_buffer_bytes = (
@@ -198,10 +225,7 @@ class AudioRecorder:
 
         try:
             with self._lock:
-                self.system_audio_data = []
-                self.mic_audio_data = []
-                self._buffer_limit_reached = False
-                self._audio_buffer_total_bytes = 0
+                self._clear_audio_buffers_locked()
 
             # recording 플래그를 스트림 시작 전에 설정 (콜백 프레임 손실 방지)
             self.recording = True
@@ -267,6 +291,8 @@ class AudioRecorder:
             # 적어도 하나의 스트림이 시작되었는지 확인
             if self._system_stream is None and self._mic_stream is None:
                 logger.error("오디오 스트림을 시작할 수 없습니다")
+                self.recording = False
+                self._cleanup_streams()
                 return False
 
             return True
@@ -319,25 +345,26 @@ class AudioRecorder:
                 has_mic = len(self.mic_audio_data) > 0
 
                 if not has_system and not has_mic:
+                    self._clear_audio_buffers_locked()
                     return None
 
-                # 오디오 병합
-                if has_system and has_mic:
-                    # 두 오디오를 병합
-                    merged_audio = self._merge_audio()
-                    if merged_audio is None:
-                        return None
-                    audio_array = merged_audio
-                    sample_rate = max(self.system_sample_rate, self.mic_sample_rate)
-                elif has_system:
-                    audio_array = np.concatenate(self.system_audio_data, axis=0)
-                    sample_rate = self.system_sample_rate
-                else:  # has_mic
-                    audio_array = np.concatenate(self.mic_audio_data, axis=0)
-                    sample_rate = self.mic_sample_rate
-
-                self.system_audio_data = []
-                self.mic_audio_data = []
+                try:
+                    # 오디오 병합
+                    if has_system and has_mic:
+                        # 두 오디오를 병합
+                        merged_audio = self._merge_audio()
+                        if merged_audio is None:
+                            return None
+                        audio_array = merged_audio
+                        sample_rate = max(self.system_sample_rate, self.mic_sample_rate)
+                    elif has_system:
+                        audio_array = np.concatenate(self.system_audio_data, axis=0)
+                        sample_rate = self.system_sample_rate
+                    else:  # has_mic
+                        audio_array = np.concatenate(self.mic_audio_data, axis=0)
+                        sample_rate = self.mic_sample_rate
+                finally:
+                    self._clear_audio_buffers_locked()
 
             # 임시 WAV 파일로 저장 (보안: mkstemp 사용)
             fd, self._temp_file = tempfile.mkstemp(suffix='.wav', prefix='giffy_audio_')
@@ -465,6 +492,10 @@ class AudioRecorder:
 
     def cleanup(self):
         """임시 파일 정리"""
+        self.recording = False
+        self._cleanup_streams()
+        with self._lock:
+            self._clear_audio_buffers_locked()
         if self._temp_file and os.path.exists(self._temp_file):
             with contextlib.suppress(Exception):
                 os.remove(self._temp_file)

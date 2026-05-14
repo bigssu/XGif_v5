@@ -3,6 +3,49 @@ from pathlib import Path
 import build_optimized
 
 
+def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch):
+    from core.version import APP_VERSION
+
+    exe_path = tmp_path / "XGif.exe"
+    exe_path.write_bytes(b"fake exe")
+    calls = []
+
+    def fake_run(cmd, check, cwd, env):
+        calls.append({"cmd": cmd, "check": check, "cwd": cwd, "env": env})
+
+    monkeypatch.setattr(build_optimized, "_find_iscc", lambda: "ISCC.exe")
+    monkeypatch.setattr(build_optimized.subprocess, "run", fake_run)
+
+    build_optimized.run_installer(str(exe_path))
+
+    assert calls
+    assert f"/DMyAppVersion={APP_VERSION}" in calls[0]["cmd"]
+    assert f"/DMyAppExeSource={exe_path.resolve()}" in calls[0]["cmd"]
+    assert calls[0]["env"]["XGIF_APP_VERSION"] == APP_VERSION
+    assert calls[0]["env"]["XGIF_APP_EXE_SOURCE"] == str(exe_path.resolve())
+    assert calls[0]["cmd"][-1].endswith("installer\\xgif_setup.iss")
+
+
+def test_nuitka_build_output_name_matches_release_contract(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(build_optimized, "_get_python_exe", lambda venv: "python.exe")
+    monkeypatch.setattr(build_optimized.subprocess, "run", lambda cmd, check: calls.append(cmd))
+
+    build_optimized.run_nuitka_build()
+
+    assert calls
+    assert "--output-filename=XGif.exe" in calls[0]
+
+
+def test_build_keeps_debug_launcher_opt_in_only():
+    source = Path("build_optimized.py").read_text(encoding="utf-8")
+
+    assert "--diagnostic-launcher" in source
+    assert "os.remove(diag_bat)" in source
+    assert "if args.diagnostic_launcher:" in source
+
+
 def test_generated_pyinstaller_spec_keeps_size_guards(tmp_path, monkeypatch):
     resources = tmp_path / "resources"
     resources.mkdir()

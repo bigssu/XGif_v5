@@ -2,6 +2,32 @@ from pathlib import Path
 
 from PIL import Image
 
+from core.version import APP_VERSION
+
+
+def test_project_version_single_source_is_2_1_0():
+    import tomllib
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    assert APP_VERSION == "2.1.0"
+    assert pyproject["project"]["version"] == APP_VERSION
+
+
+def test_installer_version_is_injected_not_hardcoded():
+    script = Path("installer/xgif_setup.iss").read_text(encoding="utf-8")
+
+    assert "0.56" not in script
+    assert '#define MyAppVersion "0.56"' not in script
+    assert "#ifndef MyAppVersion" in script
+    assert 'GetEnv("XGIF_APP_VERSION")' in script
+    assert "MyAppVersion is required" in script
+    assert "OutputBaseFilename=XGif_Setup_{#MyAppVersion}" in script
+    assert 'GetEnv("XGIF_APP_EXE_SOURCE")' in script
+    assert "MyAppExeSource is required" in script
+    assert 'Source: "..\\dist\\XGif.exe"' not in script
+    assert 'Source: "{#MyAppExeSource}"' in script
+
 
 def test_selfsign_script_does_not_ship_a_default_pfx_password():
     script = Path("scripts/create_selfsign_cert.ps1").read_text(encoding="utf-8")
