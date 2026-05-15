@@ -119,13 +119,7 @@ def test_design_system_exposes_form_section_and_row():
 def test_form_section_instantiates_without_error():
     import wx
     from ui.design_system import FormSection
-
-    try:
-        app = wx.App()
-    except Exception as exc:  # pragma: no cover - headless CI
-        import pytest
-
-        pytest.skip(f"wx.App unavailable: {exc}")
+    app = wx.App()
     frame = wx.Frame(None)
     sec = FormSection(frame, "Title", "desc")
     sec.add_row("Label:", wx.TextCtrl(frame))
