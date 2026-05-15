@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Dict, Any, Optional
 from ...core.image_effects import ImageEffects
 from ...utils.image_utils import pil_to_wx_bitmap
 from ..style_constants_wx import Colors, ThemedDialog
+from ui.i18n import tr
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -99,7 +100,7 @@ class EffectsDialog(ThemedDialog):
     """효과/필터 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="효과/필터",
+        super().__init__(parent or main_window, title=tr("effects_dialog_title"),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._main_window = main_window
         self._original_image: Optional[Image.Image] = None
@@ -144,29 +145,29 @@ class EffectsDialog(ThemedDialog):
         adjust_sizer = wx.BoxSizer(wx.VERTICAL)
         adjust_sizer.AddSpacer(10)
 
-        self._brightness_slider = EffectSlider(adjust_panel, "밝기", 0, 200, 100, "%")
+        self._brightness_slider = EffectSlider(adjust_panel, tr("effects_brightness"), 0, 200, 100, "%")
         self._brightness_slider.set_callback(self._on_effect_changed)
         adjust_sizer.Add(self._brightness_slider, 0, wx.EXPAND | wx.ALL, 5)
 
-        self._contrast_slider = EffectSlider(adjust_panel, "대비", 0, 200, 100, "%")
+        self._contrast_slider = EffectSlider(adjust_panel, tr("effects_contrast"), 0, 200, 100, "%")
         self._contrast_slider.set_callback(self._on_effect_changed)
         adjust_sizer.Add(self._contrast_slider, 0, wx.EXPAND | wx.ALL, 5)
 
-        self._saturation_slider = EffectSlider(adjust_panel, "채도", 0, 200, 100, "%")
+        self._saturation_slider = EffectSlider(adjust_panel, tr("effects_saturation"), 0, 200, 100, "%")
         self._saturation_slider.set_callback(self._on_effect_changed)
         adjust_sizer.Add(self._saturation_slider, 0, wx.EXPAND | wx.ALL, 5)
 
-        self._sharpness_slider = EffectSlider(adjust_panel, "선명도", 0, 200, 100, "%")
+        self._sharpness_slider = EffectSlider(adjust_panel, tr("effects_sharpness"), 0, 200, 100, "%")
         self._sharpness_slider.set_callback(self._on_effect_changed)
         adjust_sizer.Add(self._sharpness_slider, 0, wx.EXPAND | wx.ALL, 5)
 
-        self._gamma_slider = EffectSlider(adjust_panel, "감마", 10, 300, 100, "%")
+        self._gamma_slider = EffectSlider(adjust_panel, tr("effects_gamma"), 10, 300, 100, "%")
         self._gamma_slider.set_callback(self._on_effect_changed)
         adjust_sizer.Add(self._gamma_slider, 0, wx.EXPAND | wx.ALL, 5)
 
         adjust_sizer.AddStretchSpacer()
         adjust_panel.SetSizer(adjust_sizer)
-        tabs.AddPage(adjust_panel, "조정")
+        tabs.AddPage(adjust_panel, tr("effects_tab_adjust"))
 
         # === 필터 탭 ===
         filter_panel = wx.Panel(tabs)
@@ -177,18 +178,18 @@ class EffectsDialog(ThemedDialog):
         filter_grid = wx.GridSizer(3, 4, 10, 10)
 
         filters = [
-            ("원본", "none"),
-            ("흑백", "grayscale"),
-            ("세피아", "sepia"),
-            ("반전", "invert"),
-            ("블러", "blur"),
-            ("샤픈", "sharpen"),
-            ("엠보스", "emboss"),
-            ("윤곽선", "contour"),
-            ("포스터", "posterize"),
-            ("솔라라이즈", "solarize"),
-            ("엣지 강조", "edge"),
-            ("비네트", "vignette"),
+            (tr("effects_filter_original"), "none"),
+            (tr("effects_filter_grayscale"), "grayscale"),
+            (tr("effects_filter_sepia"), "sepia"),
+            (tr("effects_filter_invert"), "invert"),
+            (tr("effects_filter_blur"), "blur"),
+            (tr("effects_filter_sharpen"), "sharpen"),
+            (tr("effects_filter_emboss"), "emboss"),
+            (tr("effects_filter_contour"), "contour"),
+            (tr("effects_filter_posterize"), "posterize"),
+            (tr("effects_filter_solarize"), "solarize"),
+            (tr("effects_filter_edge"), "edge"),
+            (tr("effects_filter_vignette"), "vignette"),
         ]
 
         for name, filter_type in filters:
@@ -203,18 +204,18 @@ class EffectsDialog(ThemedDialog):
         filter_layout.Add(filter_grid, 0, wx.EXPAND | wx.ALL, 10)
         filter_layout.AddStretchSpacer()
         filter_panel.SetSizer(filter_layout)
-        tabs.AddPage(filter_panel, "필터")
+        tabs.AddPage(filter_panel, tr("effects_tab_filter"))
 
         settings_sizer.Add(tabs, 1, wx.EXPAND)
         settings_sizer.AddSpacer(10)
 
         # 적용 대상
-        target_box = wx.StaticBox(self, label="적용 대상")
+        target_box = wx.StaticBox(self, label=tr("apply_to"))
         target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
-                                        choices=["현재 프레임만", "선택한 프레임", "모든 프레임"])
+                                        choices=[tr("target_current_only"), tr("target_selected_full"), tr("target_all_full")])
         self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
         self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(1)
@@ -226,7 +227,7 @@ class EffectsDialog(ThemedDialog):
         # 버튼
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        reset_btn = wx.Button(self, label="초기화")
+        reset_btn = wx.Button(self, label=tr("common_reset"))
         reset_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         reset_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         reset_btn.Bind(wx.EVT_BUTTON, self._reset_effects)
@@ -234,13 +235,13 @@ class EffectsDialog(ThemedDialog):
 
         button_sizer.AddStretchSpacer()
 
-        apply_btn = wx.Button(self, wx.ID_OK, label="적용")
+        apply_btn = wx.Button(self, wx.ID_OK, label=tr("common_apply"))
         apply_btn.SetBackgroundColour(Colors.ACCENT)
         apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("common_cancel"))
         cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
