@@ -550,6 +550,26 @@
     "save_dialog_save": "Save",
     "save_dialog_cancel": "Cancel",
     "lang_en": "En",
-    "lang_kr": "\ud55c"
+    "lang_kr": "\ud55c",
+    "common_apply": "Apply",
+    "common_cancel": "Cancel",
+    "common_ok": "OK",
+    "common_reset": "Reset",
+    "common_add": "Add",
+    "common_error": "Error",
+    "common_warning": "Warning",
+    "common_notice": "Notice",
+    "common_done": "Done",
+    "common_width_label": "Width:",
+    "common_height_label": "Height:",
+    "common_size_label": "Size:",
+    "target_current_only": "Current frame only",
+    "target_all_short": "All",
+    "target_selected_short": "Selected",
+    "target_current_short": "Current",
+    "apply_to": "Apply To",
+    "msg_out_of_memory": "Not enough memory to perform this operation.",
+    "msg_gif_open_required": "Open a GIF file first.",
+    "msg_undo_error": "Undo error:\n{e}"
   }
 }

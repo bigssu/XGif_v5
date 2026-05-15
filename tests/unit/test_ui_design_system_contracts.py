@@ -139,3 +139,19 @@ def test_settings_dialog_uses_form_section_not_staticbox():
 def test_dead_flatbutton_removed_from_capture_control_bar():
     src = _read("ui/capture_control_bar.py")
     assert "class FlatButton(" not in src
+
+
+def test_editor_i18n_common_keys_present_in_both_locales():
+    for locale_path in ("resources/i18n/ko.json", "resources/i18n/en.json"):
+        data = json.loads(_read(locale_path))
+        editor = data.get("editor", {})
+        for key in (
+            "common_apply", "common_cancel", "common_ok", "common_reset",
+            "common_add", "common_error", "common_warning", "common_notice",
+            "common_done", "common_width_label", "common_height_label",
+            "common_size_label", "target_current_only", "target_selected",
+            "target_all", "target_all_short", "target_selected_short",
+            "target_current_short", "apply_to", "msg_out_of_memory",
+            "msg_gif_open_required", "msg_undo_error",
+        ):
+            assert key in editor, f"{key} missing in {locale_path}"

@@ -550,6 +550,26 @@
     "save_dialog_save": "저장",
     "save_dialog_cancel": "취소",
     "lang_en": "En",
-    "lang_kr": "한"
+    "lang_kr": "한",
+    "common_apply": "적용",
+    "common_cancel": "취소",
+    "common_ok": "확인",
+    "common_reset": "초기화",
+    "common_add": "추가",
+    "common_error": "오류",
+    "common_warning": "경고",
+    "common_notice": "알림",
+    "common_done": "완료",
+    "common_width_label": "너비:",
+    "common_height_label": "높이:",
+    "common_size_label": "크기:",
+    "target_current_only": "현재 프레임만",
+    "target_all_short": "모두",
+    "target_selected_short": "선택",
+    "target_current_short": "현재",
+    "apply_to": "적용 대상",
+    "msg_out_of_memory": "메모리가 부족하여 작업을 수행할 수 없습니다.",
+    "msg_gif_open_required": "GIF 파일을 먼저 열어주세요",
+    "msg_undo_error": "Undo 오류:\n{e}"
   }
 }
