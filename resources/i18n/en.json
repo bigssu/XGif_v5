@@ -590,6 +590,15 @@
     "pencil_seconds_unit": " s",
     "pencil_duration_hint": "The line you draw stays visible for the\nset duration starting from the selected frame.",
     "pencil_start_drawing": "Start Drawing",
-    "pencil_target_label": "Target:"
+    "pencil_target_label": "Target:",
+    "resize_dialog_title": "Resize",
+    "resize_new_size": "New size",
+    "resize_resample": "Resampling method",
+    "resize_resample_nearest": "Nearest (fast)",
+    "resize_resample_bilinear": "Bilinear",
+    "resize_resample_bicubic": "Bicubic (recommended)",
+    "resize_resample_lanczos": "Lanczos (high quality)",
+    "resize_size_presets": "Size presets",
+    "resize_cur_size": "Current size: {w} x {h} px"
   }
 }

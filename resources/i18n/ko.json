@@ -590,6 +590,15 @@
     "pencil_seconds_unit": " 초",
     "pencil_duration_hint": "선택한 프레임부터 지정된 시간 동안\n그린 선이 표시됩니다.",
     "pencil_start_drawing": "그리기 시작",
-    "pencil_target_label": "대상:"
+    "pencil_target_label": "대상:",
+    "resize_dialog_title": "크기 조절",
+    "resize_new_size": "새 크기",
+    "resize_resample": "리샘플링 방법",
+    "resize_resample_nearest": "Nearest (빠름)",
+    "resize_resample_bilinear": "Bilinear",
+    "resize_resample_bicubic": "Bicubic (권장)",
+    "resize_resample_lanczos": "Lanczos (고품질)",
+    "resize_size_presets": "크기 프리셋",
+    "resize_cur_size": "현재 크기: {w} x {h} px"
   }
 }

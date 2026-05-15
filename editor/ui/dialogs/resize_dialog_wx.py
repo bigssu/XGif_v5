@@ -7,6 +7,7 @@ import wx
 from PIL import Image
 from typing import TYPE_CHECKING, Tuple
 from ..style_constants_wx import Colors, ThemedDialog
+from ui.i18n import tr
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -15,16 +16,27 @@ if TYPE_CHECKING:
 class ResizeDialog(ThemedDialog):
     """리사이즈 다이얼로그 (wxPython)"""
 
-    # 리샘플링 방법
-    RESAMPLE_METHODS = {
-        "Nearest (빠름)": Image.Resampling.NEAREST,
-        "Bilinear": Image.Resampling.BILINEAR,
-        "Bicubic (권장)": Image.Resampling.BICUBIC,
-        "Lanczos (고품질)": Image.Resampling.LANCZOS,
+    # 리샘플링 방법 — stable id 순서 (콤보박스 인덱스와 1:1 대응)
+    _RESAMPLE_IDS = ["nearest", "bilinear", "bicubic", "lanczos"]
+
+    # id → PIL 리샘플링 상수 매핑
+    _RESAMPLE_VALUES = {
+        "nearest": Image.Resampling.NEAREST,
+        "bilinear": Image.Resampling.BILINEAR,
+        "bicubic": Image.Resampling.BICUBIC,
+        "lanczos": Image.Resampling.LANCZOS,
+    }
+
+    # id → i18n 키 매핑
+    _RESAMPLE_LABEL_KEYS = {
+        "nearest": "resize_resample_nearest",
+        "bilinear": "resize_resample_bilinear",
+        "bicubic": "resize_resample_bicubic",
+        "lanczos": "resize_resample_lanczos",
     }
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="크기 조절")
+        super().__init__(parent or main_window, title=tr("resize_dialog_title"))
         self._main_window = main_window
         self._original_width = 0
         self._original_height = 0
@@ -49,14 +61,14 @@ class ResizeDialog(ThemedDialog):
         main_sizer.Add(self._info_label, 0, wx.ALL, 20)
 
         # 크기 설정 그룹
-        size_box = wx.StaticBox(self, label="새 크기")
+        size_box = wx.StaticBox(self, label=tr("resize_new_size"))
         size_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         size_sizer = wx.StaticBoxSizer(size_box, wx.VERTICAL)
         size_sizer.AddSpacer(10)
 
         # 너비
         width_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        width_label = wx.StaticText(self, label="너비:")
+        width_label = wx.StaticText(self, label=tr("common_width_label"))
         width_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         width_sizer.Add(width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
@@ -75,7 +87,7 @@ class ResizeDialog(ThemedDialog):
 
         # 높이
         height_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        height_label = wx.StaticText(self, label="높이:")
+        height_label = wx.StaticText(self, label=tr("common_height_label"))
         height_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         height_sizer.Add(height_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
@@ -93,7 +105,7 @@ class ResizeDialog(ThemedDialog):
         size_sizer.Add(height_sizer, 0, wx.ALL, 10)
 
         # 비율 유지 체크박스
-        self._keep_ratio_check = wx.CheckBox(self, label="가로세로 비율 유지")
+        self._keep_ratio_check = wx.CheckBox(self, label=tr("resize_keep_ratio"))
         self._keep_ratio_check.SetValue(True)
         self._keep_ratio_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_sizer.Add(self._keep_ratio_check, 0, wx.ALL, 10)
@@ -102,25 +114,28 @@ class ResizeDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 리샘플링 방법 그룹
-        method_box = wx.StaticBox(self, label="리샘플링 방법")
+        method_box = wx.StaticBox(self, label=tr("resize_resample"))
         method_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         method_sizer = wx.StaticBoxSizer(method_box, wx.VERTICAL)
         method_sizer.AddSpacer(10)
 
+        # 콤보박스 레이블을 id 순서대로 tr()로 생성
+        resample_labels = [tr(self._RESAMPLE_LABEL_KEYS[rid]) for rid in self._RESAMPLE_IDS]
         self._method_combo = wx.ComboBox(
             self, style=wx.CB_READONLY,
-            choices=list(self.RESAMPLE_METHODS.keys())
+            choices=resample_labels
         )
         self._method_combo.SetBackgroundColour(Colors.BG_TERTIARY)
         self._method_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._method_combo.SetSelection(2)  # Bicubic 기본
+        # Bicubic은 _RESAMPLE_IDS에서 인덱스 2
+        self._method_combo.SetSelection(self._RESAMPLE_IDS.index("bicubic"))
         method_sizer.Add(self._method_combo, 0, wx.EXPAND | wx.ALL, 10)
 
         main_sizer.Add(method_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 20)
         main_sizer.AddSpacer(10)
 
         # 프리셋 그룹
-        preset_box = wx.StaticBox(self, label="크기 프리셋")
+        preset_box = wx.StaticBox(self, label=tr("resize_size_presets"))
         preset_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preset_sizer = wx.StaticBoxSizer(preset_box, wx.VERTICAL)
         preset_sizer.AddSpacer(10)
@@ -143,13 +158,13 @@ class ResizeDialog(ThemedDialog):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer.AddStretchSpacer()
 
-        apply_btn = wx.Button(self, wx.ID_OK, label="적용")
+        apply_btn = wx.Button(self, wx.ID_OK, label=tr("common_apply"))
         apply_btn.SetBackgroundColour(Colors.ACCENT)
         apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("common_cancel"))
         cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
@@ -174,7 +189,7 @@ class ResizeDialog(ThemedDialog):
             )
 
             self._info_label.SetLabel(
-                f"현재 크기: {self._original_width} x {self._original_height} px"
+                tr("resize_cur_size", w=self._original_width, h=self._original_height)
             )
 
             self._updating = True
@@ -228,6 +243,9 @@ class ResizeDialog(ThemedDialog):
         return (self._width_spin.GetValue(), self._height_spin.GetValue())
 
     def get_resample_method(self) -> Image.Resampling:
-        """리샘플링 방법 반환"""
-        method_name = self._method_combo.GetStringSelection()
-        return self.RESAMPLE_METHODS.get(method_name, Image.Resampling.BICUBIC)
+        """리샘플링 방법 반환 — 콤보박스 인덱스 → stable id → PIL 상수"""
+        index = self._method_combo.GetSelection()
+        if 0 <= index < len(self._RESAMPLE_IDS):
+            rid = self._RESAMPLE_IDS[index]
+            return self._RESAMPLE_VALUES.get(rid, Image.Resampling.BICUBIC)
+        return Image.Resampling.BICUBIC
