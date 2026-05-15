@@ -612,6 +612,16 @@
     "speed_multiplier": "속도 배율",
     "speed_hint": "1.0x = 원래 속도, 2.0x = 2배 빠르게, 0.5x = 2배 느리게",
     "speed_cur_duration": "현재 재생 시간: {sec:.2f}초 ({n}프레임)",
-    "speed_new_duration": "변경 후 재생 시간: {sec:.2f}초"
+    "speed_new_duration": "변경 후 재생 시간: {sec:.2f}초",
+    "text_dialog_title": "텍스트 추가",
+    "text_box": "텍스트",
+    "text_dialog_placeholder": "텍스트를 입력하세요",
+    "text_font": "폰트",
+    "text_bold": "굵게",
+    "text_italic": "기울임",
+    "text_dialog_color": "색상",
+    "text_color_label": "텍스트:",
+    "text_bg_label": "배경:",
+    "text_transparent": "투명"
   }
 }

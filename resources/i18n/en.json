@@ -612,6 +612,16 @@
     "speed_multiplier": "Speed multiplier",
     "speed_hint": "1.0x = original speed, 2.0x = 2x faster, 0.5x = 2x slower",
     "speed_cur_duration": "Current duration: {sec:.2f}s ({n} frames)",
-    "speed_new_duration": "Duration after change: {sec:.2f}s"
+    "speed_new_duration": "Duration after change: {sec:.2f}s",
+    "text_dialog_title": "Add Text",
+    "text_box": "Text",
+    "text_dialog_placeholder": "Enter text",
+    "text_font": "Font",
+    "text_bold": "Bold",
+    "text_italic": "Italic",
+    "text_dialog_color": "Color",
+    "text_color_label": "Text:",
+    "text_bg_label": "Background:",
+    "text_transparent": "Transparent"
   }
 }
