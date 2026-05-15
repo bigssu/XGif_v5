@@ -146,7 +146,7 @@ wx.ComboBox(panel, choices=["현재 프레임만", "선택한 프레임", "모�
 ```
 After:
 ```python
-wx.ComboBox(panel, choices=[tr("target_current_only"), tr("target_selected"), tr("target_all")])
+wx.ComboBox(panel, choices=[tr("target_current_only"), tr("target_selected_full"), tr("target_all_full")])
 ```
 If later code compares against the literal (e.g. `crop_dialog_wx.py` `_apply_preset` compares to `"전체"`), compare against an index or a stable internal token, NOT the translated label. For `crop_dialog` presets: store preset id on the button (`btn.preset_id = "full"`) and switch on that, not on label text. The file-task spells this out.
 
@@ -182,6 +182,11 @@ After the code+JSON edits for a file:
 - Create: test additions in `tests/unit/test_ui_design_system_contracts.py` (Task A14)
 
 > **Common keys** (add ONCE in Task A1, reused everywhere): `common_apply`=Apply/적용, `common_cancel`=Cancel/취소, `common_ok`=OK/확인, `common_reset`=Reset/초기화, `common_add`=Add/추가, `common_error`=Error/오류, `common_warning`=Warning/경고, `common_notice`=Notice/알림, `common_done`=Done/완료, `common_width_label`=Width:/너비:, `common_height_label`=Height:/높이:, `common_size_label`=Size:/크기:, `target_current_only`=Current frame only/현재 프레임만, `target_selected`=Selected frames/선택한 프레임, `target_all`=All frames/모든 프레임, `target_all_short`=All/모두, `target_selected_short`=Selected/선택, `target_current_short`=Current/현재, `apply_to`=Apply To/적용 대상, `msg_out_of_memory`=Not enough memory to perform this operation./메모리가 부족하여 작업을 수행할 수 없습니다., `msg_gif_open_required`=Open a GIF file first./GIF 파일을 먼저 열어주세요, `msg_undo_error`=Undo error:\n{e}/Undo 오류:\n{e}.
+
+> **⚠ TARGET-KEY TAXONOMY (CORRECTED post-A1 — supersedes any stale inline text below).** A1 commit `5c0b47a` discovered `target_selected`/`target_all`/`target_current` ALREADY EXIST as **short** combo labels (`Selected`/`선택`, `All`/`모두`, `Current`/`현재`) actively consumed by `editor/utils/frame_targeting.py:31-33` — these were **NOT** redefined. Authoritative mapping for all downstream A-tasks:
+> - **Full-sentence dialog combo choices** ("현재 프레임만 / 선택한 프레임 / 모든 프레임") → use `target_current_only` (=Current frame only/현재 프레임만), `target_selected_full` (=Selected frames/선택한 프레임), `target_all_full` (=All frames/모든 프레임). **Never** use bare `target_selected`/`target_all` for the full form.
+> - **Short combo choices** ("모두 / 선택 / 현재", e.g. pencil_dialog:141) → use the pre-existing `target_all` / `target_selected` / `target_current` (matches frame_targeting.py). The A1-added `target_*_short` keys are redundant duplicates of these short values; either works, but prefer the pre-existing `target_all`/`target_selected`/`target_current` for consistency with the existing consumer.
+> - Do NOT add/overwrite `target_selected`/`target_all`/`target_current`.
 
 ---
 
@@ -291,7 +296,7 @@ Key table (add new keys; `common_*`/`target_*` already added in A1 — reuse, do
 | effects_filter_vignette | Vignette | 비네트 | :191 |
 | effects_tab_filter | Filters | 필터 | :206 tab |
 
-(`적용 대상` :212 → `apply_to`; choices :217 → `target_current_only/target_selected/target_all`; `초기화` :229 → `common_reset`; `적용` :237 → `common_apply`; `취소` :243 → `common_cancel`.)
+(`적용 대상` :212 → `apply_to`; choices :217 (full-form "현재 프레임만/선택한 프레임/모든 프레임") → `target_current_only/target_selected_full/target_all_full` — see TARGET-KEY TAXONOMY note; `초기화` :229 → `common_reset`; `적용` :237 → `common_apply`; `취소` :243 → `common_cancel`.)
 
 - [ ] **Step 1: Add `from ui.i18n import tr`** to the import block.
 - [ ] **Step 2: Add the new keys above to both JSON `"editor"` sections** (EN from table, KO verbatim).
@@ -318,7 +323,7 @@ Key table (add new keys; `common_*`/`target_*` already added in A1 — reuse, do
 | pencil_duration_hint | The line you draw stays visible for the\nset duration starting from the selected frame. | 선택한 프레임부터 지정된 시간 동안\n그린 선이 표시됩니다. | :118 |
 | pencil_start_drawing | Start Drawing | 그리기 시작 | :169 |
 
-(`적용 대상` :131 → `apply_to`; `대상:` :136 → new `pencil_target_label`=Target:/대상:; choices :141 → `target_all_short/target_selected_short/target_current_short`; `취소` :163 → `common_cancel`.)
+(`적용 대상` :131 → `apply_to`; `대상:` :136 → new `pencil_target_label`=Target:/대상:; choices :141 (short-form "모두/선택/현재") → pre-existing `target_all/target_selected/target_current` (matches frame_targeting.py — see TARGET-KEY TAXONOMY note); `취소` :163 → `common_cancel`.)
 
 - [ ] **Step 1:** add import. **Step 2:** add keys (incl. `pencil_target_label`). **Step 3:** replace literals. **Step 4:** Korean-scan (as A2 Step 4, swap path). **Step 5:** ritual S6, commit `i18n: pencil_dialog 한글 리터럴 tr() 라우팅`.
 
@@ -378,7 +383,7 @@ Key table (add new keys; `common_*`/`target_*` already added in A1 — reuse, do
 | sticker_stroke | Stroke | 테두리 | :195 |
 | sticker_opacity | Opacity: | 투명도: | :216 |
 
-(`너비:` :145 → `common_width_label`; `높이:` :157 → `common_height_label`; `적용 대상` :237 → `apply_to`; choices :242 → `target_current_only/target_selected/target_all`; `적용` :255 → `common_apply`; `취소` :261 → `common_cancel`. Shape buttons built as a list → map in order to `sticker_shape_*`; if downstream compares label text, switch to a stable shape id stored on the button.)
+(`너비:` :145 → `common_width_label`; `높이:` :157 → `common_height_label`; `적용 대상` :237 → `apply_to`; choices :242 (full-form) → `target_current_only/target_selected_full/target_all_full` — see TARGET-KEY TAXONOMY note; `적용` :255 → `common_apply`; `취소` :261 → `common_cancel`. Shape buttons built as a list → map in order to `sticker_shape_*`; if downstream compares label text, switch to a stable shape id stored on the button.)
 
 - [ ] Steps 1–5. Commit `i18n: sticker_dialog 한글 리터럴 tr() 라우팅`.
 
