@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 from typing import TYPE_CHECKING, Optional
 from ...utils.image_utils import pil_to_wx_bitmap
 from ..style_constants_wx import Colors, ThemedDialog
+from ui.i18n import tr
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -42,7 +43,7 @@ class StickerDialog(ThemedDialog):
     """스티커/도형 추가 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="스티커/도형 추가",
+        super().__init__(parent or main_window, title=tr("sticker_dialog_title"),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._main_window = main_window
         self._original_image: Optional[Image.Image] = None
@@ -79,7 +80,7 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(15)
 
         # 도형 선택
-        shape_box = wx.StaticBox(self, label="도형 선택")
+        shape_box = wx.StaticBox(self, label=tr("sticker_choose_shape"))
         shape_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         shape_sizer = wx.StaticBoxSizer(shape_box, wx.VERTICAL)
         shape_sizer.AddSpacer(10)
@@ -87,12 +88,12 @@ class StickerDialog(ThemedDialog):
         shape_grid = wx.GridSizer(2, 3, 10, 10)
 
         shapes = [
-            ("사각형", "rectangle"),
-            ("원", "ellipse"),
-            ("삼각형", "triangle"),
-            ("별", "star"),
-            ("화살표", "arrow"),
-            ("하트", "heart"),
+            (tr("sticker_shape_rect"), "rectangle"),
+            (tr("sticker_shape_circle"), "ellipse"),
+            (tr("sticker_shape_triangle"), "triangle"),
+            (tr("sticker_shape_star"), "star"),
+            (tr("sticker_shape_arrow"), "arrow"),
+            (tr("sticker_shape_heart"), "heart"),
         ]
 
         for name, shape_type in shapes:
@@ -109,7 +110,7 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(10)
 
         # 크기/위치
-        pos_box = wx.StaticBox(self, label="크기 및 위치")
+        pos_box = wx.StaticBox(self, label=tr("sticker_size_pos"))
         pos_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         pos_sizer = wx.StaticBoxSizer(pos_box, wx.VERTICAL)
         pos_sizer.AddSpacer(10)
@@ -142,7 +143,7 @@ class StickerDialog(ThemedDialog):
 
         # 크기
         size_row = wx.BoxSizer(wx.HORIZONTAL)
-        w_label = wx.StaticText(self, label="너비:")
+        w_label = wx.StaticText(self, label=tr("common_width_label"))
         w_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_row.Add(w_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
@@ -154,7 +155,7 @@ class StickerDialog(ThemedDialog):
 
         size_row.AddSpacer(10)
 
-        h_label = wx.StaticText(self, label="높이:")
+        h_label = wx.StaticText(self, label=tr("common_height_label"))
         h_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_row.Add(h_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
@@ -170,14 +171,14 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(10)
 
         # 색상 설정
-        color_box = wx.StaticBox(self, label="색상")
+        color_box = wx.StaticBox(self, label=tr("sticker_color"))
         color_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_sizer = wx.StaticBoxSizer(color_box, wx.VERTICAL)
         color_sizer.AddSpacer(10)
 
         # 채우기 색상
         fill_row = wx.BoxSizer(wx.HORIZONTAL)
-        self._fill_check = wx.CheckBox(self, label="채우기")
+        self._fill_check = wx.CheckBox(self, label=tr("sticker_fill"))
         self._fill_check.SetValue(True)
         self._fill_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._fill_check.Bind(wx.EVT_CHECKBOX, self._on_setting_changed)
@@ -192,7 +193,7 @@ class StickerDialog(ThemedDialog):
 
         # 테두리
         stroke_row = wx.BoxSizer(wx.HORIZONTAL)
-        self._stroke_check = wx.CheckBox(self, label="테두리")
+        self._stroke_check = wx.CheckBox(self, label=tr("sticker_stroke"))
         self._stroke_check.SetValue(True)
         self._stroke_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._stroke_check.Bind(wx.EVT_CHECKBOX, self._on_setting_changed)
@@ -213,7 +214,7 @@ class StickerDialog(ThemedDialog):
 
         # 투명도
         opacity_row = wx.BoxSizer(wx.HORIZONTAL)
-        opacity_label = wx.StaticText(self, label="투명도:")
+        opacity_label = wx.StaticText(self, label=tr("sticker_opacity"))
         opacity_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         opacity_row.Add(opacity_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
@@ -234,12 +235,12 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(10)
 
         # 적용 대상
-        target_box = wx.StaticBox(self, label="적용 대상")
+        target_box = wx.StaticBox(self, label=tr("apply_to"))
         target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
-                                        choices=["현재 프레임만", "선택한 프레임", "모든 프레임"])
+                                        choices=[tr("target_current_only"), tr("target_selected_full"), tr("target_all_full")])
         self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
         self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(1)
@@ -252,13 +253,13 @@ class StickerDialog(ThemedDialog):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer.AddStretchSpacer()
 
-        apply_btn = wx.Button(self, wx.ID_OK, label="적용")
+        apply_btn = wx.Button(self, wx.ID_OK, label=tr("common_apply"))
         apply_btn.SetBackgroundColour(Colors.ACCENT)
         apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("common_cancel"))
         cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
