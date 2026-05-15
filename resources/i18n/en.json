@@ -386,6 +386,7 @@
     "resize_width": "Width",
     "resize_height": "Height",
     "resize_keep_ratio": "Keep Aspect Ratio",
+    "resize_keep_ratio_full": "Keep aspect ratio",
     "resize_preset": "Size Preset",
     "resize_filter": "Resampling Filter",
     "info_size": "Size: {size}",

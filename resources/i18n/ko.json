@@ -386,6 +386,7 @@
     "resize_width": "너비",
     "resize_height": "높이",
     "resize_keep_ratio": "비율 유지",
+    "resize_keep_ratio_full": "가로세로 비율 유지",
     "resize_preset": "크기 프리셋",
     "resize_filter": "리샘플링 필터",
     "info_size": "영상 크기: {size}",

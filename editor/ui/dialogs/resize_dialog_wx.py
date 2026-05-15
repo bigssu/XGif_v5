@@ -105,7 +105,7 @@ class ResizeDialog(ThemedDialog):
         size_sizer.Add(height_sizer, 0, wx.ALL, 10)
 
         # 비율 유지 체크박스
-        self._keep_ratio_check = wx.CheckBox(self, label=tr("resize_keep_ratio"))
+        self._keep_ratio_check = wx.CheckBox(self, label=tr("resize_keep_ratio_full"))
         self._keep_ratio_check.SetValue(True)
         self._keep_ratio_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_sizer.Add(self._keep_ratio_check, 0, wx.ALL, 10)
