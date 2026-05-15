@@ -681,6 +681,16 @@
     "help_sec_design_title": "Design Direction",
     "help_sec_design_body0": "The wxPython app structure for Windows was retained to avoid increasing the bundle size.",
     "help_sec_design_body1": "The UI was organized around a dark theme, unified icons, clear card depth, and a layer structure with low performance overhead.",
-    "help_sec_design_body2": "Defender bypass and Windows security state modification features were removed from the install/build flow."
+    "help_sec_design_body2": "Defender bypass and Windows security state modification features were removed from the install/build flow.",
+    "menu_view": "View(&V)",
+    "menu_help": "Help(&H)",
+    "action_help": "Help",
+    "action_about": "About XGif  v{v}",
+    "action_clear_recent": "Clear Recent Files",
+    "action_view_actual_size": "Actual Size\tCtrl+0",
+    "action_view_fit_screen": "Fit to Screen\tCtrl+9",
+    "info_memory_label": "Memory:",
+    "tip_play_pause": "Play/Pause (Space)",
+    "action_gpu_no_gpu": "Use GPU Acceleration (No GPU)"
   }
 }

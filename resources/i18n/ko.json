@@ -681,6 +681,16 @@
     "help_sec_design_title": "설계 방향",
     "help_sec_design_body0": "Windows용 wxPython 앱 구조를 유지해 번들 크기 증가를 피했습니다.",
     "help_sec_design_body1": "UI는 다크 테마, 통일된 아이콘, 명확한 카드 깊이, 성능에 부담이 적은 레이어 구조를 기준으로 정리했습니다.",
-    "help_sec_design_body2": "Defender 회피나 Windows 보안 상태 변경 기능은 설치/빌드 흐름에서 제거했습니다."
+    "help_sec_design_body2": "Defender 회피나 Windows 보안 상태 변경 기능은 설치/빌드 흐름에서 제거했습니다.",
+    "menu_view": "보기(&V)",
+    "menu_help": "도움말(&H)",
+    "action_help": "도움말",
+    "action_about": "XGif 정보  v{v}",
+    "action_clear_recent": "최근 파일 목록 지우기",
+    "action_view_actual_size": "실제 크기\tCtrl+0",
+    "action_view_fit_screen": "화면에 맞춤\tCtrl+9",
+    "info_memory_label": "메모리:",
+    "tip_play_pause": "재생/일시정지 (Space)",
+    "action_gpu_no_gpu": "GPU 가속 사용 (GPU 없음)"
   }
 }

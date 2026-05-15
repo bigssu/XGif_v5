@@ -429,7 +429,7 @@ class MainWindow(wx.Frame):
         info_sizer.Add(sep3, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
 
         # 메모리 사용량
-        self._memory_info = wx.StaticText(self._info_bar, label="메모리:")
+        self._memory_info = wx.StaticText(self._info_bar, label=self._translations.tr("info_memory_label"))
         self._memory_info.SetForegroundColour(Colors.TEXT_SECONDARY)
         if not self._is_low_end_mode:
             self._memory_info.Hide()
@@ -506,7 +506,9 @@ class MainWindow(wx.Frame):
         self._bottom_controls.SetBackgroundColour(Colors.RAIL_BG)
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self._play_btn = FlatIconButton("play", "재생/일시정지 (Space)", self._bottom_controls, size=(38, 38))
+        self._play_btn = FlatIconButton(
+            "play", self._translations.tr("tip_play_pause"), self._bottom_controls, size=(38, 38)
+        )
         self._play_btn.Bind(wx.EVT_BUTTON, lambda e: self.toggle_play())
         controls_sizer.Add(self._play_btn, 0, wx.ALL, 5)
 
@@ -575,7 +577,7 @@ class MainWindow(wx.Frame):
         self._save_btn = wx.Button(bottom_bar, label=save_text)
         self._save_btn.SetBackgroundColour(Colors.ACCENT)
         self._save_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self._save_btn.SetToolTip(translations.tr("btn_save_tooltip") if translations else "파일을 저장합니다 (Ctrl+Shift+S)")
+        self._save_btn.SetToolTip(translations.tr("btn_save_tooltip"))
         self._save_btn.Bind(wx.EVT_BUTTON, lambda e: self.save_file_as())
         bottom_sizer.Add(self._save_btn, 0, wx.ALL, 10)
 
@@ -595,87 +597,87 @@ class MainWindow(wx.Frame):
 
         # 파일 메뉴
         self._file_menu = wx.Menu()
-        self._action_new = self._file_menu.Append(wx.ID_NEW, "새로 만들기(&N)\tCtrl+N")
+        self._action_new = self._file_menu.Append(wx.ID_NEW, translations.tr("action_new") + "\tCtrl+N")
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.new_project(), self._action_new)
-        self._action_open = self._file_menu.Append(wx.ID_OPEN, "열기(&O)...\tCtrl+O")
+        self._action_open = self._file_menu.Append(wx.ID_OPEN, translations.tr("action_open") + "\tCtrl+O")
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.open_file(), self._action_open)
-        self._action_open_sequence = self._file_menu.Append(wx.ID_ANY, "이미지 시퀀스 열기...")
+        self._action_open_sequence = self._file_menu.Append(wx.ID_ANY, translations.tr("action_open_sequence"))
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.open_image_sequence(), self._action_open_sequence)
         self._recent_menu = wx.Menu()
-        self._file_menu.AppendSubMenu(self._recent_menu, "최근 파일(&R)")
+        self._file_menu.AppendSubMenu(self._recent_menu, translations.tr("menu_recent_files"))
         self._update_recent_files_menu()
-        action_clear_recent = self._file_menu.Append(wx.ID_ANY, "최근 파일 목록 지우기")
+        action_clear_recent = self._file_menu.Append(wx.ID_ANY, translations.tr("action_clear_recent"))
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self._clear_recent_files(), action_clear_recent)
         self._file_menu.AppendSeparator()
-        self._action_save = self._file_menu.Append(wx.ID_SAVE, translations.tr("action_save") if translations else "저장(&S)\tCtrl+S")
+        self._action_save = self._file_menu.Append(wx.ID_SAVE, translations.tr("action_save") + "\tCtrl+S")
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.save_file(), self._action_save)
-        self._action_save_as = self._file_menu.Append(wx.ID_SAVEAS, translations.tr("action_save_as") if translations else "다른 이름으로 저장(&A)...\tCtrl+Shift+S")
+        self._action_save_as = self._file_menu.Append(wx.ID_SAVEAS, translations.tr("action_save_as") + "\tCtrl+Shift+S")
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.save_file_as(), self._action_save_as)
         self._file_menu.AppendSeparator()
-        action_exit = self._file_menu.Append(wx.ID_EXIT, "종료(&X)\tCtrl+Q")
+        action_exit = self._file_menu.Append(wx.ID_EXIT, translations.tr("action_exit") + "\tCtrl+Q")
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.Close(), action_exit)
 
         # 편집 메뉴
         self._edit_menu = wx.Menu()
-        action_select_all = self._edit_menu.Append(wx.ID_SELECTALL, "모두 선택(&A)\tCtrl+A")
+        action_select_all = self._edit_menu.Append(wx.ID_SELECTALL, translations.tr("action_select_all") + "\tCtrl+A")
         self._edit_menu.Bind(wx.EVT_MENU, lambda e: self._select_all(), action_select_all)
         self._edit_menu.AppendSeparator()
-        action_delete = self._edit_menu.Append(wx.ID_DELETE, "프레임 삭제(&D)\tDel")
+        action_delete = self._edit_menu.Append(wx.ID_DELETE, translations.tr("action_delete") + "\tDel")
         self._edit_menu.Bind(wx.EVT_MENU, lambda e: self._delete_frame(), action_delete)
-        action_duplicate = self._edit_menu.Append(wx.ID_ANY, "프레임 복제\tCtrl+D")
+        action_duplicate = self._edit_menu.Append(wx.ID_ANY, translations.tr("action_duplicate") + "\tCtrl+D")
         self._edit_menu.Bind(wx.EVT_MENU, lambda e: self._duplicate_frame(), action_duplicate)
 
         # 관리 메뉴
         self._manage_menu = wx.Menu()
-        action_remove_dup = self._manage_menu.Append(wx.ID_ANY, "중복 프레임 제거")
+        action_remove_dup = self._manage_menu.Append(wx.ID_ANY, translations.tr("action_remove_dup"))
         self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._remove_duplicates(), action_remove_dup)
         self._manage_menu.AppendSeparator()
-        action_mosaic = self._manage_menu.Append(wx.ID_ANY, "모자이크/검열...")
+        action_mosaic = self._manage_menu.Append(wx.ID_ANY, translations.tr("action_mosaic"))
         self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._show_mosaic_toolbar(), action_mosaic)
-        action_speech_bubble = self._manage_menu.Append(wx.ID_ANY, "말풍선...")
+        action_speech_bubble = self._manage_menu.Append(wx.ID_ANY, translations.tr("action_speech_bubble"))
         self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._show_speech_bubble_toolbar(), action_speech_bubble)
-        action_watermark = self._manage_menu.Append(wx.ID_ANY, "워터마크...")
+        action_watermark = self._manage_menu.Append(wx.ID_ANY, translations.tr("action_watermark"))
         self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._show_watermark_toolbar(), action_watermark)
         self._manage_menu.AppendSeparator()
-        action_split_gif = self._manage_menu.Append(wx.ID_ANY, "선택 프레임 분할 저장...")
+        action_split_gif = self._manage_menu.Append(wx.ID_ANY, translations.tr("action_split_gif"))
         self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._split_gif(), action_split_gif)
-        action_merge_gif = self._manage_menu.Append(wx.ID_ANY, "GIF 끝에 병합...")
+        action_merge_gif = self._manage_menu.Append(wx.ID_ANY, translations.tr("action_merge_gif"))
         self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._merge_gif(), action_merge_gif)
-        action_insert_gif = self._manage_menu.Append(wx.ID_ANY, "현재 위치에 GIF 삽입...")
+        action_insert_gif = self._manage_menu.Append(wx.ID_ANY, translations.tr("action_insert_gif"))
         self._manage_menu.Bind(wx.EVT_MENU, lambda e: self._insert_gif(), action_insert_gif)
 
         # 보기 메뉴
         self._view_menu = wx.Menu()
-        self._view_menu.Append(wx.ID_ANY, "실제 크기\tCtrl+0")
-        self._view_menu.Append(wx.ID_ANY, "화면에 맞춤\tCtrl+9")
+        self._view_menu.Append(wx.ID_ANY, translations.tr("action_view_actual_size"))
+        self._view_menu.Append(wx.ID_ANY, translations.tr("action_view_fit_screen"))
 
         # 설정 메뉴 (GPU 체크는 지연 초기화 — UI 먼저 표시)
         self._settings_menu = wx.Menu()
-        self._action_gpu = self._settings_menu.AppendCheckItem(wx.ID_ANY, "GPU 가속 사용")
+        self._action_gpu = self._settings_menu.AppendCheckItem(wx.ID_ANY, translations.tr("action_gpu"))
         self._action_gpu.Check(False)
         self._action_gpu.Enable(False)
         self._settings_menu.Bind(wx.EVT_MENU, lambda e: self._toggle_gpu(e.IsChecked()), self._action_gpu)
-        action_gpu_info = self._settings_menu.Append(wx.ID_ANY, "GPU 정보...")
+        action_gpu_info = self._settings_menu.Append(wx.ID_ANY, translations.tr("action_gpu_info"))
         self._settings_menu.Bind(wx.EVT_MENU, lambda e: self._show_gpu_info(), action_gpu_info)
         # GPU 메뉴 상태를 비동기로 업데이트
         wx.CallLater(500, self._init_gpu_menu_state)
 
         # 도움말 메뉴
         self._help_menu = wx.Menu()
-        action_help = self._help_menu.Append(wx.ID_HELP, "도움말")
+        action_help = self._help_menu.Append(wx.ID_HELP, translations.tr("action_help"))
         self._help_menu.Bind(wx.EVT_MENU, lambda e: self._show_help_dialog(), action_help)
         self._help_menu.AppendSeparator()
-        action_about = self._help_menu.Append(wx.ID_ABOUT, f"XGif 정보  v{__version__}")
+        action_about = self._help_menu.Append(wx.ID_ABOUT, translations.tr("action_about", v=__version__))
         self._help_menu.Bind(wx.EVT_MENU, lambda e: self._show_about_dialog(), action_about)
 
         # === 다크 owner-drawn 메뉴 스트립 ===
         self._flat_menu_bar.set_items([
-            ("파일(&F)", self._file_menu),
-            ("편집(&E)", self._edit_menu),
-            ("관리(&M)", self._manage_menu),
-            ("보기(&V)", self._view_menu),
-            ("설정(&S)", self._settings_menu),
-            ("도움말(&H)", self._help_menu),
+            (translations.tr("menu_file"), self._file_menu),
+            (translations.tr("menu_edit"), self._edit_menu),
+            (translations.tr("menu_manage"), self._manage_menu),
+            (translations.tr("menu_view"), self._view_menu),
+            (translations.tr("menu_settings"), self._settings_menu),
+            (translations.tr("menu_help"), self._help_menu),
         ])
 
     def _setup_shortcuts(self):
@@ -1048,20 +1050,20 @@ class MainWindow(wx.Frame):
 
             # 상세 GPU 정보 툴팁
             status_text = "GPU" if is_gpu_mode else "CPU"
-            tooltip_lines = [f"모드: {status_text}"]
+            tooltip_lines = [self._translations.tr("gpu_tooltip_mode", mode=status_text)]
             if is_gpu_mode and gpu_info.get('available', False):
-                tooltip_lines.append(f"GPU: {gpu_info.get('name', 'N/A')}")
-                tooltip_lines.append(f"메모리: {gpu_info.get('memory_total', 0):,} MB")
-                tooltip_lines.append(f"사용 중: {gpu_info.get('memory_used', 0):,} MB")
-                tooltip_lines.append(f"여유: {gpu_info.get('memory_free', 0):,} MB")
-                tooltip_lines.append(f"CUDA: {gpu_info.get('cuda_version', 'N/A')}")
-                tooltip_lines.append(f"Compute: {gpu_info.get('compute_capability', 'N/A')}")
+                tooltip_lines.append(self._translations.tr("gpu_tooltip_gpu", name=gpu_info.get('name', 'N/A')))
+                tooltip_lines.append(self._translations.tr("gpu_tooltip_memory", total=f"{gpu_info.get('memory_total', 0):,}"))
+                tooltip_lines.append(self._translations.tr("gpu_tooltip_memory_used", used=f"{gpu_info.get('memory_used', 0):,}"))
+                tooltip_lines.append(self._translations.tr("gpu_tooltip_memory_free", free=f"{gpu_info.get('memory_free', 0):,}"))
+                tooltip_lines.append(self._translations.tr("gpu_tooltip_cuda", version=gpu_info.get('cuda_version', 'N/A')))
+                tooltip_lines.append(self._translations.tr("gpu_tooltip_compute", capability=gpu_info.get('compute_capability', 'N/A')))
             else:
                 if gpu_info.get('error'):
-                    tooltip_lines.append(f"오류: {gpu_info.get('error')}")
+                    tooltip_lines.append(self._translations.tr("gpu_tooltip_error", error=gpu_info.get('error')))
                 else:
-                    tooltip_lines.append("GPU를 사용할 수 없습니다")
-                    tooltip_lines.append("CuPy 설치 필요: pip install -r requirements-gpu.txt")
+                    tooltip_lines.append(self._translations.tr("gpu_tooltip_unavailable"))
+                    tooltip_lines.append(self._translations.tr("gpu_tooltip_requirements"))
 
             self._gpu_label.SetToolTip("\n".join(tooltip_lines))
         except Exception as e:
@@ -1985,7 +1987,7 @@ class MainWindow(wx.Frame):
 
         # 새 항목 추가
         if not self._recent_files:
-            item = self._recent_menu.Append(wx.ID_ANY, "(없음)")
+            item = self._recent_menu.Append(wx.ID_ANY, self._translations.tr("recent_files_none"))
             item.Enable(False)
         else:
             for i, file_path in enumerate(self._recent_files, 1):
@@ -2082,7 +2084,7 @@ class MainWindow(wx.Frame):
         try:
             if not self._action_gpu:
                 return
-            text = "GPU 가속 사용" if available else "GPU 가속 사용 (GPU 없음)"
+            text = self._translations.tr("action_gpu") if available else self._translations.tr("action_gpu_no_gpu")
             self._action_gpu.SetItemLabel(text)
             self._action_gpu.Check(enabled)
             self._action_gpu.Enable(available)
