@@ -527,6 +527,7 @@ class SettingsDialog(ThemedDialog):
 
         # FormRow 라벨 업데이트 (FormRow.set_label)
         if hasattr(self, 'lang_row'):
+            # lang row label은 원본 디자인("Language:")과 맞추기 위해 콜론 포함
             self.lang_row.set_label(tr('language') + ":")
         if hasattr(self, 'memory_row'):
             self.memory_row.set_label(tr('max_memory'))

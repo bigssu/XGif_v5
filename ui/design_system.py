@@ -586,7 +586,7 @@ class FormSection(wx.Panel):
         # 생성 시점의 부모 배경을 상속. 부모 배경이 이후 바뀌면 Refresh() 필요.
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self._sizer = wx.BoxSizer(wx.VERTICAL)
-        self._heading = wx.StaticText(self, label=title)
+        self._heading: wx.StaticText = wx.StaticText(self, label=title)
         self._heading.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._heading.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         self._sizer.Add(self._heading, 0, wx.BOTTOM, 6)
@@ -605,13 +605,17 @@ class FormSection(wx.Panel):
         """Add *window* to this section's vertical stack.
 
         *window* is reparented into this FormSection if it is not already a
-        child. Returns *window* (NOT the underlying control for add_row).
+        child. Returns *window*.
         """
         if window.GetParent() is not self:
             window.Reparent(self)
         self._sizer.Add(window, 0, wx.EXPAND | wx.BOTTOM, gap)
         return window
 
-    def add_row(self, label: str, control: wx.Window, *, gap: int = 6):
+    def add_row(self, label: str, control: wx.Window, *, gap: int = 6) -> "FormRow":
+        """Wrap *control* in a FormRow and add it to this section.
+
+        Returns the FormRow (not *control*) — store it to call set_label() later.
+        """
         row = FormRow(self, label, control)
         return self.add(row, gap=gap)
