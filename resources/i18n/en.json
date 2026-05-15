@@ -567,6 +567,8 @@
     "target_all_short": "All",
     "target_selected_short": "Selected",
     "target_current_short": "Current",
+    "target_selected_full": "Selected frames",
+    "target_all_full": "All frames",
     "apply_to": "Apply To",
     "msg_out_of_memory": "Not enough memory to perform this operation.",
     "msg_gif_open_required": "Open a GIF file first.",

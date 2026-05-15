@@ -151,7 +151,8 @@ def test_editor_i18n_common_keys_present_in_both_locales():
             "common_done", "common_width_label", "common_height_label",
             "common_size_label", "target_current_only", "target_selected",
             "target_all", "target_all_short", "target_selected_short",
-            "target_current_short", "apply_to", "msg_out_of_memory",
+            "target_current_short", "target_selected_full", "target_all_full",
+            "apply_to", "msg_out_of_memory",
             "msg_gif_open_required", "msg_undo_error",
         ):
             assert key in editor, f"{key} missing in {locale_path}"

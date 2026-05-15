@@ -567,6 +567,8 @@
     "target_all_short": "모두",
     "target_selected_short": "선택",
     "target_current_short": "현재",
+    "target_selected_full": "선택한 프레임",
+    "target_all_full": "모든 프레임",
     "apply_to": "적용 대상",
     "msg_out_of_memory": "메모리가 부족하여 작업을 수행할 수 없습니다.",
     "msg_gif_open_required": "GIF 파일을 먼저 열어주세요",
