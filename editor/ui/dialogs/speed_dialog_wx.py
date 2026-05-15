@@ -7,6 +7,7 @@ import wx
 from typing import TYPE_CHECKING
 
 from ..style_constants_wx import Colors, ThemedDialog
+from ui.i18n import tr
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -16,7 +17,7 @@ class SpeedDialog(ThemedDialog):
     """속도 조절 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="속도 조절")
+        super().__init__(parent or main_window, title=tr("speed_dialog_title"))
         self._main_window = main_window
 
         self._setup_ui()
@@ -37,7 +38,7 @@ class SpeedDialog(ThemedDialog):
         main_sizer.Add(self._info_label, 0, wx.ALL | wx.EXPAND, 20)
 
         # 속도 배율 그룹
-        speed_box = wx.StaticBox(self, label="속도 배율")
+        speed_box = wx.StaticBox(self, label=tr("speed_multiplier"))
         speed_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         speed_sizer = wx.StaticBoxSizer(speed_box, wx.VERTICAL)
         speed_sizer.AddSpacer(10)
@@ -69,7 +70,7 @@ class SpeedDialog(ThemedDialog):
         # 설명
         desc_label = wx.StaticText(
             self,
-            label="1.0x = 원래 속도, 2.0x = 2배 빠르게, 0.5x = 2배 느리게"
+            label=tr("speed_hint")
         )
         desc_label.SetForegroundColour(Colors.TEXT_MUTED)
         font = desc_label.GetFont()
@@ -110,13 +111,13 @@ class SpeedDialog(ThemedDialog):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer.AddStretchSpacer()
 
-        apply_btn = wx.Button(self, wx.ID_OK, label="적용")
+        apply_btn = wx.Button(self, wx.ID_OK, label=tr("common_apply"))
         apply_btn.SetBackgroundColour(Colors.ACCENT)
         apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("common_cancel"))
         cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
@@ -137,7 +138,7 @@ class SpeedDialog(ThemedDialog):
             self._original_duration = total_ms
             frame_count = getattr(frames, 'frame_count', 0)
             self._info_label.SetLabel(
-                f"현재 재생 시간: {total_ms / 1000:.2f}초 ({frame_count}프레임)"
+                tr("speed_cur_duration", sec=total_ms / 1000, n=frame_count)
             )
             self._update_result()
         except Exception:
@@ -173,7 +174,7 @@ class SpeedDialog(ThemedDialog):
                     val = 1.0
                 new_duration = self._original_duration / val
                 self._result_label.SetLabel(
-                    f"변경 후 재생 시간: {new_duration / 1000:.2f}초"
+                    tr("speed_new_duration", sec=new_duration / 1000)
                 )
         except Exception:
             pass

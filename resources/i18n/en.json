@@ -600,6 +600,11 @@
     "resize_resample_bicubic": "Bicubic (recommended)",
     "resize_resample_lanczos": "Lanczos (high quality)",
     "resize_size_presets": "Size presets",
-    "resize_cur_size": "Current size: {w} x {h} px"
+    "resize_cur_size": "Current size: {w} x {h} px",
+    "speed_dialog_title": "Speed",
+    "speed_multiplier": "Speed multiplier",
+    "speed_hint": "1.0x = original speed, 2.0x = 2x faster, 0.5x = 2x slower",
+    "speed_cur_duration": "Current duration: {sec:.2f}s ({n} frames)",
+    "speed_new_duration": "Duration after change: {sec:.2f}s"
   }
 }

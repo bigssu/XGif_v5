@@ -600,6 +600,11 @@
     "resize_resample_bicubic": "Bicubic (권장)",
     "resize_resample_lanczos": "Lanczos (고품질)",
     "resize_size_presets": "크기 프리셋",
-    "resize_cur_size": "현재 크기: {w} x {h} px"
+    "resize_cur_size": "현재 크기: {w} x {h} px",
+    "speed_dialog_title": "속도 조절",
+    "speed_multiplier": "속도 배율",
+    "speed_hint": "1.0x = 원래 속도, 2.0x = 2배 빠르게, 0.5x = 2배 느리게",
+    "speed_cur_duration": "현재 재생 시간: {sec:.2f}초 ({n}프레임)",
+    "speed_new_duration": "변경 후 재생 시간: {sec:.2f}초"
   }
 }
