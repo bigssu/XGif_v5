@@ -512,6 +512,8 @@ class FrameListWidget(wx.Panel):
         if len(selected_rows) >= frames.frame_count:
             return
 
+        translations = getattr(self._main_window, '_translations', None)
+
         try:
             # Undo 등록
             undo_mgr = self._main_window.undo_manager
@@ -526,7 +528,12 @@ class FrameListWidget(wx.Panel):
                             frames.delete_frame(row)
                     self._main_window._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"프레임 삭제 실패:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    _t = getattr(self._main_window, '_translations', None)
+                    wx.MessageBox(
+                        _t.tr("msg_frame_delete_failed", e=str(e)) if _t else f"프레임 삭제 실패:\n{str(e)}",
+                        _t.tr("common_error") if _t else "오류",
+                        wx.OK | wx.ICON_ERROR,
+                    )
                     raise
 
             def undo():
@@ -537,7 +544,12 @@ class FrameListWidget(wx.Panel):
                     frames._selected_indices = old_frames._selected_indices.copy()
                     self._main_window._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"실행 취소 실패:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    _t = getattr(self._main_window, '_translations', None)
+                    wx.MessageBox(
+                        _t.tr("msg_undo_failed", e=str(e)) if _t else f"실행 취소 실패:\n{str(e)}",
+                        _t.tr("common_error") if _t else "오류",
+                        wx.OK | wx.ICON_ERROR,
+                    )
                     raise
 
             # Undo 등록 및 실행
@@ -549,9 +561,17 @@ class FrameListWidget(wx.Panel):
             wx.PostEvent(self, evt)
 
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "메모리 부족", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                translations.tr("msg_out_of_memory") if translations else "메모리가 부족하여 작업을 수행할 수 없습니다.",
+                translations.tr("common_out_of_memory") if translations else "메모리 부족",
+                wx.OK | wx.ICON_WARNING,
+            )
         except Exception as e:
-            wx.MessageBox(f"프레임 삭제 중 오류가 발생했습니다:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                translations.tr("msg_frame_delete_error", e=str(e)) if translations else f"프레임 삭제 중 오류가 발생했습니다:\n{str(e)}",
+                translations.tr("common_error") if translations else "오류",
+                wx.OK | wx.ICON_ERROR,
+            )
 
     def _duplicate_frame(self):
         """현재 프레임 복제"""

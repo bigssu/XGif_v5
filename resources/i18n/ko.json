@@ -751,6 +751,10 @@
     "msg_memory_warning_title": "메모리 경고",
     "msg_split_saved_body": "{count}개의 파일이 저장되었습니다.\n{path}",
     "msg_split_failed_body": "저장 실패:\n{e}",
-    "msg_gif_open_failed_body": "파일 열기 실패:\n{e}"
+    "msg_gif_open_failed_body": "파일 열기 실패:\n{e}",
+    "msg_frame_delete_failed": "프레임 삭제 실패:\n{e}",
+    "msg_undo_failed": "실행 취소 실패:\n{e}",
+    "msg_frame_delete_error": "프레임 삭제 중 오류가 발생했습니다:\n{e}",
+    "common_out_of_memory": "메모리 부족"
   }
 }

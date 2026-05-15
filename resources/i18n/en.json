@@ -751,6 +751,10 @@
     "msg_memory_warning_title": "Memory Warning",
     "msg_split_saved_body": "{count} file(s) saved.\n{path}",
     "msg_split_failed_body": "Save failed:\n{e}",
-    "msg_gif_open_failed_body": "Failed to open file:\n{e}"
+    "msg_gif_open_failed_body": "Failed to open file:\n{e}",
+    "msg_frame_delete_failed": "Failed to delete frame:\n{e}",
+    "msg_undo_failed": "Undo failed:\n{e}",
+    "msg_frame_delete_error": "An error occurred while deleting frames:\n{e}",
+    "common_out_of_memory": "Out of Memory"
   }
 }
