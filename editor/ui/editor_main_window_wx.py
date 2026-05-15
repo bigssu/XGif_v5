@@ -339,9 +339,10 @@ class MainWindow(wx.Frame):
         display_idx = wx.Display.GetFromWindow(self)
         display = wx.Display(display_idx if display_idx >= 0 else 0)
         screen = display.GetClientArea()
-        init_w = min(preferred_w, screen.width - 40)
-        init_h = min(preferred_h, screen.height - 40)
-        self.SetSize((init_w, init_h))
+        # 화면 작업영역으로 클램프하되 상호작용 최소(880x620) 아래로는 내려가지 않음
+        init_w = max(880, min(preferred_w, screen.width - 40))
+        init_h = max(620, min(preferred_h, screen.height - 40))
+        self.SetSize(init_w, init_h)
 
         # 중앙 패널
         central_panel = wx.Panel(self)
