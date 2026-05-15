@@ -611,7 +611,8 @@ class MainWindow(wx.Frame):
         self._file_menu.AppendSeparator()
         self._action_save = self._file_menu.Append(wx.ID_SAVE, translations.tr("action_save") + "\tCtrl+S")
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.save_file(), self._action_save)
-        self._action_save_as = self._file_menu.Append(wx.ID_SAVEAS, translations.tr("action_save_as") + "\tCtrl+Shift+S")
+        self._action_save_as = self._file_menu.Append(
+            wx.ID_SAVEAS, translations.tr("action_save_as") + "\tCtrl+Shift+S")
         self._file_menu.Bind(wx.EVT_MENU, lambda e: self.save_file_as(), self._action_save_as)
         self._file_menu.AppendSeparator()
         action_exit = self._file_menu.Append(wx.ID_EXIT, translations.tr("action_exit") + "\tCtrl+Q")
@@ -732,13 +733,10 @@ class MainWindow(wx.Frame):
         if file_path is None:
             dlg = wx.FileDialog(
                 self,
-                "파일 열기",
+                self._translations.tr("dlg_open_file_title"),
                 self._last_directory,
                 "",
-                "모든 지원 파일 (*.gif;*.mp4;*.avi;*.mov;*.mkv;*.webm)|*.gif;*.mp4;*.avi;*.mov;*.mkv;*.webm|"
-                "GIF 파일 (*.gif)|*.gif|"
-                "비디오 파일 (*.mp4;*.avi;*.mov;*.mkv;*.webm)|*.mp4;*.avi;*.mov;*.mkv;*.webm|"
-                "모든 파일 (*.*)|*.*",
+                self._translations.tr("dlg_open_filter"),
                 wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
             )
             if dlg.ShowModal() == wx.ID_OK:
@@ -782,7 +780,9 @@ class MainWindow(wx.Frame):
             self._refresh_all()
 
         except Exception as e:
-            wx.MessageBox(f"파일을 열 수 없습니다:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_open_failed_body", e=str(e)),
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def save_file(self):
         """저장"""
@@ -809,8 +809,8 @@ class MainWindow(wx.Frame):
         """지정된 경로에 설정과 함께 저장 (비동기 처리)"""
         # 진행률 다이얼로그
         self._save_progress = wx.ProgressDialog(
-            "저장 중",
-            "파일 저장 중...",
+            self._translations.tr("prog_saving_title"),
+            self._translations.tr("prog_saving_msg"),
             maximum=100,
             parent=self,
             style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE
@@ -849,8 +849,8 @@ class MainWindow(wx.Frame):
 
         if not result.success:
             wx.MessageBox(
-                f"저장 실패:\n{result.error_message}",
-                "오류",
+                self._translations.tr("msg_save_failed_body", e=result.error_message),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
             return
@@ -867,8 +867,8 @@ class MainWindow(wx.Frame):
         self._update_info_bar()
 
         wx.MessageBox(
-            f"저장되었습니다.\n파일 크기: {result.file_size / 1024:.1f} KB",
-            "저장 완료",
+            self._translations.tr("msg_saved_body", kb=result.file_size / 1024),
+            self._translations.tr("msg_save_complete"),
             wx.OK | wx.ICON_INFORMATION
         )
 
@@ -889,8 +889,8 @@ class MainWindow(wx.Frame):
             self._save_progress.Destroy()
             self._save_progress = None
         wx.MessageBox(
-            f"저장 실패:\n{error_msg}",
-            "오류",
+            self._translations.tr("msg_save_failed_body", e=error_msg),
+            self._translations.tr("msg_error"),
             wx.OK | wx.ICON_ERROR
         )
 
@@ -922,8 +922,8 @@ class MainWindow(wx.Frame):
 
         dlg = wx.MessageDialog(
             self,
-            "변경사항을 저장하시겠습니까?",
-            "확인",
+            self._translations.tr("msg_confirm_save_body"),
+            self._translations.tr("msg_confirm"),
             wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION
         )
         result = dlg.ShowModal()
@@ -957,7 +957,8 @@ class MainWindow(wx.Frame):
             else:
                 size_str = f"{self._frames.width}x{self._frames.height}"
                 self._size_info.SetLabel(self._translations.tr("info_size", size=size_str))
-                self._frame_count_info.SetLabel(self._translations.tr("info_frame_count", count=self._frames.frame_count))
+                self._frame_count_info.SetLabel(
+                    self._translations.tr("info_frame_count", count=self._frames.frame_count))
                 duration = self._frames.total_duration / 1000.0
                 self._duration_info.SetLabel(self._translations.tr("info_duration", duration=f"{duration:.1f}"))
 
@@ -1053,11 +1054,16 @@ class MainWindow(wx.Frame):
             tooltip_lines = [self._translations.tr("gpu_tooltip_mode", mode=status_text)]
             if is_gpu_mode and gpu_info.get('available', False):
                 tooltip_lines.append(self._translations.tr("gpu_tooltip_gpu", name=gpu_info.get('name', 'N/A')))
-                tooltip_lines.append(self._translations.tr("gpu_tooltip_memory", total=f"{gpu_info.get('memory_total', 0):,}"))
-                tooltip_lines.append(self._translations.tr("gpu_tooltip_memory_used", used=f"{gpu_info.get('memory_used', 0):,}"))
-                tooltip_lines.append(self._translations.tr("gpu_tooltip_memory_free", free=f"{gpu_info.get('memory_free', 0):,}"))
-                tooltip_lines.append(self._translations.tr("gpu_tooltip_cuda", version=gpu_info.get('cuda_version', 'N/A')))
-                tooltip_lines.append(self._translations.tr("gpu_tooltip_compute", capability=gpu_info.get('compute_capability', 'N/A')))
+                tooltip_lines.append(self._translations.tr(
+                    "gpu_tooltip_memory", total=f"{gpu_info.get('memory_total', 0):,}"))
+                tooltip_lines.append(self._translations.tr(
+                    "gpu_tooltip_memory_used", used=f"{gpu_info.get('memory_used', 0):,}"))
+                tooltip_lines.append(self._translations.tr(
+                    "gpu_tooltip_memory_free", free=f"{gpu_info.get('memory_free', 0):,}"))
+                tooltip_lines.append(self._translations.tr(
+                    "gpu_tooltip_cuda", version=gpu_info.get('cuda_version', 'N/A')))
+                tooltip_lines.append(self._translations.tr(
+                    "gpu_tooltip_compute", capability=gpu_info.get('compute_capability', 'N/A')))
             else:
                 if gpu_info.get('error'):
                     tooltip_lines.append(self._translations.tr("gpu_tooltip_error", error=gpu_info.get('error')))
@@ -1165,7 +1171,9 @@ class MainWindow(wx.Frame):
             return
 
         if not self._frames._is_valid_index(self._frames.current_index):
-            wx.MessageBox("유효하지 않은 프레임 인덱스입니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_invalid_frame_index"),
+                self._translations.tr("msg_warning"), wx.OK | wx.ICON_WARNING)
             return
 
         try:
@@ -1176,8 +1184,8 @@ class MainWindow(wx.Frame):
                 self._refresh_all()
                 self._is_modified = True
                 wx.MessageBox(
-                    f"프레임이 복제되었습니다.\n(메모리 사용량이 커서 실행 취소 기능을 사용할 수 없습니다: {current_memory_mb:.1f}MB)",
-                    "알림",
+                    self._translations.tr("msg_dup_no_undo", mb=current_memory_mb),
+                    self._translations.tr("common_notice"),
                     wx.OK | wx.ICON_INFORMATION
                 )
                 return
@@ -1194,7 +1202,9 @@ class MainWindow(wx.Frame):
                     self._frames.duplicate_frame(current_idx)
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"프레임 복제 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_frame_duplicate_error") + f":\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -1202,15 +1212,21 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda("프레임 복제", execute, undo, memory_usage)
             self._is_modified = True
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("msg_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"프레임 복제 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_frame_duplicate_error") + f": {e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _remove_duplicates(self):
         """중복 프레임 제거"""
@@ -1227,8 +1243,8 @@ class MainWindow(wx.Frame):
                 self._refresh_all()
                 self._is_modified = True
                 wx.MessageBox(
-                    f"중복 프레임 {removed}개가 제거되었습니다.\n(메모리 제한으로 실행취소 불가: {current_memory_mb:.1f}MB)",
-                    "완료",
+                    self._translations.tr("msg_dup_removed_no_undo", removed=removed, mb=current_memory_mb),
+                    self._translations.tr("common_done"),
                     wx.OK | wx.ICON_INFORMATION
                 )
                 return
@@ -1243,7 +1259,9 @@ class MainWindow(wx.Frame):
                     self._frames.remove_duplicates()
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"중복 제거 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_duplicate_remove_error") + f":\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -1251,7 +1269,9 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda("중복 프레임 제거", execute, undo, memory_usage)
@@ -1259,41 +1279,47 @@ class MainWindow(wx.Frame):
 
             removed = old_count - self._frames.frame_count
             wx.MessageBox(
-                f"중복 프레임 {removed}개가 제거되었습니다.",
-                "완료",
+                self._translations.tr("msg_duplicate_removed", count=removed),
+                self._translations.tr("common_done"),
                 wx.OK | wx.ICON_INFORMATION
             )
         except MemoryError:
             wx.MessageBox(
-                "메모리가 부족하여 작업을 수행할 수 없습니다.",
-                "경고",
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"),
                 wx.OK | wx.ICON_WARNING
             )
         except Exception as e:
             wx.MessageBox(
-                f"중복 제거 오류:\n{str(e)}",
-                "오류",
+                self._translations.tr("msg_duplicate_remove_error") + f":\n{e}",
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
 
     def _show_mosaic_toolbar(self):
         """모자이크 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._mosaic_toolbar, show_target_frame_hint=True)
 
     def _show_speech_bubble_toolbar(self):
         """말풍선 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._speech_bubble_toolbar, show_target_frame_hint=True)
 
     def _show_watermark_toolbar(self):
         """워터마크 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._watermark_toolbar)
 
@@ -1305,7 +1331,7 @@ class MainWindow(wx.Frame):
         # 폴더 선택 다이얼로그
         dlg = wx.DirDialog(
             self,
-            "이미지 시퀀스 폴더 선택",
+            self._translations.tr("dlg_img_seq_folder_title"),
             self._last_directory if self._last_directory else "",
             wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST
         )
@@ -1320,9 +1346,9 @@ class MainWindow(wx.Frame):
         # 딜레이 설정 다이얼로그
         delay_dlg = wx.NumberEntryDialog(
             self,
-            "각 프레임의 딜레이를 입력하세요:",
-            "딜레이 (밀리초):",
-            "프레임 딜레이 설정",
+            self._translations.tr("dlg_frame_delay_msg"),
+            self._translations.tr("dlg_frame_delay_prompt"),
+            self._translations.tr("dlg_frame_delay_title"),
             100,
             10,
             5000
@@ -1341,8 +1367,8 @@ class MainWindow(wx.Frame):
 
             if not result.success:
                 wx.MessageBox(
-                    f"이미지 시퀀스 로드 실패:\n{result.error_message}",
-                    "오류",
+                    self._translations.tr("msg_img_seq_load_failed_body", e=result.error_message),
+                    self._translations.tr("msg_error"),
                     wx.OK | wx.ICON_ERROR
                 )
                 return
@@ -1360,15 +1386,15 @@ class MainWindow(wx.Frame):
             self._update_info_bar()
 
             wx.MessageBox(
-                f"이미지 시퀀스가 로드되었습니다.\n프레임 수: {self._frames.frame_count}개",
-                "완료",
+                self._translations.tr("msg_img_seq_loaded_body", count=self._frames.frame_count),
+                self._translations.tr("common_done"),
                 wx.OK | wx.ICON_INFORMATION
             )
 
         except Exception as e:
             wx.MessageBox(
-                f"이미지 시퀀스 로드 오류:\n{str(e)}",
-                "오류",
+                self._translations.tr("msg_img_seq_load_failed_body", e=str(e)),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
 
@@ -1378,8 +1404,8 @@ class MainWindow(wx.Frame):
             from ..core.video_decoder import VideoDecoder
         except ImportError:
             wx.MessageBox(
-                "비디오 디코더를 사용할 수 없습니다.\nffmpeg-python이 설치되어 있는지 확인하세요.",
-                "오류",
+                self._translations.tr("msg_video_decoder_unavailable"),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
             return
@@ -1388,8 +1414,8 @@ class MainWindow(wx.Frame):
         video_info = VideoDecoder.get_video_info(file_path)
         if not video_info:
             wx.MessageBox(
-                "비디오 정보를 가져올 수 없습니다.",
-                "오류",
+                self._translations.tr("msg_video_info_unavailable"),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
             return
@@ -1397,10 +1423,10 @@ class MainWindow(wx.Frame):
         # FPS 설정 다이얼로그
         dlg = wx.NumberEntryDialog(
             self,
-            f"비디오 정보: {video_info.width}x{video_info.height}, {video_info.duration:.1f}초\n\n"
-            f"GIF FPS를 선택하세요 (낮을수록 파일 크기 감소):",
-            "FPS:",
-            "비디오 → GIF 변환",
+            self._translations.tr(
+                "dlg_video_fps_msg", w=video_info.width, h=video_info.height, dur=video_info.duration),
+            self._translations.tr("dlg_video_fps_prompt"),
+            self._translations.tr("dlg_video_fps_title"),
             10,
             1,
             30
@@ -1415,8 +1441,8 @@ class MainWindow(wx.Frame):
 
         # 진행률 대화상자
         self._video_progress = wx.ProgressDialog(
-            "비디오 → GIF 변환",
-            "비디오 변환 중...",
+            self._translations.tr("prog_video_conv_title"),
+            self._translations.tr("prog_video_conv_msg"),
             maximum=100,
             parent=self,
             style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_CAN_ABORT
@@ -1448,7 +1474,9 @@ class MainWindow(wx.Frame):
         try:
             if hasattr(self, '_video_progress') and self._video_progress:
                 percent = int((current / total) * 100) if total > 0 else 0
-                self._video_progress.Update(percent, f"프레임 추출 중... ({current}/{total})")
+                self._video_progress.Update(
+                    percent,
+                    self._translations.tr("prog_extract_frames_msg", current=current, total=total))
         except (RuntimeError, wx.PyDeadObjectError):
             pass
 
@@ -1461,8 +1489,8 @@ class MainWindow(wx.Frame):
         if not result.success:
             wx.CallAfter(
                 wx.MessageBox,
-                f"비디오 변환 오류:\n{result.error_message}",
-                "오류",
+                self._translations.tr("msg_video_load_failed", e=result.error_message),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
             return
@@ -1485,10 +1513,8 @@ class MainWindow(wx.Frame):
 
         wx.CallAfter(
             wx.MessageBox,
-            f"비디오가 GIF로 변환되었습니다.\n"
-            f"프레임 수: {self._frames.frame_count}개\n"
-            f"저장하려면 '저장' 버튼을 클릭하세요.",
-            "변환 완료",
+            self._translations.tr("msg_video_converted_body", count=self._frames.frame_count),
+            self._translations.tr("msg_video_converted_title"),
             wx.OK | wx.ICON_INFORMATION
         )
 
@@ -1500,8 +1526,8 @@ class MainWindow(wx.Frame):
 
         wx.CallAfter(
             wx.MessageBox,
-            f"비디오 변환 오류:\n{error_msg}",
-            "오류",
+            self._translations.tr("msg_video_load_failed", e=error_msg),
+            self._translations.tr("msg_error"),
             wx.OK | wx.ICON_ERROR
         )
 
@@ -1532,7 +1558,9 @@ class MainWindow(wx.Frame):
                                 frame.flip_vertical()
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"뒤집기 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_flip_error") + f":\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -1540,16 +1568,22 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda(f"프레임 뒤집기 ({direction_name})", execute, undo, memory_usage)
             self._is_modified = True
 
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"뒤집기 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_flip_error") + f": {e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _reverse_frames(self):
         """역재생 (프레임 순서 뒤집기)"""
@@ -1565,7 +1599,9 @@ class MainWindow(wx.Frame):
                     self._frames.reverse_frames()
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"역재생 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_reverse_error") + f":\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -1573,15 +1609,21 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda("프레임 순서 반전", execute, undo, memory_usage)
             self._is_modified = True
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"역재생 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_reverse_error") + f": {e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _delete_selected_frames(self):
         """선택한 프레임 삭제"""
@@ -1594,8 +1636,8 @@ class MainWindow(wx.Frame):
 
         if len(selected) >= self._frames.frame_count:
             wx.MessageBox(
-                "최소 1개 이상의 프레임이 필요합니다.",
-                "경고",
+                self._translations.tr("msg_min_one_frame_body"),
+                self._translations.tr("common_warning"),
                 wx.OK | wx.ICON_WARNING
             )
             return
@@ -1605,7 +1647,9 @@ class MainWindow(wx.Frame):
             self._is_modified = True
             self._refresh_all()
         except Exception as e:
-            wx.MessageBox(f"프레임 삭제 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_frame_reduce_error") + f": {e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _reduce_frames(self):
         """프레임 감소 (매 2번째 프레임만 유지)"""
@@ -1623,8 +1667,8 @@ class MainWindow(wx.Frame):
                 self._refresh_all()
                 self._is_modified = True
                 wx.MessageBox(
-                    f"{removed}개 프레임이 제거되었습니다.\n(메모리 제한으로 Undo 불가: {current_memory_mb:.1f}MB)",
-                    "완료",
+                    self._translations.tr("msg_reduce_no_undo", removed=removed, mb=current_memory_mb),
+                    self._translations.tr("common_done"),
                     wx.OK | wx.ICON_INFORMATION
                 )
                 return
@@ -1638,7 +1682,9 @@ class MainWindow(wx.Frame):
                     self._frames.reduce_frames(2)
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"프레임 감소 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_frame_reduce_error") + f":\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -1646,16 +1692,22 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda("프레임 감소", execute, undo, memory_usage)
             self._is_modified = True
 
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"프레임 감소 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_frame_reduce_error") + f": {e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _scale_speed(self, factor: float):
         """속도 조절 (딜레이에 역수 적용)
@@ -1675,7 +1727,9 @@ class MainWindow(wx.Frame):
                     self._frames.scale_delays(1.0 / factor)
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"속도 조절 실패:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_speed_error") + f":\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -1685,16 +1739,22 @@ class MainWindow(wx.Frame):
                             self._frames[i].delay_ms = delay
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda(f"속도 조절 ({factor_str})", execute, undo, 0)
             self._is_modified = True
 
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"속도 조절 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_speed_error") + f": {e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _set_all_delays(self):
         """모든 프레임 딜레이 일괄 설정"""
@@ -1708,9 +1768,9 @@ class MainWindow(wx.Frame):
         # 딜레이 입력 다이얼로그
         dlg = wx.NumberEntryDialog(
             self,
-            "모든 프레임에 적용할 딜레이를 입력하세요:",
-            "딜레이 (밀리초):",
-            "모든 프레임 딜레이 설정",
+            self._translations.tr("dlg_all_delay_msg"),
+            self._translations.tr("dlg_all_delay_prompt"),
+            self._translations.tr("dlg_all_delay_title"),
             current_delay,
             10,
             10000
@@ -1727,7 +1787,9 @@ class MainWindow(wx.Frame):
                         self._frames.set_delay_for_all(delay)
                         self._refresh_all()
                     except Exception as e:
-                        wx.MessageBox(f"딜레이 설정 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                        wx.MessageBox(
+                            self._translations.tr("msg_delay_error") + f":\n{e}",
+                            self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                         raise
 
                 def undo():
@@ -1737,16 +1799,22 @@ class MainWindow(wx.Frame):
                                 self._frames[i].delay_ms = old_delay
                         self._refresh_all()
                     except Exception as e:
-                        wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                        wx.MessageBox(
+                            self._translations.tr("msg_undo_error", e=e),
+                            self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                         raise
 
                 self._undo_manager.execute_lambda(f"모든 프레임 딜레이 설정 ({delay}ms)", execute, undo, 0)
                 self._is_modified = True
 
             except MemoryError:
-                wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+                wx.MessageBox(
+                    self._translations.tr("msg_out_of_memory"),
+                    self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             except Exception as e:
-                wx.MessageBox(f"딜레이 설정 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                wx.MessageBox(
+                    self._translations.tr("msg_delay_error") + f": {e}",
+                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
         dlg.Destroy()
 
@@ -1764,7 +1832,9 @@ class MainWindow(wx.Frame):
                     self._frames.apply_yoyo_effect()
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"요요 효과 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_yoyo_error") + f"\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -1772,42 +1842,53 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda("요요 효과 적용", execute, undo, memory_usage)
             self._is_modified = True
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"요요 효과 오류: {str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_yoyo_error") + f"\n{e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _show_speed_dialog(self):
         """속도 조절 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._speed_toolbar)
 
     def _show_reduce_toolbar(self):
         """프레임 줄이기 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._reduce_toolbar)
 
     def _split_gif(self):
         """선택한 프레임들을 별도 GIF로 저장 (비동기 처리)"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
 
         selected = self._frames.selected_indices
         if not selected:
             wx.MessageBox(
-                "분할할 프레임을 선택해주세요.\n\n"
-                "프레임 목록에서 Shift+클릭 또는 Ctrl+클릭으로 여러 프레임을 선택할 수 있습니다.",
-                "경고",
+                self._translations.tr("msg_select_frames_to_split_body"),
+                self._translations.tr("common_warning"),
                 wx.OK | wx.ICON_WARNING
             )
             return
@@ -1815,10 +1896,10 @@ class MainWindow(wx.Frame):
         # 저장 경로 선택
         dlg = wx.FileDialog(
             self,
-            "분할 GIF 저장",
+            self._translations.tr("dlg_split_gif_title"),
             self._last_directory,
             "",
-            "GIF 파일 (*.gif)|*.gif",
+            self._translations.tr("dlg_gif_filter"),
             wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
         )
 
@@ -1839,14 +1920,16 @@ class MainWindow(wx.Frame):
                         new_collection.add_frame(new_frame)
 
                 if new_collection.is_empty:
-                    wx.MessageBox("저장할 프레임이 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+                    wx.MessageBox(
+                        self._translations.tr("msg_no_frames_to_save"),
+                        self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
                     dlg.Destroy()
                     return
 
                 # 진행 다이얼로그 생성
                 progress = wx.ProgressDialog(
-                    "분할 GIF 저장",
-                    "GIF 파일을 저장하는 중입니다...",
+                    self._translations.tr("prog_split_gif_title"),
+                    self._translations.tr("prog_split_gif_msg"),
                     style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE
                 )
                 self._split_progress = progress
@@ -1861,23 +1944,27 @@ class MainWindow(wx.Frame):
                 get_worker_manager().start(worker)
 
             except Exception as e:
-                wx.MessageBox(f"분할 저장 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                wx.MessageBox(
+                    self._translations.tr("msg_split_save_error", e=e),
+                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
         dlg.Destroy()
 
     def _merge_gif(self):
         """다른 GIF 파일을 현재 GIF 끝에 병합 (비동기 처리, Undo 지원)"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
 
         # 파일 선택
         dlg = wx.FileDialog(
             self,
-            "병합할 GIF 파일 선택",
+            self._translations.tr("dlg_merge_gif_title"),
             self._last_directory,
             "",
-            "GIF 파일 (*.gif)|*.gif",
+            self._translations.tr("dlg_gif_filter"),
             wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
         )
 
@@ -1886,8 +1973,8 @@ class MainWindow(wx.Frame):
 
             # 진행 다이얼로그 생성
             progress = wx.ProgressDialog(
-                "GIF 병합",
-                "GIF 파일을 불러오는 중입니다...",
+                self._translations.tr("prog_merge_gif_title"),
+                self._translations.tr("prog_merge_gif_msg"),
                 style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE
             )
 
@@ -1903,16 +1990,18 @@ class MainWindow(wx.Frame):
     def _insert_gif(self):
         """다른 GIF 파일을 현재 위치에 삽입 (비동기 처리, Undo 지원)"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
 
         # 파일 선택
         dlg = wx.FileDialog(
             self,
-            "삽입할 GIF 파일 선택",
+            self._translations.tr("dlg_insert_gif_title"),
             self._last_directory,
             "",
-            "GIF 파일 (*.gif)|*.gif",
+            self._translations.tr("dlg_gif_filter"),
             wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
         )
 
@@ -1922,15 +2011,17 @@ class MainWindow(wx.Frame):
 
             # 진행 다이얼로그 생성
             progress = wx.ProgressDialog(
-                "GIF 삽입",
-                "GIF 파일을 불러오는 중입니다...",
+                self._translations.tr("prog_insert_gif_title"),
+                self._translations.tr("prog_insert_gif_msg"),
                 style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE
             )
 
             # 비동기 로딩 작업 시작
             from ..core import FunctionWorker, get_worker_manager
             worker = FunctionWorker(GifDecoder.load, file_path)
-            worker.signals.connect('finished', lambda result: self._on_insert_gif_finished(result, file_path, insert_index, progress))
+            worker.signals.connect(
+                'finished',
+                lambda result: self._on_insert_gif_finished(result, file_path, insert_index, progress))
             worker.signals.connect('error', lambda msg, tb: self._on_insert_gif_error(msg, progress))
             get_worker_manager().start(worker)
 
@@ -1962,9 +2053,8 @@ class MainWindow(wx.Frame):
                 toolbar._preview_delay = 300
 
         wx.MessageBox(
-            f"프레임 수가 많아 ({self._frames.frame_count}개) 성능 최적화 모드가 자동으로 활성화되었습니다.\n"
-            f"프리뷰 업데이트가 느려지지만 전체 성능이 향상됩니다.",
-            "알림",
+            self._translations.tr("msg_low_end_mode_body", count=self._frames.frame_count),
+            self._translations.tr("msg_low_end_mode_title"),
             wx.OK | wx.ICON_INFORMATION
         )
 
@@ -1999,8 +2089,8 @@ class MainWindow(wx.Frame):
         """최근 파일 목록 지우기"""
         dlg = wx.MessageDialog(
             self,
-            "최근 파일 목록을 모두 삭제하시겠습니까?",
-            "확인",
+            self._translations.tr("msg_clear_recent_confirm"),
+            self._translations.tr("msg_confirm"),
             wx.YES_NO | wx.ICON_QUESTION
         )
 
@@ -2008,7 +2098,9 @@ class MainWindow(wx.Frame):
             self._recent_files.clear()
             self._settings.Write("recent_files", "")
             self._update_recent_files_menu()
-            wx.MessageBox("최근 파일 목록이 삭제되었습니다.", "완료", wx.OK | wx.ICON_INFORMATION)
+            wx.MessageBox(
+                self._translations.tr("msg_recent_cleared"),
+                self._translations.tr("common_done"), wx.OK | wx.ICON_INFORMATION)
 
         dlg.Destroy()
 
@@ -2026,11 +2118,8 @@ class MainWindow(wx.Frame):
         if memory_mb > 1024:
             dlg = wx.MessageDialog(
                 self,
-                f"현재 메모리 사용량: {memory_mb:.1f}MB\n\n"
-                f"대용량 GIF 파일을 편집하고 있습니다.\n"
-                f"메모리 제한을 확대하시겠습니까?\n\n"
-                f"(확대하지 않으면 일부 기능에서 Undo가 비활성화됩니다)",
-                "메모리 경고",
+                self._translations.tr("msg_memory_limit_body", mb=memory_mb),
+                self._translations.tr("msg_memory_warning_title"),
                 wx.YES_NO | wx.ICON_WARNING
             )
 
@@ -2039,9 +2128,8 @@ class MainWindow(wx.Frame):
                 self._memory_manager.set_memory_limit(self._memory_manager.get_memory_limit() * 2)
                 self._memory_limit_expanded = True
                 wx.MessageBox(
-                    f"메모리 제한이 확대되었습니다.\n"
-                    f"새 제한: {self._memory_manager.get_memory_limit()}MB",
-                    "완료",
+                    self._translations.tr("msg_memory_limit_expanded", mb=self._memory_manager.get_memory_limit()),
+                    self._translations.tr("common_done"),
                     wx.OK | wx.ICON_INFORMATION
                 )
             else:
@@ -2430,42 +2518,54 @@ class MainWindow(wx.Frame):
     def _show_text_dialog(self):
         """텍스트 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._text_toolbar, show_target_frame_hint=True)
 
     def _show_sticker_dialog(self):
         """스티커 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._sticker_toolbar, show_target_frame_hint=True)
 
     def _show_crop_dialog(self):
         """자르기 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._crop_toolbar)
 
     def _show_resize_dialog(self):
         """크기 조절 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._resize_toolbar)
 
     def _show_effects_dialog(self):
         """효과 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._effects_toolbar, show_target_frame_hint=True)
 
     def _show_rotate_toolbar(self):
         """회전 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._rotate_toolbar)
 
@@ -2491,7 +2591,9 @@ class MainWindow(wx.Frame):
                             frame.rotate(angle)
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"회전 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_rotate_error") + f"\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -2499,7 +2601,9 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda(f"프레임 회전 ({angle}도)", execute, undo, memory_usage)
@@ -2508,21 +2612,23 @@ class MainWindow(wx.Frame):
 
         except MemoryError:
             wx.MessageBox(
-                "메모리가 부족하여 작업을 수행할 수 없습니다.",
-                "경고",
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"),
                 wx.OK | wx.ICON_WARNING
             )
         except Exception as e:
             wx.MessageBox(
-                f"회전 오류:\n{str(e)}",
-                "오류",
+                self._translations.tr("msg_rotate_error") + f"\n{e}",
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
 
     def _show_pencil_dialog(self):
         """펜슬 인라인 툴바 표시"""
         if self._frames.is_empty:
-            wx.MessageBox("GIF 파일을 먼저 열어주세요", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_gif_open_required"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
         self._show_inline_toolbar(self._pencil_toolbar, show_target_frame_hint=True)
 
@@ -2617,7 +2723,8 @@ class MainWindow(wx.Frame):
 
         # 재생 버튼 툴팁 업데이트
         if hasattr(self, '_play_btn') and self._play_btn:
-            self._play_btn.SetToolTip(self._translations.tr("btn_play_tooltip") if not self._is_playing else self._translations.tr("btn_pause_tooltip"))
+            tip_key = "btn_play_tooltip" if not self._is_playing else "btn_pause_tooltip"
+            self._play_btn.SetToolTip(self._translations.tr(tip_key))
 
         # 정보 바 라벨 툴팁 업데이트
         if hasattr(self, '_size_info') and self._size_info:
@@ -2797,16 +2904,16 @@ class MainWindow(wx.Frame):
 
         if not result.success:
             wx.MessageBox(
-                f"저장 실패:\n{result.error_message}",
-                "오류",
+                self._translations.tr("msg_split_failed_body", e=result.error_message),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
             return
 
         if file_path:
             wx.MessageBox(
-                f"{frame_count}개의 파일이 저장되었습니다.\n{file_path}",
-                "분할 완료",
+                self._translations.tr("msg_split_saved_body", count=frame_count, path=file_path),
+                self._translations.tr("msg_split_done_title"),
                 wx.OK | wx.ICON_INFORMATION
             )
 
@@ -2816,8 +2923,8 @@ class MainWindow(wx.Frame):
             self._split_progress.Destroy()
             self._split_progress = None
         wx.MessageBox(
-            f"저장 실패:\n{error_msg}",
-            "오류",
+            self._translations.tr("msg_split_failed_body", e=error_msg),
+            self._translations.tr("msg_error"),
             wx.OK | wx.ICON_ERROR
         )
 
@@ -2828,8 +2935,8 @@ class MainWindow(wx.Frame):
 
         if not result.success:
             wx.MessageBox(
-                f"파일 열기 실패:\n{result.error_message}",
-                "오류",
+                self._translations.tr("msg_gif_open_failed_body", e=result.error_message),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
             return
@@ -2854,7 +2961,9 @@ class MainWindow(wx.Frame):
                         self._frames.add_frame(new_frame)
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"프레임 병합 실패:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_merge_error") + f"\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -2862,7 +2971,9 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda(f"GIF 병합 ({added_count}개 프레임)", execute, undo, memory_usage)
@@ -2872,22 +2983,26 @@ class MainWindow(wx.Frame):
             self._refresh_all()
 
             wx.MessageBox(
-                f"{added_count}개 프레임이 병합되었습니다.\n전체 프레임: {self._frames.frame_count}개",
-                "병합 완료",
+                self._translations.tr("msg_merge_frames_done", count=added_count, total=self._frames.frame_count),
+                self._translations.tr("msg_merge_done_title"),
                 wx.OK | wx.ICON_INFORMATION
             )
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"병합 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_merge_error") + f"\n{e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _on_merge_gif_error(self, error_msg, progress):
         """GIF 병합 에러"""
         if progress:
             progress.Destroy()
         wx.MessageBox(
-            f"GIF 로드 실패:\n{error_msg}",
-            "오류",
+            self._translations.tr("msg_load_gif_failed", e=error_msg),
+            self._translations.tr("msg_error"),
             wx.OK | wx.ICON_ERROR
         )
 
@@ -2898,8 +3013,8 @@ class MainWindow(wx.Frame):
 
         if not result.success:
             wx.MessageBox(
-                f"파일 열기 실패:\n{result.error_message}",
-                "오류",
+                self._translations.tr("msg_gif_open_failed_body", e=result.error_message),
+                self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
             )
             return
@@ -2924,7 +3039,9 @@ class MainWindow(wx.Frame):
                         self._frames.insert_frame(insert_index + i, new_frame)
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"프레임 삽입 실패:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_insert_error") + f"\n{e}",
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             def undo():
@@ -2932,7 +3049,9 @@ class MainWindow(wx.Frame):
                     self._frames = old_frames
                     self._refresh_all()
                 except Exception as e:
-                    wx.MessageBox(f"Undo 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+                    wx.MessageBox(
+                        self._translations.tr("msg_undo_error", e=e),
+                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
                     raise
 
             self._undo_manager.execute_lambda(f"GIF 삽입 ({added_count}개 프레임)", execute, undo, memory_usage)
@@ -2942,21 +3061,27 @@ class MainWindow(wx.Frame):
             self._refresh_all()
 
             wx.MessageBox(
-                f"{added_count}개 프레임이 삽입되었습니다 (위치: {insert_index + 1}).\n전체 프레임: {self._frames.frame_count}개",
-                "삽입 완료",
+                self._translations.tr(
+                    "msg_insert_frames_done",
+                    count=added_count, pos=insert_index + 1, total=self._frames.frame_count),
+                self._translations.tr("msg_insert_done_title"),
                 wx.OK | wx.ICON_INFORMATION
             )
         except MemoryError:
-            wx.MessageBox("메모리가 부족하여 작업을 수행할 수 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(
+                self._translations.tr("msg_out_of_memory"),
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
-            wx.MessageBox(f"삽입 오류:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                self._translations.tr("msg_insert_error") + f"\n{e}",
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _on_insert_gif_error(self, error_msg, progress):
         """GIF 삽입 에러"""
         if progress:
             progress.Destroy()
         wx.MessageBox(
-            f"GIF 로드 실패:\n{error_msg}",
-            "오류",
+            self._translations.tr("msg_load_gif_failed", e=error_msg),
+            self._translations.tr("msg_error"),
             wx.OK | wx.ICON_ERROR
         )
