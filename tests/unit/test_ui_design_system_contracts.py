@@ -156,3 +156,4 @@ def test_editor_i18n_common_keys_present_in_both_locales():
             "msg_gif_open_required", "msg_undo_error",
         ):
             assert key in editor, f"{key} missing in {locale_path}"
+            assert isinstance(editor[key], str) and editor[key], f"{key} empty/non-str in {locale_path}"
