@@ -507,7 +507,7 @@ class MainWindow(wx.Frame):
         controls_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         self._play_btn = FlatIconButton(
-            "play", self._translations.tr("tip_play_pause"), self._bottom_controls, size=(38, 38)
+            "play", self._translations.tr("btn_play_tooltip"), self._bottom_controls, size=(38, 38)
         )
         self._play_btn.Bind(wx.EVT_BUTTON, lambda e: self.toggle_play())
         controls_sizer.Add(self._play_btn, 0, wx.ALL, 5)
@@ -528,6 +528,7 @@ class MainWindow(wx.Frame):
         # 공유 액션 버튼 (도구 활성 시만 표시)
         translations = self._translations
 
+        # TODO: 잔여 if-translations-else 폴백 6곳 — translations는 항상 non-None이므로 후속 정리 대상 (A11 리뷰 M4)
         self._action_clear_btn = self._create_action_button(
             translations.tr("toolbar_clear") if translations else "초기화",
             self._on_action_clear,
@@ -1173,7 +1174,7 @@ class MainWindow(wx.Frame):
         if not self._frames._is_valid_index(self._frames.current_index):
             wx.MessageBox(
                 self._translations.tr("msg_invalid_frame_index"),
-                self._translations.tr("msg_warning"), wx.OK | wx.ICON_WARNING)
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
             return
 
         try:
@@ -1222,7 +1223,7 @@ class MainWindow(wx.Frame):
         except MemoryError:
             wx.MessageBox(
                 self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("msg_warning"), wx.OK | wx.ICON_WARNING)
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
         except Exception as e:
             wx.MessageBox(
                 self._translations.tr("msg_frame_duplicate_error") + f": {e}",
