@@ -580,6 +580,16 @@
     "effects_filter_original": "원본",
     "effects_filter_solarize": "솔라라이즈",
     "effects_filter_edge": "엣지 강조",
-    "effects_tab_filter": "필터"
+    "effects_tab_filter": "필터",
+    "pencil_dialog_title": "펜슬 설정",
+    "pencil_preview": "미리보기",
+    "pencil_pen_color": "펜 색상",
+    "pencil_pick_color": "색상 선택",
+    "pencil_pen_width": "펜 두께",
+    "pencil_duration": "표시 지속 시간",
+    "pencil_seconds_unit": " 초",
+    "pencil_duration_hint": "선택한 프레임부터 지정된 시간 동안\n그린 선이 표시됩니다.",
+    "pencil_start_drawing": "그리기 시작",
+    "pencil_target_label": "대상:"
   }
 }

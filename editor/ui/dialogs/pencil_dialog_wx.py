@@ -6,6 +6,7 @@ PyQt6 QDialog를 wx.Dialog로 마이그레이션
 import wx
 from typing import TYPE_CHECKING, Tuple
 from ..style_constants_wx import Colors, ThemedDialog
+from ui.i18n import tr
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -15,7 +16,7 @@ class PencilDialog(ThemedDialog):
     """펜슬 설정 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="펜슬 설정")
+        super().__init__(parent or main_window, title=tr("pencil_dialog_title"))
         self._main_window = main_window
         self._pencil_color = wx.Colour(255, 0, 0)  # 기본 빨간색
         self._pencil_width = 3
@@ -32,7 +33,7 @@ class PencilDialog(ThemedDialog):
         main_sizer.AddSpacer(15)
 
         # === 미리보기 ===
-        preview_box = wx.StaticBox(self, label="미리보기")
+        preview_box = wx.StaticBox(self, label=tr("pencil_preview"))
         preview_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preview_sizer = wx.StaticBoxSizer(preview_box, wx.VERTICAL)
         preview_sizer.AddSpacer(10)
@@ -46,7 +47,7 @@ class PencilDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # === 색상 설정 ===
-        color_box = wx.StaticBox(self, label="펜 색상")
+        color_box = wx.StaticBox(self, label=tr("pencil_pen_color"))
         color_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_sizer = wx.StaticBoxSizer(color_box, wx.HORIZONTAL)
         color_sizer.AddSpacer(10)
@@ -55,7 +56,7 @@ class PencilDialog(ThemedDialog):
         self._color_preview.SetBackgroundColour(self._pencil_color)
         color_sizer.Add(self._color_preview, 0, wx.ALL, 5)
 
-        color_btn = wx.Button(self, label="색상 선택")
+        color_btn = wx.Button(self, label=tr("pencil_pick_color"))
         color_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         color_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_btn.Bind(wx.EVT_BUTTON, self._select_color)
@@ -67,7 +68,7 @@ class PencilDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # === 두께 설정 ===
-        width_box = wx.StaticBox(self, label="펜 두께")
+        width_box = wx.StaticBox(self, label=tr("pencil_pen_width"))
         width_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         width_sizer = wx.StaticBoxSizer(width_box, wx.VERTICAL)
         width_sizer.AddSpacer(10)
@@ -92,7 +93,7 @@ class PencilDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # === 지속 시간 설정 ===
-        duration_box = wx.StaticBox(self, label="표시 지속 시간")
+        duration_box = wx.StaticBox(self, label=tr("pencil_duration"))
         duration_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         duration_sizer = wx.StaticBoxSizer(duration_box, wx.VERTICAL)
         duration_sizer.AddSpacer(10)
@@ -108,14 +109,14 @@ class PencilDialog(ThemedDialog):
         self._duration_spin.SetMinSize((100, 40))
         duration_row.Add(self._duration_spin, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        unit_label = wx.StaticText(self, label=" 초")
+        unit_label = wx.StaticText(self, label=tr("pencil_seconds_unit"))
         unit_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         duration_row.Add(unit_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
 
         duration_row.AddStretchSpacer()
 
         # 설명
-        desc_label = wx.StaticText(self, label="선택한 프레임부터 지정된 시간 동안\n그린 선이 표시됩니다.")
+        desc_label = wx.StaticText(self, label=tr("pencil_duration_hint"))
         desc_label.SetForegroundColour(Colors.TEXT_MUTED)
         font = desc_label.GetFont()
         font.SetPointSize(9)
@@ -128,17 +129,17 @@ class PencilDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # === 적용 대상/애니메이션 설정 ===
-        target_box = wx.StaticBox(self, label="적용 대상")
+        target_box = wx.StaticBox(self, label=tr("apply_to"))
         target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
         target_sizer.AddSpacer(10)
 
-        target_label = wx.StaticText(self, label="대상:")
+        target_label = wx.StaticText(self, label=tr("pencil_target_label"))
         target_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         target_sizer.Add(target_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
-                                        choices=["모두", "선택", "현재"])
+                                        choices=[tr("target_all"), tr("target_selected"), tr("target_current")])
         self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
         self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._target_combo.SetSelection(self._target_mode)
@@ -160,13 +161,13 @@ class PencilDialog(ThemedDialog):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer.AddStretchSpacer()
 
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("common_cancel"))
         cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
-        ok_btn = wx.Button(self, wx.ID_OK, label="그리기 시작")
+        ok_btn = wx.Button(self, wx.ID_OK, label=tr("pencil_start_drawing"))
         ok_btn.SetBackgroundColour(Colors.ACCENT)
         ok_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         ok_btn.SetMinSize((100, 32))

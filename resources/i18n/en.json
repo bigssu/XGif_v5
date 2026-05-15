@@ -580,6 +580,16 @@
     "effects_filter_original": "Original",
     "effects_filter_solarize": "Solarize",
     "effects_filter_edge": "Edge Boost",
-    "effects_tab_filter": "Filters"
+    "effects_tab_filter": "Filters",
+    "pencil_dialog_title": "Pencil Settings",
+    "pencil_preview": "Preview",
+    "pencil_pen_color": "Pen color",
+    "pencil_pick_color": "Pick Color",
+    "pencil_pen_width": "Pen width",
+    "pencil_duration": "Display duration",
+    "pencil_seconds_unit": " s",
+    "pencil_duration_hint": "The line you draw stays visible for the\nset duration starting from the selected frame.",
+    "pencil_start_drawing": "Start Drawing",
+    "pencil_target_label": "Target:"
   }
 }
