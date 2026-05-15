@@ -135,8 +135,10 @@ class SpeedToolbar(InlineToolbarBase):
         original_total = sum(self._original_delays)
         current_total = sum(f.delay_ms for f in self.frames)
 
+        translations = getattr(self._main_window, '_translations', None)
+        fmt = translations.tr("speed_result_fmt") if translations else "{cur:.2f}초 (원본: {orig:.2f}초)"
         self._result_label.SetLabel(
-            f"{current_total / 1000:.2f}초 (원본: {original_total / 1000:.2f}초)"
+            fmt.format(cur=current_total / 1000, orig=original_total / 1000)
         )
 
     def _on_clear(self, event):

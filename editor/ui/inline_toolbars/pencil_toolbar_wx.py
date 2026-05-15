@@ -5,6 +5,7 @@ PencilToolbar - 펜슬 그리기 인라인 툴바 (wxPython 버전)
 """
 import wx
 from .base_toolbar_wx import InlineToolbarBase
+from ui.i18n import tr
 
 
 class PencilToolbar(InlineToolbarBase):
@@ -24,13 +25,19 @@ class PencilToolbar(InlineToolbarBase):
 
     def _setup_pencil_ui(self):
         """펜슬 도구 UI 생성"""
+        translations = getattr(self._main_window, '_translations', None)
+
         # 적용 대상
-        self.add_label("대상:")
+        self.add_label(translations.tr("pencil_target_label") if translations else "대상:")
 
         self._target_combo = wx.ComboBox(
             self._controls_widget,
             style=wx.CB_READONLY,
-            choices=["모두", "선택", "현재"]
+            choices=[
+                translations.tr("target_all_short") if translations else "모두",
+                translations.tr("target_selected_short") if translations else "선택",
+                translations.tr("target_current_short") if translations else "현재",
+            ]
         )
         self._target_combo.SetSelection(self._pencil_target_mode)
         self._target_combo.Bind(wx.EVT_COMBOBOX, self._on_target_changed)
@@ -60,7 +67,7 @@ class PencilToolbar(InlineToolbarBase):
         self.add_control(self._width_label)
 
         # 지속 시간
-        self.add_label("시간:")
+        self.add_label(translations.tr("pencil_duration") if translations else "시간:")
 
         self._duration_spin = wx.SpinCtrlDouble(
             self._controls_widget,

@@ -456,7 +456,7 @@ class InlineToolbarBase(wx.Panel):
         button.SetBackgroundColour(color)
         button.Refresh()
 
-    def pick_color(self, current_color: wx.Colour, title: str = "색상 선택",
+    def pick_color(self, current_color: wx.Colour, title: str = "Pick Color",
                    on_color_picked: Optional[Callable[[wx.Colour], None]] = None) -> Optional[wx.Colour]:
         """색상 선택 다이얼로그 표시"""
         data = wx.ColourData()

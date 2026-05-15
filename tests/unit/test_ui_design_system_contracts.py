@@ -1,4 +1,6 @@
 from pathlib import Path
+import ast
+import re
 import json
 
 
@@ -157,3 +159,224 @@ def test_editor_i18n_common_keys_present_in_both_locales():
         ):
             assert key in editor, f"{key} missing in {locale_path}"
             assert isinstance(editor[key], str) and editor[key], f"{key} empty/non-str in {locale_path}"
+
+
+# ---------------------------------------------------------------------------
+# A14: Korean-literal static guard — i18n regression lock
+# ---------------------------------------------------------------------------
+# Detection approach: AST-based (ast.Constant str nodes with Hangul).
+# Excludes: docstrings, comment lines, tr(-routed lines, logger calls,
+# execute_lambda undo labels, "한" toggle glyph, sentinel "in label" checks,
+# class-level data constants (POSITIONS/CENSOR_TYPES), translations else-branch
+# fallbacks, _tr()-helper dicts, font-name identifiers, known Korean font names.
+# Allowlist: empty — all residuals handled by category heuristics.
+# ---------------------------------------------------------------------------
+
+_HANGUL = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏ꥠ-꥿ힰ-퟿]")
+
+# Latin font names that coexist with Korean aliases in the font picker list.
+_LATIN_FONT_NAMES = frozenset({
+    "Arial", "Malgun Gothic", "Gulim", "Dotum", "Batang", "NanumGothic",
+    "NanumBarunGothic", "Noto Sans KR", "Noto Sans CJK KR", "AppleGothic",
+    "Helvetica", "Times New Roman", "Verdana", "Tahoma", "Georgia",
+    "Comic Sans MS", "Impact", "Courier New",
+})
+
+# Korean names of Windows system fonts — font identifiers, not UI display text.
+_KOREAN_FONT_NAMES = frozenset({
+    "맑은 고딕", "굴림", "돋움", "바탕", "나눔고딕", "나눔바른고딕",
+})
+
+# Allowlist: empty — all known residuals are excluded by category heuristics above.
+_KOREAN_GUARD_ALLOWLIST: dict = {}
+
+
+def _guard_docstring_lines(tree: ast.AST) -> set:
+    lines: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
+            node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        ):
+            ds = node.body[0]
+            for ln in range(ds.lineno, ds.end_lineno + 1):
+                lines.add(ln)
+    return lines
+
+
+def _guard_parent_map(tree: ast.AST) -> dict:
+    parent: dict = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[id(child)] = node
+    return parent
+
+
+def _guard_in_class_scope(node: ast.Constant, parent_map: dict) -> bool:
+    """True if node is in a class-level assignment (not inside a function)."""
+    cur = node
+    while id(cur) in parent_map:
+        p = parent_map[id(cur)]
+        if isinstance(p, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return False
+        if isinstance(p, ast.ClassDef):
+            return True
+        cur = p
+    return False
+
+
+def _guard_in_translations_else(node: ast.Constant, parent_map: dict) -> bool:
+    """True if node is in the else-branch of an if-translations or if-Module guard."""
+    cur = node
+    while id(cur) in parent_map:
+        p = parent_map[id(cur)]
+        if isinstance(p, ast.If) and cur in p.orelse:
+            test_src = ast.unparse(p.test) if hasattr(ast, "unparse") else ""
+            if "translations" in test_src or isinstance(p.test, ast.Name):
+                return True
+        cur = p
+    return False
+
+
+def _guard_in_tr_helper_dict(node: ast.Constant, parent_map: dict, src_lines: list) -> bool:
+    """True if node is a value in a helper dict whose enclosing function calls tr()."""
+    cur = node
+    while id(cur) in parent_map:
+        p = parent_map[id(cur)]
+        if isinstance(p, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            func_src = "\n".join(src_lines[p.lineno - 1: p.end_lineno])
+            return "tr(" in func_src
+        cur = p
+    return False
+
+
+def _guard_is_font_name_context(node: ast.Constant, parent_map: dict) -> bool:
+    """True if node is a Korean font name in a list/dict alongside Latin font names."""
+    val = node.value
+    cur = node
+    while id(cur) in parent_map:
+        p = parent_map[id(cur)]
+        if isinstance(p, ast.List):
+            siblings = {
+                e.value for e in p.elts
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)
+            }
+            if siblings & _LATIN_FONT_NAMES:
+                return True
+        if isinstance(p, ast.Dict):
+            for k, v in zip(p.keys, p.values):
+                if (
+                    isinstance(k, ast.Constant) and k.value == val
+                    and isinstance(v, ast.Constant) and isinstance(v.value, str)
+                    and any(v.value.endswith(ext) for ext in (".ttf", ".ttc", ".otf"))
+                ):
+                    return True
+                if isinstance(k, ast.Constant) and k.value in _LATIN_FONT_NAMES:
+                    return True
+        cur = p
+    return False
+
+
+def _guard_is_logger(line: str) -> bool:
+    return bool(re.search(
+        r"\._logger\s*\.|logging\b|\blogger\b|\blog\b\.|self\._log\b|get_logger\(\)",
+        line,
+    ))
+
+
+def _collect_korean_offenders(editor_ui: Path) -> list:
+    offenders = []
+    for fpath in sorted(editor_ui.rglob("*.py")):
+        src = fpath.read_text(encoding="utf-8")
+        src_lines = src.splitlines()
+        try:
+            tree = ast.parse(src, filename=str(fpath))
+        except SyntaxError:
+            continue
+
+        docstring_lines = _guard_docstring_lines(tree)
+        parent_map = _guard_parent_map(tree)
+
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+                continue
+            if not _HANGUL.search(node.value):
+                continue
+
+            lineno = node.lineno
+            if lineno in docstring_lines:
+                continue
+
+            line = src_lines[lineno - 1] if lineno <= len(src_lines) else ""
+            if line.lstrip().startswith("#"):
+                continue
+
+            # Routed via tr()
+            if "tr(" in line:
+                continue
+            # Language-toggle glyph
+            if node.value == "한":
+                continue
+            # Logger / diagnostic output
+            if _guard_is_logger(line):
+                continue
+            # Undo-history label (execute_lambda)
+            if "execute_lambda(" in line:
+                continue
+            # Sentinel string comparison or raise
+            if '" in label' in line or "' in label" in line:
+                continue
+            if re.search(r"\braise\b", line):
+                continue
+            # Class-level data constant (POSITIONS, CENSOR_TYPES, …)
+            if _guard_in_class_scope(node, parent_map):
+                continue
+            # translations else-branch fallback / import-guard else-branch
+            if _guard_in_translations_else(node, parent_map):
+                continue
+            # _tr()-helper dict (values routed via tr() inside the same function)
+            if _guard_in_tr_helper_dict(node, parent_map, src_lines):
+                continue
+            # Font-name identifier in list/dict alongside Latin font names
+            if _guard_is_font_name_context(node, parent_map):
+                continue
+            # Known Korean system font names (FindString / font-map lookups)
+            if node.value in _KOREAN_FONT_NAMES:
+                continue
+
+            path_str = fpath.as_posix()
+            key = f"{path_str}::{lineno}"
+            if key in _KOREAN_GUARD_ALLOWLIST:
+                continue
+
+            offenders.append((path_str, lineno, line.strip()[:120]))
+
+    return offenders
+
+
+def test_no_hardcoded_korean_in_editor_ui_implementation():
+    """
+    Regression lock: no bare user-facing Korean string literals may remain in
+    editor/ui/**/*.py after A2–A13 i18n work. Any new bare Korean literal added
+    to these files will be caught here and must be routed through tr().
+
+    Excluded (by category heuristic, not allowlist):
+      i.   logger / get_logger diagnostic strings
+      ii.  execute_lambda() undo-history description labels
+      iii. "한" language-toggle button glyph
+      iv.  sentinel "in label" comparisons; raise expressions
+      iv.  class-level data constants (POSITIONS, CENSOR_TYPES)
+      iv.  translations else-branch fallbacks (if translations: tr() else: "KO")
+      iv.  _tr()-helper dict values (routed via tr() in same function)
+      iv.  Korean system font names in font-picker list/dict/FindString contexts
+    """
+    editor_ui = Path("editor/ui")
+    offenders = _collect_korean_offenders(editor_ui)
+
+    assert offenders == [], (
+        f"\n{len(offenders)} hardcoded Korean UI literal(s) found in editor/ui — "
+        "route each through tr(key, fallback) or add a justified allowlist entry:\n"
+        + "\n".join(f"  {p}:{ln}: {snip}" for p, ln, snip in offenders)
+    )

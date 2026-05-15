@@ -30,7 +30,11 @@ class ReduceToolbar(InlineToolbarBase):
         self.add_icon_label("target", 20, target_tooltip)
 
         self._target_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY,
-                                        choices=["모두", "선택", "현재"])
+                                        choices=[
+                                            translations.tr("target_all_short") if translations else "모두",
+                                            translations.tr("target_selected_short") if translations else "선택",
+                                            translations.tr("target_current_short") if translations else "현재",
+                                        ])
         self._target_combo.SetSelection(0)  # 기본값: "모두"
         self._target_combo.SetMinSize((70, -1))
         self._target_combo.SetToolTip(target_tooltip)

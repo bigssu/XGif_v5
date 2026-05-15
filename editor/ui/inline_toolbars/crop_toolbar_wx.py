@@ -57,7 +57,12 @@ class CropToolbar(InlineToolbarBase):
 
         # 프리셋
         self._preset_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY,
-                                        choices=["None", "50%", "75%", "정사각형"])
+                                        choices=[
+                                            translations.tr("crop_preset_none") if translations else "None",
+                                            "50%",
+                                            "75%",
+                                            translations.tr("crop_preset_square") if translations else "정사각형",
+                                        ])
         self._preset_combo.SetSelection(0)  # 기본값: None
         self._preset_combo.SetMinSize((90, -1))
         preset_tooltip = translations.tr("crop_preset") if translations else "크기 프리셋"

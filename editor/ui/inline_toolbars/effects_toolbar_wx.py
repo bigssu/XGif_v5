@@ -51,7 +51,8 @@ class EffectsToolbar(InlineToolbarBase):
         self.add_separator()
 
         # 밝기/대비/채도
-        self.add_icon_label("effects", 28, "밝기/대비/채도")
+        self.add_icon_label("effects", 28,
+                            translations.tr("effects_brightness_contrast_saturation") if translations else "밝기/대비/채도")
 
         # 밝기
         self._brightness_slider = self._create_slider(-50, 50, 0)
@@ -89,7 +90,8 @@ class EffectsToolbar(InlineToolbarBase):
         self.add_separator()
 
         # 필터
-        self.add_icon_label("color_palette", 20, "색상 필터")
+        self.add_icon_label("color_palette", 20,
+                            translations.tr("effects_filter_label") if translations else "색상 필터")
 
         filter_choices = []
         if translations:

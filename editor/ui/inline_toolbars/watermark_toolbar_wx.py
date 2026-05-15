@@ -92,7 +92,8 @@ class WatermarkToolbar(InlineToolbarBase):
 
         # 이미지 선택 버튼
         image_btn_text = translations.tr("watermark_image_btn") if translations else "이미지"
-        self._image_btn = wx.Button(self._controls_widget, label=f"{image_btn_text} 선택...")
+        select_suffix = translations.tr("watermark_select_suffix") if translations else " 선택..."
+        self._image_btn = wx.Button(self._controls_widget, label=f"{image_btn_text}{select_suffix}")
         self._image_btn.SetMinSize((100, -1))
         self._image_btn.Bind(wx.EVT_BUTTON, self._select_image)
         self._image_btn.Hide()
@@ -101,12 +102,23 @@ class WatermarkToolbar(InlineToolbarBase):
         self.add_separator()
 
         # 위치
-        self.add_icon_label("position", 20, "워터마크 위치")
-        pos_choices = [name for name, _ in self.POSITIONS]
+        pos_label = translations.tr("watermark_position_label") if translations else "워터마크 위치"
+        self.add_icon_label("position", 20, pos_label)
+        _pos_key_map = {
+            "top_left": "watermark_pos_top_left", "top_center": "watermark_pos_top_center",
+            "top_right": "watermark_pos_top_right", "middle_left": "watermark_pos_middle_left",
+            "middle_center": "watermark_pos_middle_center", "middle_right": "watermark_pos_middle_right",
+            "bottom_left": "watermark_pos_bottom_left", "bottom_center": "watermark_pos_bottom_center",
+            "bottom_right": "watermark_pos_bottom_right", "tiling": "watermark_pos_tiling",
+        }
+        pos_choices = [
+            translations.tr(_pos_key_map[key]) if translations else name
+            for name, key in self.POSITIONS
+        ]
         self._pos_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY, choices=pos_choices)
         self._pos_combo.SetSelection(8)  # 우측 하단 기본
         self._pos_combo.SetMinSize((90, -1))
-        self._pos_combo.SetToolTip("위치")
+        self._pos_combo.SetToolTip(translations.tr("watermark_position_label") if translations else "위치")
         self._pos_combo.Bind(wx.EVT_COMBOBOX, lambda e: self._on_setting_changed())
         self.add_control(self._pos_combo)
 
@@ -114,7 +126,7 @@ class WatermarkToolbar(InlineToolbarBase):
         self._opacity_slider = wx.Slider(self._controls_widget, minValue=10, maxValue=100, value=50,
                                         style=wx.SL_HORIZONTAL)
         self._opacity_slider.SetMinSize((60, -1))
-        self._opacity_slider.SetToolTip("투명도")
+        self._opacity_slider.SetToolTip(translations.tr("watermark_opacity_label") if translations else "투명도")
         self._opacity_slider.Bind(wx.EVT_SLIDER, lambda e: self._on_setting_changed())
         self.add_control(self._opacity_slider)
 
@@ -125,7 +137,7 @@ class WatermarkToolbar(InlineToolbarBase):
         # 마진
         self._margin_spin = wx.SpinCtrl(self._controls_widget, min=0, max=100, initial=10)
         self._margin_spin.SetMinSize((70, -1))
-        self._margin_spin.SetToolTip("여백")
+        self._margin_spin.SetToolTip(translations.tr("watermark_margin_label") if translations else "여백")
         self._margin_spin.Bind(wx.EVT_SPINCTRL, lambda e: self._on_setting_changed())
         self.add_control(self._margin_spin)
 
@@ -335,7 +347,8 @@ class WatermarkToolbar(InlineToolbarBase):
         self._watermark_path = None
         translations = getattr(self._main_window, '_translations', None)
         image_btn_text = translations.tr("watermark_image_btn") if translations else "이미지"
-        self._image_btn.SetLabel(f"{image_btn_text} 선택...")
+        select_suffix = translations.tr("watermark_select_suffix") if translations else " 선택..."
+        self._image_btn.SetLabel(f"{image_btn_text}{select_suffix}")
 
         self._restore_original_images()
         self._safe_canvas_update()

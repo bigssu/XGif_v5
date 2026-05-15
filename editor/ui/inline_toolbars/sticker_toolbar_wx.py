@@ -94,14 +94,15 @@ class StickerToolbar(InlineToolbarBase):
 
         # 애니메이션
         if AnimationPreset:
-            self.add_icon_label("animation", 20, "애니메이션 효과")
+            self.add_icon_label("animation", 20,
+                                translations.tr("text_animation") if translations else "애니메이션 효과")
             self._anim_names = [(name, atype) for name, atype in AnimationPreset.get_animation_names()
                                if atype != AnimationType.TYPING]
             anim_choices = [name for name, _ in self._anim_names]
             self._anim_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY, choices=anim_choices)
             self._anim_combo.SetSelection(0)
             self._anim_combo.SetMinSize((100, -1))
-            self._anim_combo.SetToolTip("애니메이션")
+            self._anim_combo.SetToolTip(translations.tr("sticker_animation_tt") if translations else "애니메이션")
             self._anim_combo.Bind(wx.EVT_COMBOBOX, self._on_animation_changed)
             self.add_control(self._anim_combo)
 

@@ -49,8 +49,13 @@ class MosaicToolbar(InlineToolbarBase):
         type_tooltip = translations.tr("mosaic_type") if translations else "모자이크/블러 타입"
         self.add_icon_label("effects", 20, type_tooltip)
 
+        _censor_labels = {
+            "mosaic": translations.tr("mosaic_mosaic") if translations else "모자이크",
+            "blur": translations.tr("mosaic_blur") if translations else "블러",
+            "black_bar": translations.tr("mosaic_black_bar") if translations else "검정 바",
+        }
         self._type_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY,
-                                      choices=[name for name, _ in self.CENSOR_TYPES])
+                                      choices=[_censor_labels.get(key, name) for name, key in self.CENSOR_TYPES])
         self._type_combo.SetSelection(0)
         self._type_combo.SetMinSize((90, -1))
         self._type_combo.SetToolTip(type_tooltip)

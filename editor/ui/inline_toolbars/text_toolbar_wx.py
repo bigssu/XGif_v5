@@ -133,7 +133,7 @@ class TextToolbar(InlineToolbarBase):
             self._anim_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
             self._anim_combo.SetSelection(0)
             self._anim_combo.SetMinSize((100, -1))
-            self._anim_combo.SetToolTip("애니메이션")
+            self._anim_combo.SetToolTip(translations.tr("text_animation_tt") if translations else "애니메이션")
             self._anim_combo.Bind(wx.EVT_COMBOBOX, self._on_animation_changed)
             self.add_control(self._anim_combo)
 
@@ -263,7 +263,8 @@ class TextToolbar(InlineToolbarBase):
                 pass
 
         if not self._text_input.GetValue():
-            self._text_input.SetValue("텍스트")
+            translations = getattr(self._main_window, '_translations', None)
+            self._text_input.SetValue(translations.tr("text_default_input") if translations else "텍스트")
 
         self._base_font_size = self._size_spin.GetValue()
         self._update_text_bounds()
