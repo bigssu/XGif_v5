@@ -541,3 +541,57 @@ class ThemedProgressDialog(ThemedDialog):
             self._message.Wrap(380)
         self.Layout()
         return not self._cancelled, False
+
+
+class FormRow(wx.Panel):
+    """A label + control row with consistent label column width.
+
+    Replaces the repeated ``wx.StaticText.SetMinSize((130, -1))`` + manual
+    BoxSizer pattern. The label column width is a single shared constant.
+    """
+
+    LABEL_COL_WIDTH = 140
+
+    def __init__(self, parent, label: str, control: wx.Window):
+        super().__init__(parent)
+        self.SetBackgroundColour(parent.GetBackgroundColour())
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        if label:
+            text = wx.StaticText(self, label=label)
+            text.SetForegroundColour(Colors.TEXT_SECONDARY)
+            text.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
+            text.SetMinSize((self.LABEL_COL_WIDTH, -1))
+            sizer.Add(text, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        control.Reparent(self)
+        sizer.Add(control, 1, wx.ALIGN_CENTER_VERTICAL)
+        self.SetSizer(sizer)
+
+
+class FormSection(wx.Panel):
+    """A titled content group: bold section title + optional description +
+    vertically stacked rows. Replaces wx.StaticBox/StaticBoxSizer chrome with
+    spacing+heading hierarchy (audit P1)."""
+
+    def __init__(self, parent, title: str, description: str = ""):
+        super().__init__(parent)
+        self.SetBackgroundColour(parent.GetBackgroundColour())
+        self._sizer = wx.BoxSizer(wx.VERTICAL)
+        heading = wx.StaticText(self, label=title)
+        heading.SetForegroundColour(Colors.TEXT_PRIMARY)
+        heading.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
+        self._sizer.Add(heading, 0, wx.BOTTOM, 6)
+        if description:
+            desc = wx.StaticText(self, label=description)
+            desc.SetForegroundColour(Colors.TEXT_SECONDARY)
+            desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
+            self._sizer.Add(desc, 0, wx.BOTTOM, 8)
+        self.SetSizer(self._sizer)
+
+    def add(self, window: wx.Window, *, gap: int = 6):
+        window.Reparent(self)
+        self._sizer.Add(window, 0, wx.EXPAND | wx.BOTTOM, gap)
+        return window
+
+    def add_row(self, label: str, control: wx.Window):
+        row = FormRow(self, label, control)
+        return self.add(row)

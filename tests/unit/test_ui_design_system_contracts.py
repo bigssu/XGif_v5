@@ -108,3 +108,27 @@ def test_editor_window_is_not_hard_pinned_to_1008x840():
     # Initial size must be screen-clamped via the shared display pattern:
     assert "wx.Display.GetFromWindow(self)" in src
     assert ".GetClientArea()" in src
+
+
+def test_design_system_exposes_form_section_and_row():
+    ds = _read("ui/design_system.py")
+    assert "class FormSection" in ds
+    assert "class FormRow" in ds
+
+
+def test_form_section_instantiates_without_error():
+    import wx
+    from ui.design_system import FormSection
+
+    try:
+        app = wx.App()
+    except Exception as exc:  # pragma: no cover - headless CI
+        import pytest
+
+        pytest.skip(f"wx.App unavailable: {exc}")
+    frame = wx.Frame(None)
+    sec = FormSection(frame, "Title", "desc")
+    sec.add_row("Label:", wx.TextCtrl(frame))
+    assert sec.GetSizer() is not None
+    frame.Destroy()
+    app.Destroy()
