@@ -165,10 +165,11 @@ class WatermarkToolbar(InlineToolbarBase):
 
     def _select_image(self, event):
         """워터마크 이미지 선택"""
+        translations = getattr(self._main_window, '_translations', None)
         with wx.FileDialog(
             self,
-            "워터마크 이미지 선택",
-            wildcard="이미지 파일 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif",
+            translations.tr("dlg_choose_watermark_image") if translations else "워터마크 이미지 선택",
+            wildcard=translations.tr("dlg_image_wildcard") if translations else "이미지 파일 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif",
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
@@ -179,9 +180,8 @@ class WatermarkToolbar(InlineToolbarBase):
                     self._image_btn.SetLabel(Path(file_path).name[:15] + "...")
                     self._on_setting_changed()
                 except Exception as e:
-                    translations = getattr(self._main_window, '_translations', None)
                     wx.MessageBox(
-                        f"이미지 로드 실패: {e}",
+                        translations.tr("msg_watermark_load_failed", e=str(e)) if translations else f"이미지 로드 실패: {e}",
                         translations.tr("msg_error") if translations else "오류",
                         wx.OK | wx.ICON_ERROR
                     )

@@ -57,7 +57,7 @@ class ResizeToolbar(InlineToolbarBase):
         self.add_control(self._height_spin)
 
         # 비율 유지 체크박스
-        self._keep_ratio_check = wx.CheckBox(self._controls_widget, label="비율 유지")
+        self._keep_ratio_check = wx.CheckBox(self._controls_widget, label=translations.tr("resize_keep_ratio") if translations else "비율 유지")
         self._keep_ratio_check.SetValue(True)
         keep_ratio_tooltip = translations.tr("resize_keep_ratio") if translations else "비율 유지"
         self._keep_ratio_check.SetToolTip(keep_ratio_tooltip)

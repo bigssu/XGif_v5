@@ -18,6 +18,7 @@ from ..utils.wx_events import (
     MosaicRegionChangedEvent, SpeechBubbleChangedEvent,
     ZoomChangedEvent
 )
+from ui.i18n import tr
 
 if TYPE_CHECKING:
     from .main_window import MainWindow
@@ -337,8 +338,8 @@ class CanvasWidget(wx.Panel):
         dc.SetBrush(wx.Brush(Colors.BG_CARD))
         dc.DrawRoundedRectangle(x, y, card_w, card_h, 10)
 
-        title = "No frame loaded"
-        detail = "Open a GIF to preview edits here"
+        title = tr("canvas_no_frame_title")
+        detail = tr("canvas_no_frame_detail")
 
         dc.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
         dc.SetTextForeground(Colors.TEXT_PRIMARY)

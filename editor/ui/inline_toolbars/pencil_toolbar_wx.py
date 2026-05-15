@@ -109,20 +109,33 @@ class PencilToolbar(InlineToolbarBase):
 
     def _on_apply(self, event):
         """그린 선을 프레임들에 적용"""
+        translations = getattr(self._main_window, '_translations', None)
         try:
             canvas = self._safe_get_canvas()
             if not canvas or not hasattr(canvas, 'get_drawing_paths'):
-                wx.MessageBox("캔버스가 초기화되지 않았습니다.", "경고", wx.OK | wx.ICON_WARNING)
+                wx.MessageBox(
+                    translations.tr("msg_pencil_canvas_not_init") if translations else "캔버스가 초기화되지 않았습니다.",
+                    translations.tr("common_warning") if translations else "경고",
+                    wx.OK | wx.ICON_WARNING,
+                )
                 return
 
             paths = canvas.get_drawing_paths()
             if not paths:
-                wx.MessageBox("그려진 선이 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+                wx.MessageBox(
+                    translations.tr("msg_pencil_canvas_no_lines_drawn") if translations else "그려진 선이 없습니다.",
+                    translations.tr("common_warning") if translations else "경고",
+                    wx.OK | wx.ICON_WARNING,
+                )
                 return
 
             target_indices = self._get_target_indices()
             if not target_indices:
-                wx.MessageBox("적용할 프레임이 없습니다.", "경고", wx.OK | wx.ICON_WARNING)
+                wx.MessageBox(
+                    translations.tr("msg_pencil_no_frames") if translations else "적용할 프레임이 없습니다.",
+                    translations.tr("common_warning") if translations else "경고",
+                    wx.OK | wx.ICON_WARNING,
+                )
                 return
 
             # Auto Animation 모드
@@ -137,7 +150,11 @@ class PencilToolbar(InlineToolbarBase):
         except Exception as e:
             from ...utils.logger import get_logger
             get_logger().error(f"펜슬 선 적용 오류: {e}", exc_info=True)
-            wx.MessageBox(f"펜슬 선을 적용하는 중 오류가 발생했습니다:\n{str(e)}", "오류", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(
+                translations.tr("msg_pencil_apply_error", e=str(e)) if translations else f"펜슬 선을 적용하는 중 오류가 발생했습니다:\n{str(e)}",
+                translations.tr("common_error") if translations else "오류",
+                wx.OK | wx.ICON_ERROR,
+            )
 
     def _on_cancel(self, event):
         """펜슬 모드 취소"""
