@@ -6,6 +6,7 @@ TargetFrameHintDialog - 대상 프레임 선택 안내 팝업 (wxPython 버전)
 """
 import wx
 from ..style_constants_wx import Colors, ThemedDialog
+from ui.i18n import tr
 
 
 class TargetFrameHintDialog(ThemedDialog):
@@ -18,7 +19,7 @@ class TargetFrameHintDialog(ThemedDialog):
     SETTINGS_KEY_HIDDEN = "target_frame_hint_hidden_v2"
 
     def __init__(self, parent=None, settings=None, translations=None):
-        super().__init__(parent, title="대상 프레임 선택",
+        super().__init__(parent, title=tr("target_frame_hint_title", "대상 프레임 선택"),
                          style=wx.DEFAULT_DIALOG_STYLE)
         self._settings = settings
         self._translations = translations
@@ -36,16 +37,15 @@ class TargetFrameHintDialog(ThemedDialog):
             "target_frame_hint_title": "대상 프레임 선택",
             "target_frame_hint_message": (
                 "프레임 선택 안내:\n\n"
-                "\u2022 현재 프레임: 현재 보고 있는 프레임에만 적용\n"
-                "\u2022 선택한 프레임: 프레임 목록에서 선택한 프레임들에 적용\n"
-                "\u2022 모든 프레임: 전체 프레임에 적용\n\n"
+                "• 현재 프레임: 현재 보고 있는 프레임에만 적용\n"
+                "• 선택한 프레임: 프레임 목록에서 선택한 프레임들에 적용\n"
+                "• 모든 프레임: 전체 프레임에 적용\n\n"
                 "프레임 목록에서 Shift+클릭 또는 Ctrl+클릭으로\n"
                 "여러 프레임을 선택할 수 있습니다."
             ),
             "dont_show_again": "다음부터 이 안내를 표시하지 않음",
-            "ok": "확인",
         }
-        return defaults.get(key, key)
+        return tr(key, defaults.get(key, key))
 
     def _setup_ui(self):
         """UI 초기화"""
@@ -72,7 +72,7 @@ class TargetFrameHintDialog(ThemedDialog):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer.AddStretchSpacer()
 
-        ok_btn = wx.Button(self, wx.ID_OK, label=self._tr("ok"))
+        ok_btn = wx.Button(self, wx.ID_OK, label=tr("common_ok", "확인"))
         ok_btn.SetBackgroundColour(Colors.ACCENT)
         ok_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         ok_btn.SetMinSize((80, 32))
