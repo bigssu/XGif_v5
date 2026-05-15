@@ -16,7 +16,7 @@ from ui.constants import (
 )
 from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr, get_trans_manager
-from ui.design_system import CommandButton
+from ui.design_system import CommandButton, FormSection
 from core.settings import AppSettings
 import contextlib
 
@@ -65,154 +65,81 @@ class SettingsDialog(ThemedDialog):
         scroll_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # === 언어 설정 그룹 ===
-        self.lang_box = wx.StaticBox(self.scroll_panel, label=tr('language'))
-        self.lang_box.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.lang_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        lang_sizer = wx.StaticBoxSizer(self.lang_box, wx.HORIZONTAL)
-
-        self.lang_label = wx.StaticText(self.scroll_panel, label=tr('language') + ":")
-        self.lang_label.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self.lang_label.SetMinSize((130, -1))
+        self.lang_section = FormSection(self.scroll_panel, tr('language'))
         self.lang_combo = wx.Choice(self.scroll_panel, choices=[tr('language_ko'), tr('language_en')])
         self.lang_combo.SetToolTip(tr('language_tooltip'))
         self._style_choice(self.lang_combo)
-
-        lang_sizer.Add(self.lang_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 8)
-        lang_sizer.Add(self.lang_combo, 0, wx.ALL, 8)
-        lang_sizer.AddStretchSpacer()
-        scroll_sizer.Add(lang_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        self.lang_row = self.lang_section.add_row(tr('language') + ":", self.lang_combo)
+        scroll_sizer.Add(self.lang_section, 0, wx.EXPAND | wx.ALL, 10)
 
         # === 미리보기 및 HDR 그룹 ===
-        self.preview_box = wx.StaticBox(self.scroll_panel, label=tr('preview'))
-        self.preview_box.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.preview_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        preview_sizer = wx.StaticBoxSizer(self.preview_box, wx.VERTICAL)
-
+        self.preview_section = FormSection(self.scroll_panel, tr('preview'))
         self.preview_cb = wx.CheckBox(self.scroll_panel, label=tr('realtime_preview'))
         self.preview_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.preview_cb.SetToolTip(tr('realtime_preview_tooltip'))
-        preview_sizer.Add(self.preview_cb, 0, wx.ALL, 8)
-
+        self.preview_section.add(self.preview_cb)
         self.hdr_correction_cb = wx.CheckBox(self.scroll_panel, label=tr('hdr_correction'))
         self.hdr_correction_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.hdr_correction_cb.SetToolTip(tr('hdr_correction_tooltip'))
-        preview_sizer.Add(self.hdr_correction_cb, 0, wx.ALL, 8)
-
-        scroll_sizer.Add(preview_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        self.preview_section.add(self.hdr_correction_cb)
+        scroll_sizer.Add(self.preview_section, 0, wx.EXPAND | wx.ALL, 10)
 
         # === 메모리 설정 그룹 ===
-        self.memory_box = wx.StaticBox(self.scroll_panel, label=tr('memory_management'))
-        self.memory_box.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.memory_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        memory_sizer = wx.StaticBoxSizer(self.memory_box, wx.VERTICAL)
-
-        memory_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.memory_label = wx.StaticText(self.scroll_panel, label=tr('max_memory'))
-        self.memory_label.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self.memory_label.SetMinSize((130, -1))
+        self.memory_section = FormSection(self.scroll_panel, tr('memory_management'))
         self.memory_limit_combo = wx.Choice(self.scroll_panel,
             choices=["1 GB (" + tr('auto') + ")", "2 GB", "3 GB", "4 GB"])
         self.memory_limit_combo.SetToolTip(tr('max_memory_tooltip'))
         self._style_choice(self.memory_limit_combo)
-
-        memory_row.Add(self.memory_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 8)
-        memory_row.Add(self.memory_limit_combo, 0, wx.ALL, 8)
-        memory_row.AddStretchSpacer()
-        memory_sizer.Add(memory_row, 0, wx.EXPAND)
-
-        scroll_sizer.Add(memory_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        self.memory_row = self.memory_section.add_row(tr('max_memory'), self.memory_limit_combo)
+        scroll_sizer.Add(self.memory_section, 0, wx.EXPAND | wx.ALL, 10)
 
         # === GPU 및 인코더 그룹 ===
-        self.gpu_box = wx.StaticBox(self.scroll_panel, label=tr('gpu_encoder'))
-        self.gpu_box.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.gpu_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        gpu_sizer = wx.StaticBoxSizer(self.gpu_box, wx.VERTICAL)
-
+        self.gpu_section = FormSection(self.scroll_panel, tr('gpu_encoder'))
         # 캡처 백엔드
-        backend_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.backend_label = wx.StaticText(self.scroll_panel, label=tr('capture_backend'))
-        self.backend_label.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self.backend_label.SetMinSize((130, -1))
         self.backend_combo = wx.Choice(self.scroll_panel, choices=CAPTURE_BACKEND_OPTIONS)
         self.backend_combo.SetToolTip(tr('capture_backend_tooltip'))
         self.backend_combo.Bind(wx.EVT_CHOICE, self._on_backend_changed)
         self._style_choice(self.backend_combo)
-        backend_row.Add(self.backend_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 8)
-        backend_row.Add(self.backend_combo, 0, wx.ALL, 8)
-        backend_row.AddStretchSpacer()
-        gpu_sizer.Add(backend_row, 0, wx.EXPAND)
-
+        self.backend_row = self.gpu_section.add_row(tr('capture_backend'), self.backend_combo)
         # 인코더
-        encoder_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.encoder_label = wx.StaticText(self.scroll_panel, label=tr('encoder'))
-        self.encoder_label.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self.encoder_label.SetMinSize((130, -1))
         self.encoder_combo = wx.Choice(self.scroll_panel, choices=ENCODER_OPTIONS)
         self.encoder_combo.SetToolTip(tr('encoder_tooltip'))
         self._style_choice(self.encoder_combo)
-        encoder_row.Add(self.encoder_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 8)
-        encoder_row.Add(self.encoder_combo, 0, wx.ALL, 8)
-        encoder_row.AddStretchSpacer()
-        gpu_sizer.Add(encoder_row, 0, wx.EXPAND)
-
+        self.encoder_row = self.gpu_section.add_row(tr('encoder'), self.encoder_combo)
         # 코덱
-        codec_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.codec_label = wx.StaticText(self.scroll_panel, label=tr('codec'))
-        self.codec_label.SetForegroundColour(Colors.TEXT_SECONDARY)
-        self.codec_label.SetMinSize((130, -1))
         self.codec_combo = wx.Choice(self.scroll_panel, choices=CODEC_OPTIONS)
         self.codec_combo.SetToolTip(tr('codec_tooltip'))
         self._style_choice(self.codec_combo)
-        codec_row.Add(self.codec_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 8)
-        codec_row.Add(self.codec_combo, 0, wx.ALL, 8)
-        codec_row.AddStretchSpacer()
-        gpu_sizer.Add(codec_row, 0, wx.EXPAND)
-
-        scroll_sizer.Add(gpu_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        self.codec_row = self.gpu_section.add_row(tr('codec'), self.codec_combo)
+        scroll_sizer.Add(self.gpu_section, 0, wx.EXPAND | wx.ALL, 10)
 
         # === 오디오 그룹 ===
-        self.audio_box = wx.StaticBox(self.scroll_panel, label=tr('audio'))
-        self.audio_box.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.audio_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        audio_sizer = wx.StaticBoxSizer(self.audio_box, wx.VERTICAL)
-
+        self.audio_section = FormSection(self.scroll_panel, tr('audio'))
         self.mic_audio_cb = wx.CheckBox(self.scroll_panel, label=tr('mic_recording'))
         self.mic_audio_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.mic_audio_cb.SetToolTip(tr('mic_recording_tooltip'))
-        audio_sizer.Add(self.mic_audio_cb, 0, wx.ALL, 8)
-
-        scroll_sizer.Add(audio_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        self.audio_section.add(self.mic_audio_cb)
+        scroll_sizer.Add(self.audio_section, 0, wx.EXPAND | wx.ALL, 10)
 
         # === 오버레이 그룹 ===
-        self.overlay_box = wx.StaticBox(self.scroll_panel, label=tr('overlay'))
-        self.overlay_box.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.overlay_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        overlay_sizer = wx.StaticBoxSizer(self.overlay_box, wx.VERTICAL)
-
+        self.overlay_section = FormSection(self.scroll_panel, tr('overlay'))
         self.watermark_cb = wx.CheckBox(self.scroll_panel, label=tr('watermark'))
         self.watermark_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.watermark_cb.SetToolTip(tr('watermark_tooltip'))
-        overlay_sizer.Add(self.watermark_cb, 0, wx.ALL, 8)
-
-        scroll_sizer.Add(overlay_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        self.overlay_section.add(self.watermark_cb)
+        scroll_sizer.Add(self.overlay_section, 0, wx.EXPAND | wx.ALL, 10)
 
         # === 인터랙션 그룹 ===
-        self.interaction_box = wx.StaticBox(self.scroll_panel, label=tr('interaction'))
-        self.interaction_box.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.interaction_box.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        interaction_sizer = wx.StaticBoxSizer(self.interaction_box, wx.VERTICAL)
-
+        self.interaction_section = FormSection(self.scroll_panel, tr('interaction'))
         self.click_highlight_cb = wx.CheckBox(self.scroll_panel, label=tr('click_highlight'))
         self.click_highlight_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.click_highlight_cb.SetToolTip(tr('click_highlight_tooltip'))
-        interaction_sizer.Add(self.click_highlight_cb, 0, wx.ALL, 8)
-
+        self.interaction_section.add(self.click_highlight_cb)
         self.keyboard_display_cb = wx.CheckBox(self.scroll_panel, label=tr('keyboard_display'))
         self.keyboard_display_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.keyboard_display_cb.SetToolTip(tr('keyboard_display_tooltip'))
-        interaction_sizer.Add(self.keyboard_display_cb, 0, wx.ALL, 8)
-
-        scroll_sizer.Add(interaction_sizer, 0, wx.EXPAND | wx.ALL, 10)
+        self.interaction_section.add(self.keyboard_display_cb)
+        scroll_sizer.Add(self.interaction_section, 0, wx.EXPAND | wx.ALL, 10)
 
         # 스크롤 패널 설정
         self.scroll_panel.SetSizer(scroll_sizer)
@@ -582,23 +509,35 @@ class SettingsDialog(ThemedDialog):
         """언어 변경 시 UI 업데이트"""
         self.SetTitle(tr('settings'))
 
-        if hasattr(self, 'lang_box'):
-            self.lang_box.SetLabel(tr('language'))
-        if hasattr(self, 'audio_box'):
-            self.audio_box.SetLabel(tr('audio'))
-        if hasattr(self, 'overlay_box'):
-            self.overlay_box.SetLabel(tr('overlay'))
-        if hasattr(self, 'interaction_box'):
-            self.interaction_box.SetLabel(tr('interaction'))
-        if hasattr(self, 'preview_box'):
-            self.preview_box.SetLabel(tr('preview'))
-        if hasattr(self, 'memory_box'):
-            self.memory_box.SetLabel(tr('memory_management'))
-        if hasattr(self, 'gpu_box'):
-            self.gpu_box.SetLabel(tr('gpu_encoder'))
+        # 섹션 제목 업데이트 (FormSection.set_title)
+        if hasattr(self, 'lang_section'):
+            self.lang_section.set_title(tr('language'))
+        if hasattr(self, 'audio_section'):
+            self.audio_section.set_title(tr('audio'))
+        if hasattr(self, 'overlay_section'):
+            self.overlay_section.set_title(tr('overlay'))
+        if hasattr(self, 'interaction_section'):
+            self.interaction_section.set_title(tr('interaction'))
+        if hasattr(self, 'preview_section'):
+            self.preview_section.set_title(tr('preview'))
+        if hasattr(self, 'memory_section'):
+            self.memory_section.set_title(tr('memory_management'))
+        if hasattr(self, 'gpu_section'):
+            self.gpu_section.set_title(tr('gpu_encoder'))
 
-        if hasattr(self, 'lang_label'):
-            self.lang_label.SetLabel(tr('language') + ":")
+        # FormRow 라벨 업데이트 (FormRow.set_label)
+        if hasattr(self, 'lang_row'):
+            self.lang_row.set_label(tr('language') + ":")
+        if hasattr(self, 'memory_row'):
+            self.memory_row.set_label(tr('max_memory'))
+        if hasattr(self, 'backend_row'):
+            self.backend_row.set_label(tr('capture_backend'))
+        if hasattr(self, 'encoder_row'):
+            self.encoder_row.set_label(tr('encoder'))
+        if hasattr(self, 'codec_row'):
+            self.codec_row.set_label(tr('codec'))
+
+        # 체크박스 레이블 업데이트
         if hasattr(self, 'mic_audio_cb'):
             self.mic_audio_cb.SetLabel(tr('mic_recording'))
         if hasattr(self, 'watermark_cb'):
@@ -611,14 +550,8 @@ class SettingsDialog(ThemedDialog):
             self.preview_cb.SetLabel(tr('realtime_preview'))
         if hasattr(self, 'hdr_correction_cb'):
             self.hdr_correction_cb.SetLabel(tr('hdr_correction'))
-        if hasattr(self, 'memory_label'):
-            self.memory_label.SetLabel(tr('max_memory'))
-        if hasattr(self, 'backend_label'):
-            self.backend_label.SetLabel(tr('capture_backend'))
-        if hasattr(self, 'encoder_label'):
-            self.encoder_label.SetLabel(tr('encoder'))
-        if hasattr(self, 'codec_label'):
-            self.codec_label.SetLabel(tr('codec'))
+
+        # 버튼 레이블 업데이트
         if hasattr(self, 'reset_btn'):
             self.reset_btn.SetLabel(tr('reset_defaults'))
         if hasattr(self, 'reset_dep_btn'):

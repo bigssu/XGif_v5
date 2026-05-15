@@ -126,3 +126,11 @@ def test_form_section_instantiates_without_error():
     assert sec.GetSizer() is not None
     frame.Destroy()
     app.Destroy()
+
+
+def test_settings_dialog_uses_form_section_not_staticbox():
+    src = _read("ui/settings_dialog.py")
+    assert "from ui.design_system import" in src and "FormSection" in src
+    assert "wx.StaticBox(" not in src
+    assert "wx.StaticBoxSizer(" not in src
+    assert "SetMinSize((130, -1))" not in src

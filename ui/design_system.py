@@ -556,6 +556,7 @@ class FormRow(wx.Panel):
         super().__init__(parent)
         # 생성 시점의 부모 배경을 상속. 부모 배경이 이후 바뀌면 Refresh() 필요.
         self.SetBackgroundColour(parent.GetBackgroundColour())
+        self._label_text: wx.StaticText | None = None
         sizer = wx.BoxSizer(wx.HORIZONTAL)
         if label:
             text = wx.StaticText(self, label=label)
@@ -563,10 +564,16 @@ class FormRow(wx.Panel):
             text.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
             text.SetMinSize((self.LABEL_COL_WIDTH, -1))
             sizer.Add(text, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+            self._label_text = text
         if control.GetParent() is not self:
             control.Reparent(self)
         sizer.Add(control, 1, wx.ALIGN_CENTER_VERTICAL)
         self.SetSizer(sizer)
+
+    def set_label(self, text: str) -> None:
+        """Update the label column text (for live retranslation)."""
+        if self._label_text is not None:
+            self._label_text.SetLabel(text)
 
 
 class FormSection(wx.Panel):
@@ -579,16 +586,20 @@ class FormSection(wx.Panel):
         # 생성 시점의 부모 배경을 상속. 부모 배경이 이후 바뀌면 Refresh() 필요.
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self._sizer = wx.BoxSizer(wx.VERTICAL)
-        heading = wx.StaticText(self, label=title)
-        heading.SetForegroundColour(Colors.TEXT_PRIMARY)
-        heading.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
-        self._sizer.Add(heading, 0, wx.BOTTOM, 6)
+        self._heading = wx.StaticText(self, label=title)
+        self._heading.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._heading.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
+        self._sizer.Add(self._heading, 0, wx.BOTTOM, 6)
         if description:
             desc = wx.StaticText(self, label=description)
             desc.SetForegroundColour(Colors.TEXT_SECONDARY)
             desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
             self._sizer.Add(desc, 0, wx.BOTTOM, 8)
         self.SetSizer(self._sizer)
+
+    def set_title(self, title: str) -> None:
+        """Update the section heading text (for live retranslation)."""
+        self._heading.SetLabel(title)
 
     def add(self, window: wx.Window, *, gap: int = 6):
         """Add *window* to this section's vertical stack.
