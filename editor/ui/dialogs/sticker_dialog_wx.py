@@ -88,12 +88,12 @@ class StickerDialog(ThemedDialog):
         shape_grid = wx.GridSizer(2, 3, 10, 10)
 
         shapes = [
-            (tr("sticker_shape_rect"), "rectangle"),
+            (tr("shape_rectangle"), "rectangle"),
             (tr("sticker_shape_circle"), "ellipse"),
-            (tr("sticker_shape_triangle"), "triangle"),
-            (tr("sticker_shape_star"), "star"),
-            (tr("sticker_shape_arrow"), "arrow"),
-            (tr("sticker_shape_heart"), "heart"),
+            (tr("shape_triangle"), "triangle"),
+            (tr("shape_star"), "star"),
+            (tr("shape_arrow"), "arrow"),
+            (tr("shape_heart"), "heart"),
         ]
 
         for name, shape_type in shapes:
