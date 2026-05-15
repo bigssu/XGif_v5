@@ -330,8 +330,18 @@ class MainWindow(wx.Frame):
         """UI 초기화"""
         self.Freeze()
         self.SetTitle("GIF Editor")
-        self.SetMinSize((1008, 840))
-        self.SetSize((1008, 840))
+        # 상호작용이 가능한 최소 크기(작업 영역 플로어). 이 아래로는
+        # 툴바/프레임목록/캔버스가 사용 불가하므로 정당한 최소값.
+        self.SetMinSize((880, 620))
+        # 초기 크기는 선호 크기를 화면 작업영역에 클램프
+        # (ui.theme.ThemedDialog.fit_to_content 와 동일 패턴).
+        preferred_w, preferred_h = 1008, 840
+        display_idx = wx.Display.GetFromWindow(self)
+        display = wx.Display(display_idx if display_idx >= 0 else 0)
+        screen = display.GetClientArea()
+        init_w = min(preferred_w, screen.width - 40)
+        init_h = min(preferred_h, screen.height - 40)
+        self.SetSize((init_w, init_h))
 
         # 중앙 패널
         central_panel = wx.Panel(self)

@@ -96,3 +96,15 @@ def test_editor_toolbar_has_visible_group_labels_and_i18n_keys():
             "save_dialog_preview_failed",
         ):
             assert key in locale
+
+
+def test_editor_window_is_not_hard_pinned_to_1008x840():
+    src = _read("editor/ui/editor_main_window_wx.py")
+    # The exact hard-pin pair must be gone:
+    assert "self.SetMinSize((1008, 840))" not in src
+    assert "self.SetSize((1008, 840))" not in src
+    # A real interaction-floor minimum must exist:
+    assert "self.SetMinSize((880, 620))" in src
+    # Initial size must be screen-clamped via the shared display pattern:
+    assert "wx.Display.GetFromWindow(self)" in src
+    assert ".GetClientArea()" in src
