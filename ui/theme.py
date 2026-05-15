@@ -141,7 +141,7 @@ class Colors:
     ENCODING_COMPLETE = SUCCESS
     ENCODING_ERROR = DANGER
 
-    # FlatButton 기본 비활성
+    # 비활성 버튼 색상 (CommandButton 등 공용)
     BTN_DISABLED_FG = wx.Colour(91, 103, 119)
     BTN_DISABLED_BG = wx.Colour(31, 36, 43)
 
