@@ -134,3 +134,8 @@ def test_settings_dialog_uses_form_section_not_staticbox():
     assert "wx.StaticBox(" not in src
     assert "wx.StaticBoxSizer(" not in src
     assert "SetMinSize((130, -1))" not in src
+
+
+def test_dead_flatbutton_removed_from_capture_control_bar():
+    src = _read("ui/capture_control_bar.py")
+    assert "class FlatButton(" not in src
