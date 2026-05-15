@@ -99,6 +99,7 @@ class HelpDialog(ThemedDialog):
             page,
             tr("help_sec_app_summary_title", "앱 요약"),
             [
+                # help_app_summary는 이 섹션의 body0 역할 (헤더에서도 재사용됨)
                 tr("help_app_summary", "XGif는 Windows 화면을 GIF 또는 MP4로 녹화하고, 녹화 결과를 프레임 단위로 다듬어 저장하는 경량 캡처/편집 앱입니다."),
                 tr("help_sec_app_summary_body1", "레코더는 캡처 영역, FPS, 해상도, GIF/MP4 출력, GPU 사용 여부를 빠르게 선택하도록 설계되었습니다."),
                 tr("help_sec_app_summary_body2", "에디터는 녹화 직후 프레임 삭제, 시간 조절, 텍스트/스티커/펜슬 추가, 크롭/리사이즈/필터 적용, 저장 최적화를 처리합니다."),
