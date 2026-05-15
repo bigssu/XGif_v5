@@ -88,7 +88,7 @@ class CropDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 프리셋 버튼
-        preset_box = wx.StaticBox(self, label=tr("crop_size_presets"))
+        preset_box = wx.StaticBox(self, label=tr("resize_size_presets"))
         preset_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preset_sizer = wx.StaticBoxSizer(preset_box, wx.VERTICAL)
         preset_sizer.AddSpacer(10)
