@@ -2321,7 +2321,6 @@ class MainWindow(wx.Frame):
         dlg = TargetFrameHintDialog(
             parent=self,
             settings=self._settings,
-            translations=getattr(self, '_trans', None),
         )
         dlg.ShowModal()
         dlg.Destroy()

@@ -18,11 +18,10 @@ class TargetFrameHintDialog(ThemedDialog):
 
     SETTINGS_KEY_HIDDEN = "target_frame_hint_hidden_v2"
 
-    def __init__(self, parent=None, settings=None, translations=None):
+    def __init__(self, parent=None, settings=None):
         super().__init__(parent, title=tr("target_frame_hint_title", "대상 프레임 선택"),
                          style=wx.DEFAULT_DIALOG_STYLE)
         self._settings = settings
-        self._translations = translations
         self._dont_show_checkbox = None
 
         self._setup_ui()
@@ -30,11 +29,7 @@ class TargetFrameHintDialog(ThemedDialog):
 
     def _tr(self, key: str) -> str:
         """번역 헬퍼"""
-        if self._translations and hasattr(self._translations, 'tr'):
-            return self._translations.tr(key)
-
         defaults = {
-            "target_frame_hint_title": "대상 프레임 선택",
             "target_frame_hint_message": (
                 "프레임 선택 안내:\n\n"
                 "• 현재 프레임: 현재 보고 있는 프레임에만 적용\n"
