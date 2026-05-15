@@ -6,6 +6,7 @@ CropDialog - 이미지 자르기 다이얼로그 (wxPython 버전)
 import wx
 from typing import TYPE_CHECKING, Tuple
 from ..style_constants_wx import Colors, ThemedDialog
+from ui.i18n import tr
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -15,7 +16,7 @@ class CropDialog(ThemedDialog):
     """크롭 다이얼로그 (wxPython)"""
 
     def __init__(self, main_window: 'MainWindow', parent=None):
-        super().__init__(parent or main_window, title="이미지 자르기")
+        super().__init__(parent or main_window, title=tr("crop_dialog_title"))
         self._main_window = main_window
         self._img_width = 0
         self._img_height = 0
@@ -34,7 +35,7 @@ class CropDialog(ThemedDialog):
         main_sizer.Add(self._info_label, 0, wx.ALL, 20)
 
         # 크롭 영역 그룹
-        crop_box = wx.StaticBox(self, label="크롭 영역")
+        crop_box = wx.StaticBox(self, label=tr("crop_area"))
         crop_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         crop_sizer = wx.StaticBoxSizer(crop_box, wx.VERTICAL)
         crop_sizer.AddSpacer(10)
@@ -63,7 +64,7 @@ class CropDialog(ThemedDialog):
 
         # 너비
         w_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        w_label = wx.StaticText(self, label="너비:")
+        w_label = wx.StaticText(self, label=tr("common_width_label"))
         w_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         w_sizer.Add(w_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
         self._w_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
@@ -74,7 +75,7 @@ class CropDialog(ThemedDialog):
 
         # 높이
         h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        h_label = wx.StaticText(self, label="높이:")
+        h_label = wx.StaticText(self, label=tr("common_height_label"))
         h_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         h_sizer.Add(h_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
         self._h_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
@@ -87,17 +88,22 @@ class CropDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 프리셋 버튼
-        preset_box = wx.StaticBox(self, label="크기 프리셋")
+        preset_box = wx.StaticBox(self, label=tr("crop_size_presets"))
         preset_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preset_sizer = wx.StaticBoxSizer(preset_box, wx.VERTICAL)
         preset_sizer.AddSpacer(10)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        for label in ["전체", "중앙 1/2", "중앙 3/4"]:
-            btn = wx.Button(self, label=label)
+        # Each preset tuple: (stable_id, i18n_key)
+        for preset_id, label_key in [
+            ("full", "crop_preset_full"),
+            ("half", "crop_preset_center_half"),
+            ("3q", "crop_preset_center_3q"),
+        ]:
+            btn = wx.Button(self, label=tr(label_key))
             btn.SetBackgroundColour(Colors.BORDER)
             btn.SetForegroundColour(Colors.TEXT_PRIMARY)
-            btn.Bind(wx.EVT_BUTTON, lambda e, preset_label=label: self._apply_preset(preset_label))
+            btn.Bind(wx.EVT_BUTTON, lambda e, pid=preset_id: self._apply_preset(pid))
             btn_sizer.Add(btn, 1, wx.ALL, 3)
 
         preset_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 10)
@@ -109,13 +115,13 @@ class CropDialog(ThemedDialog):
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
         button_sizer.AddStretchSpacer()
 
-        apply_btn = wx.Button(self, wx.ID_OK, label="적용")
+        apply_btn = wx.Button(self, wx.ID_OK, label=tr("common_apply"))
         apply_btn.SetBackgroundColour(Colors.ACCENT)
         apply_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         apply_btn.SetMinSize((80, 32))
         button_sizer.Add(apply_btn, 0, wx.ALL, 5)
 
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label="취소")
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("common_cancel"))
         cancel_btn.SetBackgroundColour(Colors.BG_TERTIARY)
         cancel_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
         cancel_btn.SetMinSize((80, 32))
@@ -135,7 +141,7 @@ class CropDialog(ThemedDialog):
             self._img_width = getattr(frames, 'width', 100)
             self._img_height = getattr(frames, 'height', 100)
 
-            self._info_label.SetLabel(f"이미지 크기: {self._img_width} x {self._img_height} px")
+            self._info_label.SetLabel(tr("crop_info_size", w=self._img_width, h=self._img_height))
 
             self._x_spin.SetMax(self._img_width)
             self._y_spin.SetMax(self._img_height)
@@ -149,20 +155,20 @@ class CropDialog(ThemedDialog):
             pass
 
     def _apply_preset(self, preset: str):
-        """프리셋 적용"""
-        if preset == "전체":
+        """프리셋 적용 — preset은 stable id ("full" | "half" | "3q")"""
+        if preset == "full":
             self._x_spin.SetValue(0)
             self._y_spin.SetValue(0)
             self._w_spin.SetValue(self._img_width)
             self._h_spin.SetValue(self._img_height)
-        elif preset == "중앙 1/2":
+        elif preset == "half":
             w = self._img_width // 2
             h = self._img_height // 2
             self._x_spin.SetValue(self._img_width // 4)
             self._y_spin.SetValue(self._img_height // 4)
             self._w_spin.SetValue(w)
             self._h_spin.SetValue(h)
-        elif preset == "중앙 3/4":
+        elif preset == "3q":
             w = self._img_width * 3 // 4
             h = self._img_height * 3 // 4
             self._x_spin.SetValue(self._img_width // 8)

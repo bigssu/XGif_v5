@@ -622,6 +622,13 @@
     "text_dialog_color": "색상",
     "text_color_label": "텍스트:",
     "text_bg_label": "배경:",
-    "text_transparent": "투명"
+    "text_transparent": "투명",
+    "crop_dialog_title": "이미지 자르기",
+    "crop_area": "크롭 영역",
+    "crop_size_presets": "크기 프리셋",
+    "crop_preset_full": "전체",
+    "crop_preset_center_half": "중앙 1/2",
+    "crop_preset_center_3q": "중앙 3/4",
+    "crop_info_size": "이미지 크기: {w} x {h} px"
   }
 }
