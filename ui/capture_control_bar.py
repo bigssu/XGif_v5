@@ -6,6 +6,7 @@ import logging
 import wx
 from ui.i18n import tr, get_trans_manager
 from ui.theme import Colors, Fonts
+from ui.design_system import CommandButton, RailIcon
 from core.utils import parse_resolution, validate_resolution
 from core.events import AppEvent, get_event_bus
 import contextlib
@@ -403,7 +404,7 @@ class CaptureControlBar(wx.Panel):
         # 해상도 선택 (사용자 입력 가능)
         self.resolution_combo = wx.ComboBox(self,
                                             choices=["320 × 240", "640 × 480", "800 × 600", "1024 × 768"],
-                                            style=wx.CB_DROPDOWN, size=(126, -1))
+                                            style=wx.CB_DROPDOWN, size=(108, -1))
         self.resolution_combo.SetSelection(0)
         self.resolution_combo.SetToolTip(tr('resolution_tooltip_custom'))
         self.resolution_combo.Bind(wx.EVT_COMBOBOX, self._on_resolution_combo_changed)
@@ -432,10 +433,7 @@ class CaptureControlBar(wx.Panel):
         # ═══════════════════════════════════════════════════════════════
 
         # 커서 아이콘
-        self.cursor_icon = wx.StaticText(self, label="↖")
-        self.cursor_icon.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.cursor_icon.SetBackgroundColour(Colors.RAIL_BG)
-        self.cursor_icon.SetFont(Fonts.get_font(12))
+        self.cursor_icon = RailIcon(self, "cursor", tr('cursor_tooltip'), size=(24, 24))
         self.cursor_icon.SetToolTip(tr('cursor_tooltip'))
         main_sizer.Add(self.cursor_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
@@ -446,10 +444,7 @@ class CaptureControlBar(wx.Panel):
         main_sizer.Add(self.cursor_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 영역 아이콘
-        self.region_icon = wx.StaticText(self, label="⬚")
-        self.region_icon.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.region_icon.SetBackgroundColour(Colors.RAIL_BG)
-        self.region_icon.SetFont(Fonts.get_font(14))
+        self.region_icon = RailIcon(self, "region", tr('click_highlight_icon_tooltip'), size=(24, 24))
         self.region_icon.SetToolTip(tr('click_highlight_icon_tooltip'))
         main_sizer.Add(self.region_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
@@ -469,56 +464,56 @@ class CaptureControlBar(wx.Panel):
         # ═══════════════════════════════════════════════════════════════
 
         # GPU 상태 버튼 (초기 중립 상태 — 클릭 시 GPU 정보 확인)
-        self.gpu_status_button = FlatButton(self, label="GPU", size=(55, 28),
-                                            bg_color=Colors.GPU_BTN_OFF.Get()[:3],
-                                            fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                            hover_color=Colors.GPU_BTN_OFF_HOVER.Get()[:3],
-                                            border_color=Colors.BORDER_SOFT.Get()[:3])
+        self.gpu_status_button = CommandButton(self, label="GPU", size=(64, 30), icon_type="gpu",
+                                               bg_color=Colors.GPU_BTN_OFF,
+                                               fg_color=Colors.TEXT_PRIMARY,
+                                               hover_color=Colors.GPU_BTN_OFF_HOVER,
+                                               border_color=Colors.BORDER_SOFT)
         self.gpu_status_button.SetToolTip(tr('gpu_status_tooltip'))
         self.gpu_status_button.Bind(wx.EVT_BUTTON, self._on_gpu_button_clicked)
         self._on_gpu_click_callback = None
         main_sizer.Add(self.gpu_status_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # REC 버튼
-        self.rec_button = FlatButton(self, label="● REC", size=(72, 28),
-                                     bg_color=Colors.REC_READY.Get()[:3],
-                                     fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                     hover_color=Colors.REC_READY_HOVER.Get()[:3],
-                                     pressed_color=Colors.REC_READY_PRESSED.Get()[:3],
-                                     border_color=Colors.REC_READY_PRESSED.Get()[:3])
+        self.rec_button = CommandButton(self, label="REC", size=(76, 30), icon_type="record",
+                                        bg_color=Colors.REC_READY,
+                                        fg_color=Colors.TEXT_PRIMARY,
+                                        hover_color=Colors.REC_READY_HOVER,
+                                        pressed_color=Colors.REC_READY_PRESSED,
+                                        border_color=Colors.REC_READY_PRESSED)
         self.rec_button.SetToolTip(tr('rec_tooltip'))
         self.rec_button.Bind(wx.EVT_BUTTON, self._on_rec_button_clicked)
         main_sizer.Add(self.rec_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
 
         # Pause 버튼
-        self.pause_btn = FlatButton(self, label="❚❚", size=(34, 28),
-                                    bg_color=Colors.PAUSE_BG.Get()[:3],
-                                    fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                    hover_color=Colors.PAUSE_HOVER.Get()[:3],
-                                    pressed_color=Colors.PAUSE_PRESSED.Get()[:3],
-                                    border_color=Colors.PAUSE_PRESSED.Get()[:3])
+        self.pause_btn = CommandButton(self, size=(36, 30), icon_type="pause",
+                                       bg_color=Colors.PAUSE_BG,
+                                       fg_color=Colors.TEXT_PRIMARY,
+                                       hover_color=Colors.PAUSE_HOVER,
+                                       pressed_color=Colors.PAUSE_PRESSED,
+                                       border_color=Colors.PAUSE_PRESSED)
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
         self.pause_btn.Enable(False)
         self.pause_btn.Bind(wx.EVT_BUTTON, self._on_pause_button_clicked)
         main_sizer.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 설정 버튼 (아이콘 2배 크기)
-        self.settings_button = FlatButton(self, label="⚙", size=(42, 36),
-                                          bg_color=Colors.BG_INPUT_DARK.Get()[:3],
-                                          fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                          hover_color=Colors.BG_HOVER.Get()[:3],
-                                          border_color=Colors.BORDER.Get()[:3])
+        self.settings_button = CommandButton(self, size=(42, 36), icon_type="settings", icon_size=21,
+                                             bg_color=Colors.BG_INPUT_DARK,
+                                             fg_color=Colors.TEXT_PRIMARY,
+                                             hover_color=Colors.BG_HOVER,
+                                             border_color=Colors.BORDER)
         self.settings_button.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
         self.settings_button.SetToolTip(tr('settings_tooltip'))
         self.settings_button.Bind(wx.EVT_BUTTON, self._on_settings_button_clicked)
         main_sizer.Add(self.settings_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # 도움말 버튼
-        self.help_button = FlatButton(self, label="?", size=(38, 36),
-                                      bg_color=Colors.BG_INPUT_DARK.Get()[:3],
-                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                      hover_color=Colors.BG_HOVER.Get()[:3],
-                                      border_color=Colors.BORDER.Get()[:3])
+        self.help_button = CommandButton(self, size=(38, 36), icon_type="help", icon_size=21,
+                                         bg_color=Colors.BG_INPUT_DARK,
+                                         fg_color=Colors.TEXT_PRIMARY,
+                                         hover_color=Colors.BG_HOVER,
+                                         border_color=Colors.BORDER)
         self.help_button.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
         self.help_button.SetToolTip(tr('help_tooltip'))
         self.help_button.Bind(wx.EVT_BUTTON, self._on_help_button_clicked)
@@ -789,7 +784,8 @@ class CaptureControlBar(wx.Panel):
 
         if is_recording:
             # 녹화 중 → REC 버튼이 STOP 역할
-            self.rec_button.SetLabel("■ STOP")
+            self.rec_button.SetIconType("stop")
+            self.rec_button.SetLabel("STOP")
             self.rec_button.Enable(True)
             self.rec_button.SetBackgroundColour(Colors.ACCENT)
             self.rec_button.SetHoverColour(Colors.ACCENT_HOVER)
@@ -798,13 +794,15 @@ class CaptureControlBar(wx.Panel):
             self.set_pause_enabled(True)
         elif is_paused:
             # 일시정지 → REC 버튼이 재개 역할
-            self.rec_button.SetLabel("▶ REC")
+            self.rec_button.SetIconType("play")
+            self.rec_button.SetLabel("REC")
             self.rec_button.Enable(True)
             self._apply_paused_style()
             self.set_pause_enabled(False)
         else:
             # 준비 상태
-            self.rec_button.SetLabel("● REC")
+            self.rec_button.SetIconType("record")
+            self.rec_button.SetLabel("REC")
             self.rec_button.Enable(True)
             self._apply_ready_style()
             self.set_pause_enabled(False)

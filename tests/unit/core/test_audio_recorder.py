@@ -51,3 +51,101 @@ def test_stop_clears_buffers_when_merge_fails(monkeypatch):
     assert recorder.mic_audio_data == []
     assert recorder._audio_buffer_total_bytes == 0
     assert recorder.buffer_limit_reached is False
+
+
+def test_start_result_reports_requested_mic_failure_when_system_only(monkeypatch):
+    class FakeStream:
+        def __init__(self, *args, device=None, **kwargs):
+            if device == 1:
+                raise OSError("mic unavailable")
+            self.device = device
+
+        def start(self):
+            return None
+
+        def stop(self):
+            return None
+
+        def close(self):
+            return None
+
+    class FakeSoundDevice:
+        InputStream = FakeStream
+
+        @staticmethod
+        def query_devices(device=None, kind=None):
+            if device is None and kind is None:
+                return [
+                    {"name": "Loopback", "max_input_channels": 2, "default_samplerate": 44100},
+                    {"name": "Mic", "max_input_channels": 1, "default_samplerate": 48000},
+                ]
+            if kind == "input":
+                return {"index": 1, "name": "Mic", "max_input_channels": 1, "default_samplerate": 48000}
+            if device == 0:
+                return {"name": "Loopback", "max_input_channels": 2, "default_samplerate": 44100}
+            if device == 1:
+                return {"name": "Mic", "max_input_channels": 1, "default_samplerate": 48000}
+            raise OSError("unknown device")
+
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", True)
+    monkeypatch.setattr(audio_recorder, "sd", FakeSoundDevice)
+
+    recorder = audio_recorder.AudioRecorder()
+    recorder.set_record_mic(True)
+
+    result = recorder.start()
+    try:
+        assert bool(result) is True
+        assert result.system_started is True
+        assert result.mic_requested is True
+        assert result.mic_started is False
+        assert result.requested_mic_missing is True
+        assert recorder.last_start_result is result
+    finally:
+        recorder.cleanup()
+
+
+def test_start_result_marks_default_input_as_mic_fallback(monkeypatch):
+    class FakeStream:
+        def __init__(self, *args, device=None, **kwargs):
+            self.device = device
+
+        def start(self):
+            return None
+
+        def stop(self):
+            return None
+
+        def close(self):
+            return None
+
+    class FakeSoundDevice:
+        InputStream = FakeStream
+
+        @staticmethod
+        def query_devices(device=None, kind=None):
+            if device is None and kind is None:
+                return [
+                    {"name": "Mic", "max_input_channels": 1, "default_samplerate": 48000},
+                ]
+            if kind == "input":
+                return {"index": 0, "name": "Mic", "max_input_channels": 1, "default_samplerate": 48000}
+            if device == 0:
+                return {"name": "Mic", "max_input_channels": 1, "default_samplerate": 48000}
+            raise OSError("unknown device")
+
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", True)
+    monkeypatch.setattr(audio_recorder, "sd", FakeSoundDevice)
+
+    recorder = audio_recorder.AudioRecorder()
+    recorder.set_record_mic(True)
+
+    result = recorder.start()
+    try:
+        assert bool(result) is True
+        assert result.system_started is True
+        assert result.mic_started is True
+        assert result.mic_fallback_to_default_input is True
+        assert result.requested_mic_missing is False
+    finally:
+        recorder.cleanup()

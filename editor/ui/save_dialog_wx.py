@@ -11,6 +11,7 @@ from typing import Optional, Dict, List
 from pathlib import Path
 
 from .style_constants_wx import Colors, ThemedDialog
+from ui.design_system import CommandButton
 from ..core.editor_gif_encoder import GifEncoder, EncoderSettings, QuantizationMethod
 
 
@@ -53,12 +54,12 @@ class SaveDialog(ThemedDialog):
     ZOOM_LEVELS: List[float] = [0.5, 1.0, 2.0, 4.0]
 
     # 양자화 알고리즘 설명
-    QUANT_DESCRIPTIONS: Dict[QuantizationMethod, str] = {
-        QuantizationMethod.ADAPTIVE: "PIL 기본 양자화 - 빠르고 안정적",
-        QuantizationMethod.MEDIANCUT: "Median Cut - 색상 분포 균일화",
-        QuantizationMethod.MAXCOVERAGE: "Max Coverage - 넓은 색상 범위",
-        QuantizationMethod.FASTOCTREE: "Fast Octree - 빠른 처리 속도",
-        QuantizationMethod.LIBIMAGEQUANT: "LIQ - 고품질 양자화 (pngquant 사용)",
+    QUANT_DESCRIPTION_KEYS: Dict[QuantizationMethod, tuple[str, str]] = {
+        QuantizationMethod.ADAPTIVE: ("save_dialog_quant_desc_adaptive", "PIL default quantization - fast and stable"),
+        QuantizationMethod.MEDIANCUT: ("save_dialog_quant_desc_median", "Median Cut - balanced color distribution"),
+        QuantizationMethod.MAXCOVERAGE: ("save_dialog_quant_desc_max", "Max Coverage - wider color range"),
+        QuantizationMethod.FASTOCTREE: ("save_dialog_quant_desc_octree", "Fast Octree - faster processing"),
+        QuantizationMethod.LIBIMAGEQUANT: ("save_dialog_quant_desc_liq", "LIQ - high quality quantization with pngquant"),
     }
 
     QUANT_NAMES: Dict[QuantizationMethod, str] = {
@@ -77,7 +78,11 @@ class SaveDialog(ThemedDialog):
             main_window: 메인 윈도우 참조
             parent: 부모 위젯 (기본값: main_window)
         """
-        super().__init__(parent or main_window, title="GIF 저장 설정", style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        super().__init__(
+            parent or main_window,
+            title=self._dialog_title(main_window),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+        )
         self._main_window = main_window
 
         # 타이머 초기화
@@ -112,10 +117,17 @@ class SaveDialog(ThemedDialog):
         wx.CallLater(self.INITIAL_PREVIEW_DELAY_MS, self._update_preview_fast)
         wx.CallLater(self.QUANTIZED_PREVIEW_DELAY_MS, self._enable_quantized_preview)
 
-        # 다이얼로그 크기 설정
-        self.SetSize((900, 550))
-        self.SetMinSize((900, 550))
+        # 다이얼로그 크기 설정: preview/settings panes can now compress on smaller screens.
+        self.SetSize((860, 560))
+        self.SetMinSize((720, 520))
         self.CenterOnParent()
+
+    @staticmethod
+    def _dialog_title(main_window) -> str:
+        translations = getattr(main_window, '_translations', None)
+        if translations:
+            return translations.tr("save_dialog_title")
+        return "GIF Save Settings"
 
     def _get_translation(self, key: str, default: str = "") -> str:
         """번역 문자열 가져오기 헬퍼"""
@@ -133,15 +145,14 @@ class SaveDialog(ThemedDialog):
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # === 왼쪽: 프리뷰 영역 ===
-        preview_box = wx.StaticBox(self, label=self._get_translation("save_dialog_preview", "미리보기"))
+        preview_box = wx.StaticBox(self, label=self._get_translation("save_dialog_preview", "Preview"))
         preview_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preview_sizer = wx.StaticBoxSizer(preview_box, wx.VERTICAL)
 
         # 프리뷰 이미지 패널
         self._preview_panel = wx.Panel(self, size=(self.PREVIEW_WIDTH, self.PREVIEW_HEIGHT))
         self._preview_panel.SetBackgroundColour(self.COLOR_PREVIEW_BG)
-        self._preview_panel.SetMinSize((self.PREVIEW_WIDTH, self.PREVIEW_HEIGHT))
-        self._preview_panel.SetMaxSize((self.PREVIEW_WIDTH, self.PREVIEW_HEIGHT))
+        self._preview_panel.SetMinSize((360, 240))
 
         # 프리뷰 비트맵 (StaticBitmap 대신 Panel에 직접 그리기)
         self._preview_panel.Bind(wx.EVT_PAINT, self._on_preview_paint)
@@ -149,7 +160,7 @@ class SaveDialog(ThemedDialog):
         self._preview_panel.Bind(wx.EVT_MOTION, self._on_preview_mouse_move)
         self._preview_panel.Bind(wx.EVT_LEFT_UP, self._on_preview_mouse_release)
 
-        preview_sizer.Add(self._preview_panel, 0, wx.ALL | wx.ALIGN_CENTER, 5)
+        preview_sizer.Add(self._preview_panel, 1, wx.ALL | wx.EXPAND, 5)
 
         # Zoom 버튼 영역
         zoom_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -173,7 +184,7 @@ class SaveDialog(ThemedDialog):
 
         # 프리뷰 프레임 슬라이더
         frame_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        frame_label = wx.StaticText(self, label=self._get_translation("save_dialog_frame", "프레임:"))
+        frame_label = wx.StaticText(self, label=self._get_translation("save_dialog_frame", "Frame:"))
         frame_label.SetForegroundColour(self.COLOR_LABEL)
         frame_sizer.Add(frame_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
@@ -189,17 +200,17 @@ class SaveDialog(ThemedDialog):
         preview_sizer.Add(frame_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 프리뷰 정보
-        self._preview_info = wx.StaticText(self, label=self._get_translation("save_dialog_preview_info", "원본 vs 압축 미리보기"))
+        self._preview_info = wx.StaticText(self, label=self._get_translation("save_dialog_preview_info", "Original vs Compressed Preview"))
         self._preview_info.SetForegroundColour(self.COLOR_LABEL)
         preview_sizer.Add(self._preview_info, 0, wx.ALL | wx.ALIGN_CENTER, 5)
 
-        main_sizer.Add(preview_sizer, 0, wx.ALL, 10)
+        main_sizer.Add(preview_sizer, 1, wx.ALL | wx.EXPAND, 10)
 
         # === 오른쪽: 설정 영역 ===
         settings_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # 양자화 방법 선택
-        quant_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quantization", "양자화 알고리즘"))
+        quant_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quantization", "Quantization Algorithm"))
         quant_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         quant_sizer = wx.StaticBoxSizer(quant_box, wx.VERTICAL)
 
@@ -210,7 +221,7 @@ class SaveDialog(ThemedDialog):
         quant_sizer.Add(self._quant_combo, 0, wx.ALL, 5)
 
         # 알고리즘 설명
-        self._quant_desc = wx.StaticText(self, label=self._get_translation("save_dialog_quant_desc", "PIL 기본 양자화 알고리즘"))
+        self._quant_desc = wx.StaticText(self, label=self._get_translation("save_dialog_quant_desc", "PIL default quantization algorithm"))
         self._quant_desc.SetForegroundColour(self.COLOR_SUBTEXT)
         self._quant_desc.Wrap(300)
         quant_sizer.Add(self._quant_desc, 0, wx.ALL, 5)
@@ -218,13 +229,13 @@ class SaveDialog(ThemedDialog):
         settings_sizer.Add(quant_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 품질 설정
-        quality_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quality", "품질 설정"))
+        quality_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quality", "Quality Settings"))
         quality_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         quality_sizer = wx.StaticBoxSizer(quality_box, wx.VERTICAL)
 
         # 색상 수
         colors_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        colors_label = wx.StaticText(self, label="색상:")
+        colors_label = wx.StaticText(self, label=self._get_translation("save_dialog_colors", "Number of Colors"))
         colors_label.SetForegroundColour(self.COLOR_LABEL)
         colors_sizer.Add(colors_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
@@ -239,13 +250,13 @@ class SaveDialog(ThemedDialog):
         quality_sizer.Add(colors_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 디더링
-        self._dither_check = wx.CheckBox(self, label=self._get_translation("save_dialog_dither", "디더링 사용"))
+        self._dither_check = wx.CheckBox(self, label=self._get_translation("save_dialog_dither", "Use Dithering"))
         self._dither_check.SetValue(True)
         self._dither_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         quality_sizer.Add(self._dither_check, 0, wx.ALL, 5)
 
         # 최적화
-        self._optimize_check = wx.CheckBox(self, label=self._get_translation("save_dialog_optimize", "파일 크기 최적화"))
+        self._optimize_check = wx.CheckBox(self, label=self._get_translation("save_dialog_optimize", "Optimize File Size"))
         self._optimize_check.SetValue(True)
         self._optimize_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         quality_sizer.Add(self._optimize_check, 0, wx.ALL, 5)
@@ -253,12 +264,15 @@ class SaveDialog(ThemedDialog):
         settings_sizer.Add(quality_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 파일 크기 예상
-        size_box = wx.StaticBox(self, label=self._get_translation("save_dialog_result", "예상 결과"))
+        size_box = wx.StaticBox(self, label=self._get_translation("save_dialog_result", "Expected Result"))
         size_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         size_sizer = wx.StaticBoxSizer(size_box, wx.VERTICAL)
 
-        size_text = self._get_translation("save_dialog_size", "예상 크기:")
-        self._size_label = wx.StaticText(self, label=f"{size_text} 계산 중...")
+        size_text = self._get_translation("save_dialog_size", "Estimated Size:")
+        self._size_label = wx.StaticText(
+            self,
+            label=f"{size_text} {self._get_translation('save_dialog_calculating', 'Calculating...')}",
+        )
         self._size_label.SetForegroundColour(self.COLOR_SIZE_TEXT)
         size_sizer.Add(self._size_label, 0, wx.ALL, 5)
 
@@ -274,15 +288,26 @@ class SaveDialog(ThemedDialog):
         # 버튼
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self._save_btn = wx.Button(self, label=self._get_translation("save_dialog_save", "저장"), size=(-1, 40))
-        self._save_btn.SetBackgroundColour(self.COLOR_BUTTON_SAVE)
-        self._save_btn.SetForegroundColour(Colors.TEXT_PRIMARY)
+        self._save_btn = CommandButton(
+            self,
+            label=self._get_translation("save_dialog_save", "Save"),
+            size=(-1, 40),
+            bg_color=self.COLOR_BUTTON_SAVE,
+            fg_color=Colors.TEXT_PRIMARY,
+            hover_color=Colors.ACCENT_HOVER,
+            pressed_color=Colors.ACCENT_PRESSED,
+        )
         self._save_btn.Bind(wx.EVT_BUTTON, self._on_save)
         button_sizer.Add(self._save_btn, 1, wx.ALL, 5)
 
-        self._cancel_btn = wx.Button(self, label=self._get_translation("save_dialog_cancel", "취소"), size=(-1, 40))
-        self._cancel_btn.SetBackgroundColour(self.COLOR_BUTTON_BG)
-        self._cancel_btn.SetForegroundColour(self.COLOR_WHITE)
+        self._cancel_btn = CommandButton(
+            self,
+            label=self._get_translation("save_dialog_cancel", "Cancel"),
+            size=(-1, 40),
+            bg_color=self.COLOR_BUTTON_BG,
+            fg_color=self.COLOR_WHITE,
+            hover_color=Colors.BG_HOVER,
+        )
         self._cancel_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
         button_sizer.Add(self._cancel_btn, 1, wx.ALL, 5)
 
@@ -295,7 +320,7 @@ class SaveDialog(ThemedDialog):
     def _populate_quant_combo(self):
         """양자화 콤보박스 항목 채우기"""
         quant_items = [
-            ("save_dialog_quant_adaptive", "ADAPTIVE (기본)", QuantizationMethod.ADAPTIVE),
+            ("save_dialog_quant_adaptive", "ADAPTIVE (Default)", QuantizationMethod.ADAPTIVE),
             ("save_dialog_quant_median", "MEDIAN CUT", QuantizationMethod.MEDIANCUT),
             ("save_dialog_quant_max", "MAX COVERAGE", QuantizationMethod.MAXCOVERAGE),
             ("save_dialog_quant_octree", "FAST OCTREE", QuantizationMethod.FASTOCTREE),
@@ -467,7 +492,7 @@ class SaveDialog(ThemedDialog):
             # 파일 크기 추정
             estimated_size = GifEncoder.estimate_gif_size(frames, self._settings)
             estimated_size_mb = estimated_size / self.BYTES_PER_MB
-            size_text = self._get_translation("save_dialog_size", "예상 크기:")
+            size_text = self._get_translation("save_dialog_size", "Estimated Size:")
             self._size_label.SetLabel(f"{size_text} {estimated_size_mb:.2f} MB")
 
             # 원본 대비 압축률 계산
@@ -475,15 +500,21 @@ class SaveDialog(ThemedDialog):
             if original_size > 0:
                 ratio = (estimated_size / original_size) * 100
                 compression_ratio = 100 - ratio
-                self._comparison_label.SetLabel(
-                    f"원본 대비 약 {ratio:.1f}% (압축률: {compression_ratio:.1f}%)\n"
-                    f"양자화: {self._quant_combo.GetStringSelection()} | "
-                    f"색상 수: {self._settings.colors} | "
-                    f"디더링: {'ON' if self._settings.dithering else 'OFF'}"
+                summary = self._get_translation(
+                    "save_dialog_comparison_summary",
+                    "About {ratio:.1f}% of original (compression: {compression:.1f}%)\n"
+                    "Quantization: {quantization} | Colors: {colors} | Dithering: {dithering}",
                 )
+                self._comparison_label.SetLabel(summary.format(
+                    ratio=ratio,
+                    compression=compression_ratio,
+                    quantization=self._quant_combo.GetStringSelection(),
+                    colors=self._settings.colors,
+                    dithering="ON" if self._settings.dithering else "OFF",
+                ))
                 self._comparison_label.Wrap(300)
         except Exception as e:
-            error_text = self._get_translation("msg_error", "오류")
+            error_text = self._get_translation("msg_error", "Error")
             self._size_label.SetLabel(f"{error_text}: {str(e)}")
 
     def _update_settings(self):
@@ -497,7 +528,8 @@ class SaveDialog(ThemedDialog):
         self._settings.optimize = self._optimize_check.GetValue()
 
         # 알고리즘 설명 업데이트
-        self._quant_desc.SetLabel(self.QUANT_DESCRIPTIONS.get(self._settings.quantization, ""))
+        key, fallback = self.QUANT_DESCRIPTION_KEYS.get(self._settings.quantization, ("", ""))
+        self._quant_desc.SetLabel(self._get_translation(key, fallback) if key else fallback)
         self._quant_desc.Wrap(300)
 
     def _on_preview_frame_changed(self, event):
@@ -562,8 +594,10 @@ class SaveDialog(ThemedDialog):
             self._update_preview_display()
 
             # 프리뷰 정보 업데이트
-            preview_info_text = self._get_translation("save_dialog_preview_info", "원본 vs 압축 미리보기")
-            self._preview_info.SetLabel(f"{preview_info_text} (원본)")
+            preview_info_text = self._get_translation("save_dialog_preview_info", "Original vs Compressed Preview")
+            self._preview_info.SetLabel(
+                f"{preview_info_text} {self._get_translation('save_dialog_original_suffix', '(Original)')}"
+            )
 
         except Exception:
             pass
@@ -610,7 +644,7 @@ class SaveDialog(ThemedDialog):
                 preview_bitmap = self._pil_to_bitmap(original_img)
 
             if preview_bitmap is None or not preview_bitmap.IsOk():
-                self._preview_info.SetLabel("프리뷰 이미지 생성 실패")
+                self._preview_info.SetLabel(self._get_translation("save_dialog_preview_failed", "Preview image generation failed"))
                 return
 
             # 원본 프리뷰 저장
@@ -624,10 +658,21 @@ class SaveDialog(ThemedDialog):
 
             # 프리뷰 정보 업데이트
             quant_name = self.QUANT_NAMES.get(self._settings.quantization, "ADAPTIVE")
-            self._preview_info.SetLabel(f"프레임 {frame_index + 1}/{frames.frame_count} - {quant_name} - {self._settings.colors}색")
+            frame_info = self._get_translation(
+                "save_dialog_frame_info",
+                "Frame {frame}/{total} - {quantization} - {colors} colors",
+            )
+            self._preview_info.SetLabel(frame_info.format(
+                frame=frame_index + 1,
+                total=frames.frame_count,
+                quantization=quant_name,
+                colors=self._settings.colors,
+            ))
 
         except Exception as e:
-            self._preview_info.SetLabel(f"프리뷰 오류: {str(e)}")
+            self._preview_info.SetLabel(
+                f"{self._get_translation('save_dialog_preview_error', 'Preview error')}: {str(e)}"
+            )
             # 에러 발생 시 원본 프레임 이미지 표시 시도
             try:
                 original_img = preview_frame.image.copy()
@@ -693,15 +738,15 @@ class SaveDialog(ThemedDialog):
             start_dir = self._main_window._last_directory
 
         wildcard = (
-            "GIF 파일 (*.gif)|*.gif|"
-            "WebP 파일 (*.webp)|*.webp|"
-            "APNG 파일 (*.apng;*.png)|*.apng;*.png|"
-            "모든 파일 (*.*)|*.*"
+            f"{self._get_translation('file_type_gif', 'GIF files')} (*.gif)|*.gif|"
+            f"{self._get_translation('file_type_webp', 'WebP files')} (*.webp)|*.webp|"
+            f"{self._get_translation('file_type_apng', 'APNG files')} (*.apng;*.png)|*.apng;*.png|"
+            f"{self._get_translation('file_type_all', 'All files')} (*.*)|*.*"
         )
 
         dlg = wx.FileDialog(
             self,
-            "애니메이션 저장",
+            self._get_translation("save_dialog_file_title", "Save Animation"),
             defaultDir=start_dir,
             wildcard=wildcard,
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT

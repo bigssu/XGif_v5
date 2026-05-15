@@ -41,6 +41,8 @@ _ICON_SIZE_BY_TYPE = {
     "play": 25,
     "pause": 25,
 }
+_GROUP_BUTTON_SIZE = (38, 38)
+_GROUP_CARD_RADIUS = 8
 
 
 class FlatIconButton(wx.Control):
@@ -263,6 +265,78 @@ class ToolSeparator(wx.Control):
         dc.DrawBitmap(bmp, 0, 0, False)
 
 
+class ToolbarGroupLabel(wx.StaticText):
+    """Low-noise visible group label for toolbar discoverability."""
+
+    def __init__(self, parent, label: str):
+        super().__init__(parent, label=label)
+        self.SetForegroundColour(Colors.TEXT_MUTED if Colors else wx.Colour(125, 138, 153))
+        self.SetBackgroundColour(Colors.BG_CARD if Colors else wx.Colour(32, 40, 54))
+        self.SetFont(wx.Font(7, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        self.SetMinSize((-1, 12))
+
+
+class ToolbarGroupCard(wx.Panel):
+    """Raised toolbar group card with icons above and label below."""
+
+    def __init__(self, parent, group: str, label: str):
+        super().__init__(parent, wx.ID_ANY, style=wx.BORDER_NONE)
+        self._group = group
+        self._label = ToolbarGroupLabel(self, label)
+        self._button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self._skip_auto_theme = True
+        self.SetBackgroundColour(Colors.BG_CARD if Colors else wx.Colour(32, 40, 54))
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.SetMinSize((-1, 61))
+
+        root_sizer = wx.BoxSizer(wx.VERTICAL)
+        root_sizer.Add(self._button_sizer, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, 4)
+        root_sizer.Add(self._label, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        self.SetSizer(root_sizer)
+
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+        self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
+
+    @property
+    def group(self) -> str:
+        return self._group
+
+    @property
+    def label(self) -> ToolbarGroupLabel:
+        return self._label
+
+    def add_button(self, button: FlatIconButton):
+        self._button_sizer.Add(button, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 1)
+        self.Layout()
+
+    def _on_paint(self, event):
+        dc = wx.PaintDC(self)
+        w, h = self.GetClientSize()
+        if w <= 0 or h <= 0:
+            return
+
+        parent = self.GetParent()
+        parent_bg = parent.GetBackgroundColour() if parent else Colors.RAIL_BG
+        dc.SetBackground(wx.Brush(parent_bg))
+        dc.Clear()
+
+        gc = wx.GraphicsContext.Create(dc)
+        if not gc:
+            return
+
+        bg = Colors.BG_CARD if Colors else wx.Colour(32, 40, 54)
+        border = Colors.BORDER_SOFT if Colors else wx.Colour(48, 60, 78)
+        gc.SetBrush(wx.Brush(bg))
+        gc.SetPen(wx.Pen(border, 1))
+        gc.DrawRoundedRectangle(0.5, 0.5, w - 1, h - 1, _GROUP_CARD_RADIUS)
+
+        if Colors:
+            gc.SetPen(wx.Pen(Colors.SURFACE_HIGHLIGHT, 1))
+            gc.StrokeLine(8, 1.5, max(8, w - 8), 1.5)
+            gc.SetPen(wx.Pen(Colors.SURFACE_SHADOW, 1))
+            gc.StrokeLine(8, h - 1.5, max(8, w - 8), h - 1.5)
+
+
 class IconToolbar(wx.Panel):
     """모던 플랫 아이콘 툴바"""
 
@@ -270,10 +344,14 @@ class IconToolbar(wx.Panel):
         super().__init__(parent)
         self._main_window = main_window
         self._all_buttons = []
+        self._group_cards = {}
+        self._group_labels = {}
+        self._scroll_panel = None
         self._active_button: Optional[FlatIconButton] = None
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
+        self.Bind(wx.EVT_SIZE, self._on_size)
         self._setup_ui()
 
     def _on_paint(self, event):
@@ -305,8 +383,13 @@ class IconToolbar(wx.Panel):
 
         # 스크롤 영역
         scroll_panel = wx.ScrolledWindow(self, style=wx.HSCROLL)
+        self._scroll_panel = scroll_panel
         scroll_panel.SetScrollRate(5, 0)
         scroll_panel.ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)
+        scroll_panel.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        scroll_panel.Bind(wx.EVT_PAINT, self._on_scroll_paint)
+        scroll_panel.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
+        scroll_panel.Bind(wx.EVT_SIZE, self._on_scroll_size)
         scroll_panel.Freeze()
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -315,109 +398,91 @@ class IconToolbar(wx.Panel):
         bg = Colors.RAIL_BG if Colors else wx.Colour(25, 29, 35)
         self.SetBackgroundColour(Colors.BG_PRIMARY if Colors else bg)
         scroll_panel.SetBackgroundColour(bg)
-        self.SetMinSize((-1, 72))
+        self.SetMinSize((-1, 86))
 
         # 번역
         translations = getattr(self._main_window, '_translations', None)
 
         # === 파일 열기 ===
+        file_card = self._create_group_card(button_sizer, scroll_panel, "file", translations)
         open_tooltip = translations.tr("toolbar_open_file") if translations else "파일 열기 (Ctrl+O)"
-        self._open_btn = FlatIconButton("open_file", open_tooltip, scroll_panel)
+        self._open_btn = self._create_group_button(file_card, "open_file", open_tooltip)
         self._open_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_open_file())
-        button_sizer.Add(self._open_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._open_btn)
 
-        button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
-
         # === 오버레이 그룹 ===
+        overlay_card = self._create_group_card(button_sizer, scroll_panel, "overlay", translations)
         text_tooltip = translations.tr("toolbar_text") if translations else "텍스트 추가 (T)"
-        self._text_btn = FlatIconButton("text", text_tooltip, scroll_panel)
+        self._text_btn = self._create_group_button(overlay_card, "text", text_tooltip)
         self._text_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_text())
-        button_sizer.Add(self._text_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._text_btn)
 
         sticker_tooltip = translations.tr("toolbar_sticker") if translations else "스티커/도형 추가"
-        self._sticker_btn = FlatIconButton("sticker", sticker_tooltip, scroll_panel)
+        self._sticker_btn = self._create_group_button(overlay_card, "sticker", sticker_tooltip)
         self._sticker_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_sticker())
-        button_sizer.Add(self._sticker_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._sticker_btn)
 
         pencil_tooltip = translations.tr("toolbar_pencil") if translations else "펜슬 그리기 (P)"
-        self._pencil_btn = FlatIconButton("pencil", pencil_tooltip, scroll_panel)
+        self._pencil_btn = self._create_group_button(overlay_card, "pencil", pencil_tooltip)
         self._pencil_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_pencil())
-        button_sizer.Add(self._pencil_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._pencil_btn)
 
-        button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
-
         # === 편집 그룹 ===
+        edit_card = self._create_group_card(button_sizer, scroll_panel, "edit", translations)
         crop_tooltip = translations.tr("toolbar_crop") if translations else "자르기 (C)"
-        self._crop_btn = FlatIconButton("crop", crop_tooltip, scroll_panel)
+        self._crop_btn = self._create_group_button(edit_card, "crop", crop_tooltip)
         self._crop_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_crop())
-        button_sizer.Add(self._crop_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._crop_btn)
 
         resize_tooltip = translations.tr("toolbar_resize") if translations else "크기 조절 (R)"
-        self._resize_btn = FlatIconButton("resize", resize_tooltip, scroll_panel)
+        self._resize_btn = self._create_group_button(edit_card, "resize", resize_tooltip)
         self._resize_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_resize())
-        button_sizer.Add(self._resize_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._resize_btn)
 
-        button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
-
         # === 효과 그룹 ===
+        effects_card = self._create_group_card(button_sizer, scroll_panel, "effects", translations)
         effects_tooltip = translations.tr("toolbar_effects") if translations else "효과/필터 (E)"
-        self._effects_btn = FlatIconButton("effects", effects_tooltip, scroll_panel)
+        self._effects_btn = self._create_group_button(effects_card, "effects", effects_tooltip)
         self._effects_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_effects())
-        button_sizer.Add(self._effects_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._effects_btn)
 
-        button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
-
         # === 변환 그룹 ===
+        transform_card = self._create_group_card(button_sizer, scroll_panel, "transform", translations)
         rotate_tooltip = translations.tr("toolbar_rotate") if translations else "90° 회전"
-        self._rotate_btn = FlatIconButton("rotate", rotate_tooltip, scroll_panel)
+        self._rotate_btn = self._create_group_button(transform_card, "rotate", rotate_tooltip)
         self._rotate_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_rotate(0))
-        button_sizer.Add(self._rotate_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._rotate_btn)
 
         flip_h_tooltip = translations.tr("toolbar_flip_h") if translations else "좌우 뒤집기"
-        self._flip_h_btn = FlatIconButton("flip_h", flip_h_tooltip, scroll_panel)
+        self._flip_h_btn = self._create_group_button(transform_card, "flip_h", flip_h_tooltip)
         self._flip_h_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_flip('h'))
-        button_sizer.Add(self._flip_h_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._flip_h_btn)
 
         flip_v_tooltip = translations.tr("toolbar_flip_v") if translations else "상하 뒤집기"
-        self._flip_v_btn = FlatIconButton("flip_v", flip_v_tooltip, scroll_panel)
+        self._flip_v_btn = self._create_group_button(transform_card, "flip_v", flip_v_tooltip)
         self._flip_v_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_flip('v'))
-        button_sizer.Add(self._flip_v_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._flip_v_btn)
 
-        button_sizer.Add(ToolSeparator(scroll_panel), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
-
         # === 재생 그룹 ===
+        playback_card = self._create_group_card(button_sizer, scroll_panel, "playback", translations)
         reverse_tooltip = translations.tr("toolbar_reverse") if translations else "역재생"
-        self._reverse_btn = FlatIconButton("reverse", reverse_tooltip, scroll_panel)
+        self._reverse_btn = self._create_group_button(playback_card, "reverse", reverse_tooltip)
         self._reverse_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_reverse())
-        button_sizer.Add(self._reverse_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._reverse_btn)
 
         yoyo_tooltip = translations.tr("toolbar_yoyo") if translations else "요요 효과"
-        self._yoyo_btn = FlatIconButton("yoyo", yoyo_tooltip, scroll_panel)
+        self._yoyo_btn = self._create_group_button(playback_card, "yoyo", yoyo_tooltip)
         self._yoyo_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_yoyo())
-        button_sizer.Add(self._yoyo_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._yoyo_btn)
 
         speed_tooltip = translations.tr("toolbar_speed") if translations else "속도 조절"
-        self._speed_btn = FlatIconButton("speed", speed_tooltip, scroll_panel)
+        self._speed_btn = self._create_group_button(playback_card, "speed", speed_tooltip)
         self._speed_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_speed())
-        button_sizer.Add(self._speed_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._speed_btn)
 
         reduce_tooltip = translations.tr("toolbar_reduce") if translations else "프레임 줄이기"
-        self._reduce_btn = FlatIconButton("reduce", reduce_tooltip, scroll_panel)
+        self._reduce_btn = self._create_group_button(playback_card, "reduce", reduce_tooltip)
         self._reduce_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_reduce_frames())
-        button_sizer.Add(self._reduce_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 2)
         self._all_buttons.append(self._reduce_btn)
 
         button_sizer.AddStretchSpacer()
@@ -428,6 +493,51 @@ class IconToolbar(wx.Panel):
 
         scroll_panel.Thaw()
         self.Thaw()
+
+    def _on_size(self, event):
+        event.Skip()
+        self.Refresh(False)
+        if self._scroll_panel:
+            self._scroll_panel.Refresh(False)
+
+    def _on_scroll_size(self, event):
+        event.Skip()
+        event.GetEventObject().Refresh(False)
+
+    def _on_scroll_paint(self, event):
+        panel = event.GetEventObject()
+        dc = wx.PaintDC(panel)
+        w, h = panel.GetClientSize()
+        if w <= 0 or h <= 0:
+            return
+
+        bg = Colors.RAIL_BG if Colors else wx.Colour(25, 29, 35)
+        dc.SetBackground(wx.Brush(bg))
+        dc.Clear()
+
+    def _group_text(self, group: str, translations: Optional['Translations']) -> str:
+        key = f"toolbar_group_{group}"
+        fallback = {
+            "file": "File",
+            "overlay": "Overlay",
+            "edit": "Edit",
+            "effects": "Effects",
+            "transform": "Transform",
+            "playback": "Playback",
+        }[group]
+        return translations.tr(key) if translations else fallback
+
+    def _create_group_card(self, sizer, parent, group: str, translations: Optional['Translations']):
+        card = ToolbarGroupCard(parent, group, self._group_text(group, translations))
+        self._group_cards[group] = card
+        self._group_labels[group] = card.label
+        sizer.Add(card, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        return card
+
+    def _create_group_button(self, card: ToolbarGroupCard, icon_type: str, tooltip: str) -> FlatIconButton:
+        button = FlatIconButton(icon_type, tooltip, card, size=_GROUP_BUTTON_SIZE)
+        card.add_button(button)
+        return button
 
     # ==================== 이벤트 핸들러 ====================
 
@@ -531,3 +641,5 @@ class IconToolbar(wx.Panel):
         self._yoyo_btn.SetToolTip(translations.tr("toolbar_yoyo"))
         self._speed_btn.SetToolTip(translations.tr("toolbar_speed"))
         self._reduce_btn.SetToolTip(translations.tr("toolbar_reduce"))
+        for group, label in self._group_labels.items():
+            label.SetLabel(self._group_text(group, translations))

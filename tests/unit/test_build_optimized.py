@@ -16,7 +16,7 @@ def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch)
     monkeypatch.setattr(build_optimized, "_find_iscc", lambda: "ISCC.exe")
     monkeypatch.setattr(build_optimized.subprocess, "run", fake_run)
 
-    build_optimized.run_installer(str(exe_path))
+    installer_path = build_optimized.run_installer(str(exe_path))
 
     assert calls
     assert f"/DMyAppVersion={APP_VERSION}" in calls[0]["cmd"]
@@ -24,6 +24,7 @@ def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch)
     assert calls[0]["env"]["XGIF_APP_VERSION"] == APP_VERSION
     assert calls[0]["env"]["XGIF_APP_EXE_SOURCE"] == str(exe_path.resolve())
     assert calls[0]["cmd"][-1].endswith("installer\\xgif_setup.iss")
+    assert installer_path.endswith(f"dist\\XGif_Setup_{APP_VERSION}.exe")
 
 
 def test_nuitka_build_output_name_matches_release_contract(monkeypatch):
@@ -44,6 +45,27 @@ def test_build_keeps_debug_launcher_opt_in_only():
     assert "--diagnostic-launcher" in source
     assert "os.remove(diag_bat)" in source
     assert "if args.diagnostic_launcher:" in source
+
+
+def test_windows_version_tuple_preserves_patch_versions():
+    assert build_optimized._parse_windows_version_tuple("2.1.3") == (2, 1, 3, 0)
+    assert build_optimized._parse_windows_version_tuple("2.1.3.4") == (2, 1, 3, 4)
+    assert build_optimized._parse_windows_version_tuple("2.1.3-beta") == (2, 1, 3, 0)
+
+
+def test_create_version_file_uses_full_app_version(tmp_path, monkeypatch):
+    import core.version
+
+    monkeypatch.setattr(build_optimized, "PROJECT_DIR", str(tmp_path))
+    monkeypatch.setattr(core.version, "APP_VERSION", "2.1.3")
+
+    version_file = build_optimized.create_version_file()
+    content = Path(version_file).read_text(encoding="utf-8")
+
+    assert "filevers=(2, 1, 3, 0)" in content
+    assert "prodvers=(2, 1, 3, 0)" in content
+    assert "StringStruct('FileVersion', '2.1.3')" in content
+    assert "StringStruct('ProductVersion', '2.1.3')" in content
 
 
 def test_generated_pyinstaller_spec_keeps_size_guards(tmp_path, monkeypatch):

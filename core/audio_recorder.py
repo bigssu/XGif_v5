@@ -9,6 +9,7 @@ import tempfile
 import threading
 import subprocess
 import logging
+from dataclasses import dataclass
 from typing import Optional, List
 import numpy as np
 from .utils import run_subprocess_silent
@@ -20,6 +21,33 @@ MIN_AUDIO_BUFFER_LIMIT_MB = 64
 DEFAULT_AUDIO_BUFFER_LIMIT_MB = 256
 MAX_AUDIO_BUFFER_LIMIT_MB = 512
 AUDIO_BUFFER_MEMORY_RATIO = 0.25
+
+
+@dataclass(frozen=True)
+class AudioStartResult:
+    """Result of starting audio capture.
+
+    ``bool(result)`` remains compatible with the old ``start() -> bool`` contract
+    and means at least one usable audio stream started.
+    """
+
+    system_requested: bool
+    mic_requested: bool
+    system_started: bool = False
+    mic_started: bool = False
+    mic_fallback_to_default_input: bool = False
+    error: Optional[str] = None
+
+    @property
+    def started(self) -> bool:
+        return self.system_started or self.mic_started
+
+    @property
+    def requested_mic_missing(self) -> bool:
+        return self.mic_requested and not self.mic_started
+
+    def __bool__(self) -> bool:
+        return self.started
 
 
 def derive_audio_buffer_limit_mb(memory_limit_mb: object) -> int:
@@ -92,6 +120,10 @@ class AudioRecorder:
         self._mic_device = None
         if HAS_AUDIO:
             self._find_devices()
+        self.last_start_result = AudioStartResult(
+            system_requested=self.record_system,
+            mic_requested=self.record_mic,
+        )
 
     def __enter__(self):
         """Context Manager 진입"""
@@ -215,13 +247,21 @@ class AudioRecorder:
                 self.mic_audio_data.append(chunk)
                 self._audio_buffer_total_bytes += chunk.nbytes
 
-    def start(self) -> bool:
+    def start(self) -> AudioStartResult:
         """오디오 녹음 시작"""
+        system_requested = self.record_system
+        mic_requested = self.record_mic
+
         if not HAS_AUDIO:
-            return False
+            self.last_start_result = AudioStartResult(
+                system_requested=system_requested,
+                mic_requested=mic_requested,
+                error="audio dependencies unavailable",
+            )
+            return self.last_start_result
 
         if self.recording:
-            return True
+            return self.last_start_result
 
         try:
             with self._lock:
@@ -229,10 +269,15 @@ class AudioRecorder:
 
             # recording 플래그를 스트림 시작 전에 설정 (콜백 프레임 손실 방지)
             self.recording = True
+            system_started = False
+            mic_started = False
+            system_uses_default_input = False
+            last_error = None
 
             # 시스템 오디오 스트림 시작 (채널 수는 사용할 디바이스 기준으로 재확인)
             if self.record_system:
                 try:
+                    system_uses_default_input = self._loopback_device is None
                     dev = sd.query_devices(self._loopback_device) if self._loopback_device is not None else sd.query_devices(kind='input')
                     ch = self._safe_channels(dev, 2)
                     sr = int(dev.get('default_samplerate', 44100))
@@ -246,9 +291,11 @@ class AudioRecorder:
                     self._system_stream.start()
                     self.system_sample_rate = sr
                     self.system_channels = ch
+                    system_started = True
                 except (OSError, RuntimeError) as e:
                     logger.warning(f"시스템 오디오 스트림 시작 실패 (loopback): {e}")
                     try:
+                        system_uses_default_input = True
                         dev = sd.query_devices(kind='input')
                         ch = self._safe_channels(dev, 2)
                         sr = int(dev.get('default_samplerate', 44100))
@@ -261,13 +308,19 @@ class AudioRecorder:
                         self._system_stream.start()
                         self.system_sample_rate = sr
                         self.system_channels = ch
+                        system_started = True
                     except (OSError, RuntimeError) as e2:
                         logger.error(f"시스템 오디오 스트림 폴백 실패: {e2}")
                         self._system_stream = None
+                        last_error = str(e2)
 
             # 마이크 오디오 스트림 시작 (채널 수는 디바이스 기준으로 재확인)
-            # 루프백이 없으면 시스템 스트림이 이미 기본 입력(device=None)을 사용 중 → 같은 디바이스 중복 오픈 시 Invalid channels 등 오류 발생하므로 마이크 스트림은 생략
-            if self.record_mic and self._loopback_device is not None:
+            # 시스템 스트림이 기본 입력을 이미 쓰는 경우 같은 장치를 중복 오픈하지 않고
+            # 그 입력 스트림을 requested mic의 명시적 fallback으로 기록한다.
+            if self.record_mic and system_started and system_uses_default_input:
+                mic_started = True
+                logger.info("기본 입력 스트림을 마이크 녹음 fallback으로 사용합니다.")
+            elif self.record_mic:
                 try:
                     dev = sd.query_devices(self._mic_device) if self._mic_device is not None else sd.query_devices(kind='input')
                     ch = self._safe_channels(dev, 2)
@@ -282,27 +335,47 @@ class AudioRecorder:
                     self._mic_stream.start()
                     self.mic_sample_rate = sr
                     self.mic_channels = ch
+                    mic_started = True
                 except (OSError, RuntimeError) as e:
                     logger.warning(f"마이크 오디오 스트림 시작 실패: {e}")
                     self._mic_stream = None
-            elif self.record_mic and self._loopback_device is None:
-                logger.info("루프백 없음: 기본 입력만 사용하여 시스템/마이크 동시 녹음 생략.")
+                    last_error = str(e)
 
             # 적어도 하나의 스트림이 시작되었는지 확인
             if self._system_stream is None and self._mic_stream is None:
                 logger.error("오디오 스트림을 시작할 수 없습니다")
                 self.recording = False
                 self._cleanup_streams()
-                return False
+                self.last_start_result = AudioStartResult(
+                    system_requested=system_requested,
+                    mic_requested=mic_requested,
+                    error=last_error or "audio streams unavailable",
+                )
+                return self.last_start_result
 
-            return True
+            self.last_start_result = AudioStartResult(
+                system_requested=system_requested,
+                mic_requested=mic_requested,
+                system_started=system_started,
+                mic_started=mic_started,
+                mic_fallback_to_default_input=(
+                    mic_requested and mic_started and system_uses_default_input and self._mic_stream is None
+                ),
+                error=last_error,
+            )
+            return self.last_start_result
 
         except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"오디오 녹음 시작 실패: {e}")
             # 부분적으로 시작된 스트림 정리
             self._cleanup_streams()
             self.recording = False
-            return False
+            self.last_start_result = AudioStartResult(
+                system_requested=system_requested,
+                mic_requested=mic_requested,
+                error=str(e),
+            )
+            return self.last_start_result
 
     def _cleanup_streams(self):
         """오디오 스트림 정리 (내부 헬퍼)"""

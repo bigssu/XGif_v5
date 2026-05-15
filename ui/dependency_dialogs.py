@@ -18,7 +18,7 @@ from cupy_policy import (
 )
 from core.dependency_checker import DependencyState
 from core.utils import get_resource_path
-from ui.capture_control_bar import FlatButton
+from ui.design_system import CommandButton, ThemedProgressDialog
 from ui.i18n import tr
 from ui.theme import Colors, Fonts, ThemedDialog
 import contextlib
@@ -108,7 +108,7 @@ class DependencyInstallDialog(ThemedDialog):
 
         # 설치/다운로드 버튼 (Accent)
         install_label = tr('dep_download_btn') if self.dep_status.name == "FFmpeg" else tr('dep_install_btn')
-        self.install_btn = FlatButton(self, label=install_label, size=(110, 32),
+        self.install_btn = CommandButton(self, label=install_label, size=(110, 32),
                                        bg_color=Colors.ACCENT.Get()[:3],
                                        fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                        hover_color=Colors.ACCENT_HOVER.Get()[:3],
@@ -118,7 +118,7 @@ class DependencyInstallDialog(ThemedDialog):
 
         # 대안 버튼
         if disable_label:
-            self.disable_btn = FlatButton(self, label=disable_label, size=(140, 32),
+            self.disable_btn = CommandButton(self, label=disable_label, size=(140, 32),
                                            bg_color=Colors.BG_TERTIARY.Get()[:3],
                                            fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                            hover_color=Colors.BG_HOVER.Get()[:3])
@@ -126,7 +126,7 @@ class DependencyInstallDialog(ThemedDialog):
             btn_sizer.Add(self.disable_btn, 0, wx.RIGHT, 8)
 
         # 취소 버튼
-        self.cancel_btn = FlatButton(self, label=tr('cancel'), size=(80, 32),
+        self.cancel_btn = CommandButton(self, label=tr('cancel'), size=(80, 32),
                                       bg_color=Colors.BG_TERTIARY.Get()[:3],
                                       fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                       hover_color=Colors.BG_HOVER.Get()[:3])
@@ -183,7 +183,7 @@ class DependencyRescanDialog(ThemedDialog):
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         btn_sizer.AddStretchSpacer()
 
-        rescan_btn = FlatButton(self, label=tr('dep_rescan_btn'), size=(100, 32),
+        rescan_btn = CommandButton(self, label=tr('dep_rescan_btn'), size=(100, 32),
                                  bg_color=Colors.ACCENT.Get()[:3],
                                  fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                  hover_color=Colors.ACCENT_HOVER.Get()[:3],
@@ -191,7 +191,7 @@ class DependencyRescanDialog(ThemedDialog):
         rescan_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_OK))
         btn_sizer.Add(rescan_btn, 0, wx.RIGHT, 8)
 
-        close_btn = FlatButton(self, label=tr('dep_close_btn'), size=(80, 32),
+        close_btn = CommandButton(self, label=tr('dep_close_btn'), size=(80, 32),
                                 bg_color=Colors.BG_TERTIARY.Get()[:3],
                                 fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                 hover_color=Colors.BG_HOVER.Get()[:3])
@@ -346,7 +346,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
         self._cmd_ctrl.SetForegroundColour(wx.Colour(220, 220, 220))
         cmd_sizer.Add(self._cmd_ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
-        copy_btn = FlatButton(self, label=tr('cupy_guide_copy'), size=(110, 30),
+        copy_btn = CommandButton(self, label=tr('cupy_guide_copy'), size=(110, 30),
                                bg_color=Colors.ACCENT.Get()[:3],
                                fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                hover_color=Colors.ACCENT_HOVER.Get()[:3],
@@ -364,7 +364,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
         # dev 모드에서만 직접 설치 버튼
         if not self._is_frozen and self._cupy_packages:
-            direct_btn = FlatButton(self, label=tr('cupy_guide_direct_install'), size=(110, 32),
+            direct_btn = CommandButton(self, label=tr('cupy_guide_direct_install'), size=(110, 32),
                                      bg_color=Colors.ACCENT.Get()[:3],
                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                      hover_color=Colors.ACCENT_HOVER.Get()[:3],
@@ -373,7 +373,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
             btn_sizer.Add(direct_btn, 0, wx.RIGHT, 8)
 
         # 재검사 버튼
-        recheck_btn = FlatButton(self, label=tr('cupy_guide_recheck'), size=(90, 32),
+        recheck_btn = CommandButton(self, label=tr('cupy_guide_recheck'), size=(90, 32),
                                   bg_color=Colors.BG_TERTIARY.Get()[:3],
                                   fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                                   hover_color=Colors.BG_HOVER.Get()[:3])
@@ -381,7 +381,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
         btn_sizer.Add(recheck_btn, 0, wx.RIGHT, 8)
 
         # CPU 모드로 계속 버튼
-        cpu_btn = FlatButton(self, label=tr('dep_use_cpu_instead'), size=(140, 32),
+        cpu_btn = CommandButton(self, label=tr('dep_use_cpu_instead'), size=(140, 32),
                               bg_color=Colors.BG_TERTIARY.Get()[:3],
                               fg_color=Colors.TEXT_PRIMARY.Get()[:3],
                               hover_color=Colors.BG_HOVER.Get()[:3])
@@ -510,7 +510,7 @@ def _install_ffmpeg(parent, dep_status):
     if FFmpegManager.is_available():
         return True
 
-    progress = wx.ProgressDialog(
+    progress = ThemedProgressDialog(
         tr('ffmpeg_install_title'),
         tr('ffmpeg_downloading'),
         maximum=100,
@@ -632,7 +632,7 @@ def _install_dxcam(parent, dep_status):
         return False
 
     # 진행 다이얼로그 (취소 가능)
-    progress = wx.ProgressDialog(
+    progress = ThemedProgressDialog(
         tr('dxcam_installing'),
         "dxcam 패키지 설치 중...",
         maximum=100,

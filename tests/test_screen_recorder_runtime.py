@@ -281,7 +281,7 @@ def test_capture_thread_failure_resets_recording_state(monkeypatch):
 def test_start_recording_keeps_previous_thread_ref_when_join_times_out():
     import threading
 
-    from core.screen_recorder import ScreenRecorder
+    from core.screen_recorder import RECOVERY_DEGRADED, ScreenRecorder
 
     class _StuckThread:
         dropped_frames = 0
@@ -304,6 +304,8 @@ def test_start_recording_keeps_previous_thread_ref_when_join_times_out():
 
     assert recorder.is_recording is False
     assert recorder.last_error == "이전 캡처 스레드가 종료되지 않았습니다."
+    assert recorder.recovery_state == RECOVERY_DEGRADED
+    assert recorder.recovery_error == "이전 캡처 스레드가 종료되지 않았습니다."
     assert recorder._capture_thread is stuck
     assert stuck.join_timeout == 2.0
 
@@ -312,7 +314,7 @@ def test_stop_recording_keeps_alive_thread_refs_and_resources():
     import threading
     import time
 
-    from core.screen_recorder import ScreenRecorder
+    from core.screen_recorder import RECOVERY_DEGRADED, ScreenRecorder
 
     class _Thread:
         def __init__(self, alive, dropped_frames=0):
@@ -349,7 +351,35 @@ def test_stop_recording_keeps_alive_thread_refs_and_resources():
     assert recorder._collector_thread is None
     assert recorder._frame_buffer is frame_buffer
     assert recorder._thread_stop_event is not None
+    assert recorder.recovery_state == RECOVERY_DEGRADED
+    assert "복구 대기" in recorder.recovery_error
     assert recorder._last_dropped_frames == 3
     assert capture_thread.join_timeout == 3.0
     assert collector_thread.join_timeout == 2.0
+
+
+def test_recover_resources_clears_degraded_state_after_threads_exit():
+    import threading
+
+    from core.screen_recorder import RECOVERY_DEGRADED, RECOVERY_READY, ScreenRecorder
+
+    class _Thread:
+        def is_alive(self):
+            return False
+
+    recorder = ScreenRecorder()
+    recorder._capture_thread = _Thread()
+    recorder._collector_thread = _Thread()
+    recorder._frame_buffer = np.zeros((4, 4, 3), dtype=np.uint8)
+    recorder._thread_stop_event = threading.Event()
+    recorder._thread_pause_event = threading.Event()
+    recorder._thread_frame_ready_event = threading.Event()
+    recorder._thread_frame_consumed_event = threading.Event()
+    recorder._set_recovery_state(RECOVERY_DEGRADED, "stale resources")
+
+    assert recorder.recover_resources() is True
+    assert recorder.recovery_state == RECOVERY_READY
+    assert recorder.recovery_error is None
+    assert recorder._capture_thread is None
+    assert recorder._frame_buffer is None
 

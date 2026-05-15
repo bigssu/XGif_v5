@@ -20,6 +20,9 @@ from ui.theme import Colors, Fonts
 # msw.dark-mode value used by wx 4.2.x to opt-in to native dark frame chrome.
 # Centralised here so the `wx` magic number lives in one place.
 _MSW_DARK_MODE_VALUE = 2
+_DROPDOWN_MAX_VISIBLE_ITEMS = 8
+_DROPDOWN_FONT_SIZE = Fonts.SIZE_LABEL
+_DROPDOWN_MIN_ROW_HEIGHT = 26
 
 
 def enable_msw_dark_mode(target_wx=wx) -> None:
@@ -32,6 +35,121 @@ def enable_msw_dark_mode(target_wx=wx) -> None:
         return
     with contextlib.suppress(Exception):
         target_wx.SystemOptions.SetOption("msw.dark-mode", _MSW_DARK_MODE_VALUE)
+
+
+class _DarkSelectPopup(wx.PopupTransientWindow):
+    """Fixed-width dropdown popup for DarkSelect.
+
+    wx.Menu reserves platform menu padding and can open from the click point.
+    This popup is anchored to the control's left edge and sized to the control.
+    """
+
+    def __init__(self, owner: "DarkSelect"):
+        super().__init__(owner.GetTopLevelParent() or owner, wx.BORDER_NONE)
+        self._owner = owner
+        self._closed = False
+        self._list = wx.ListBox(self, choices=owner._choices, style=wx.LB_SINGLE | wx.BORDER_NONE)
+        self._list.SetFont(self._dropdown_font())
+        self._list.SetBackgroundColour(wx.Colour(245, 245, 245))
+        self._list.SetForegroundColour(wx.Colour(28, 28, 28))
+        self._list.Bind(wx.EVT_LEFT_UP, self._on_list_left_up)
+        self._list.Bind(wx.EVT_LISTBOX_DCLICK, self._on_select)
+        self._list.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._list, 1, wx.EXPAND)
+        self.SetSizer(sizer)
+
+    def popup_below_owner(self):
+        width, height = self._popup_size()
+        self.SetSize((width, height))
+        self._list.SetMinSize((width, height))
+        self._list.SetSize((width, height))
+        self.Layout()
+
+        if self._owner.GetSelection() >= 0:
+            self._list.SetSelection(self._owner.GetSelection())
+
+        origin = self._owner.ClientToScreen((0, self._owner.GetClientSize().height))
+        self.Move(origin)
+        self.Popup(self._list)
+
+    def _popup_size(self) -> tuple[int, int]:
+        owner_size = self._owner.GetClientSize()
+        width = max(70, owner_size.width)
+        visible_items = max(1, min(len(self._owner._choices), _DROPDOWN_MAX_VISIBLE_ITEMS))
+        return width, visible_items * self._row_height() + 2
+
+    def _row_height(self) -> int:
+        return max(_DROPDOWN_MIN_ROW_HEIGHT, self._list.GetTextExtent("Ag")[1] + 10)
+
+    def _dropdown_font(self):
+        owner_font = self._owner.GetFont()
+        size = max(_DROPDOWN_FONT_SIZE, owner_font.GetPointSize())
+        return Fonts.get_font(size)
+
+    def _on_select(self, event):
+        self._commit(event.GetSelection())
+
+    def _on_list_left_up(self, event):
+        index = self._index_from_mouse_event(event)
+        if index == wx.NOT_FOUND:
+            index = self._list.GetSelection()
+        if index != wx.NOT_FOUND:
+            self._list.SetSelection(index)
+            wx.CallAfter(self._commit, index)
+            return
+        event.Skip()
+
+    def _index_from_mouse_event(self, event) -> int:
+        if hasattr(self._list, "HitTest"):
+            hit = self._list.HitTest(event.GetPosition())
+            if isinstance(hit, tuple):
+                hit = hit[0]
+            if isinstance(hit, int) and hit != wx.NOT_FOUND:
+                return hit
+        top = self._list.GetTopItem() if hasattr(self._list, "GetTopItem") else 0
+        index = top + max(0, event.GetY()) // self._row_height()
+        if 0 <= index < len(self._owner._choices):
+            return index
+        return wx.NOT_FOUND
+
+    def _on_key(self, event):
+        key = event.GetKeyCode()
+        if key == wx.WXK_ESCAPE:
+            self._close()
+            return
+        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            self._commit(self._list.GetSelection())
+            return
+        event.Skip()
+
+    def _commit(self, index: int):
+        if index != wx.NOT_FOUND:
+            self._owner._choose(index)
+        self._close()
+
+    def _close(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self._owner._popup is self:
+            self._owner._popup = None
+        with contextlib.suppress(RuntimeError):
+            self.Dismiss()
+        with contextlib.suppress(RuntimeError):
+            self.Destroy()
+
+    def dismiss_from_owner(self):
+        self._close()
+
+    def OnDismiss(self):
+        self._closed = True
+        if self._owner._popup is self:
+            self._owner._popup = None
+        with contextlib.suppress(RuntimeError):
+            self.Destroy()
 
 
 class DarkSelect(wx.Control):
@@ -69,6 +187,7 @@ class DarkSelect(wx.Control):
         self._border = Colors.BORDER
         self._cached_bmp = None
         self._cached_state = None
+        self._popup = None
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         self.SetMinSize(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
@@ -223,16 +342,13 @@ class DarkSelect(wx.Control):
     def _show_menu(self):
         if not self._choices:
             return
-        menu = wx.Menu()
-        for idx, item in enumerate(self._choices):
-            menu_item = menu.Append(wx.ID_ANY, item)
-            menu.Bind(
-                wx.EVT_MENU,
-                lambda _event, i=idx: self._choose(i),
-                id=menu_item.GetId(),
-            )
-        self.PopupMenu(menu)
-        menu.Destroy()
+        if self._popup is not None:
+            with contextlib.suppress(RuntimeError):
+                self._popup.dismiss_from_owner()
+            self._popup = None
+            return
+        self._popup = _DarkSelectPopup(self)
+        self._popup.popup_below_owner()
 
     def _choose(self, index):
         if index == self._selection:

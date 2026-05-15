@@ -18,6 +18,8 @@ import contextlib
 
 logger = logging.getLogger(__name__)
 
+AUDIO_BUFFER_LIMIT_ERROR = "오디오 버퍼 한계에 도달하여 녹화를 중지합니다."
+
 
 def _get_monitor_region(monitor_index: int = 0) -> Tuple[int, int, int, int]:
     """모니터 전체 영역 반환 (ctypes로 직접 조회, wx 불필요)"""
@@ -96,12 +98,18 @@ class CLIRecordingSession:
         self._audio_recorder = None
         self._audio_path = None
         self._recording_error: Optional[str] = None
+        self._audio_limit_reached = False
         self._stopped = False
         self._paused = False
         self._progress = TerminalProgress(quiet=getattr(args, "quiet", False))
 
     def run(self) -> int:
         """녹화 실행. 반환값: 종료 코드"""
+        self._audio_limit_reached = False
+        self._recording_error = None
+        self._stopped = False
+        self._paused = False
+
         # 1. 출력 포맷 결정
         output_path = self.args.output
         output_format = self._detect_format(output_path)
@@ -182,10 +190,15 @@ class CLIRecordingSession:
                     )
                     self._audio_recorder = AudioRecorder(max_buffer_mb=audio_limit_mb)
                     self._audio_recorder.set_record_mic(True)
-                    if self._audio_recorder.start():
+                    audio_start = self._audio_recorder.start()
+                    if audio_start and not getattr(audio_start, "requested_mic_missing", False):
                         self._progress.print("  오디오: 마이크 녹음 활성화")
                     else:
                         self._progress.print("  오디오: 마이크 녹음 시작 실패 (비디오만 녹화)")
+                        with contextlib.suppress(Exception):
+                            if self._audio_recorder.is_recording():
+                                self._audio_recorder.stop()
+                            self._audio_recorder.cleanup()
                         self._audio_recorder = None
                 else:
                     self._progress.print(
@@ -216,6 +229,10 @@ class CLIRecordingSession:
             # 15. 녹화 중지 및 프레임 수집
             self._progress.clear_line()
             frames = self._recorder.stop_recording()
+
+            if self._audio_limit_reached:
+                restore_signal_handlers()
+                return EXIT_RUNTIME_ERROR
 
             if not frames:
                 if self._recording_error:
@@ -416,6 +433,17 @@ class CLIRecordingSession:
         while not self._stopped:
             if self._recorder and not self._recorder.is_recording:
                 self._stopped = True
+                break
+
+            if (
+                self._audio_recorder
+                and getattr(self._audio_recorder, "buffer_limit_reached", False)
+            ):
+                self._audio_limit_reached = True
+                self._recording_error = AUDIO_BUFFER_LIMIT_ERROR
+                self._stopped = True
+                self._progress.clear_line()
+                print(f"\nxgif: 녹화 오류: {AUDIO_BUFFER_LIMIT_ERROR}", file=sys.stderr)
                 break
 
             elapsed = time.time() - start_time

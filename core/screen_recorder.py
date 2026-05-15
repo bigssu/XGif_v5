@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 # 모듈 상수
 MAX_FRAME_BYTES = 100 * 1024 * 1024  # 100MB — 프레임당 최대 메모리 크기
+RECOVERY_READY = "ready"
+RECOVERY_RECOVERING = "recovering"
+RECOVERY_DEGRADED = "degraded"
 
 # 타입 별칭 (N5)
 Region = Tuple[int, int, int, int]  # (x, y, width, height)
@@ -61,6 +64,9 @@ __all__ = [
     "CaptureBackend",
     "Region",
     "MAX_FRAME_BYTES",
+    "RECOVERY_READY",
+    "RECOVERY_RECOVERING",
+    "RECOVERY_DEGRADED",
     "CLICK_HIGHLIGHT_DURATION",
 ]
 
@@ -146,6 +152,8 @@ class ScreenRecorder:
 
         # Pre-warming 상태 (백엔드 미리 준비)
         self._backend_warmed_up = False
+        self._recovery_state = RECOVERY_READY
+        self._recovery_error: Optional[str] = None
 
     def set_frame_captured_callback(self, callback: Callable[[int], None]):
         """프레임 캡처 콜백 설정"""
@@ -158,6 +166,47 @@ class ScreenRecorder:
     def set_error_occurred_callback(self, callback: Callable[[str], None]):
         """에러 발생 콜백 설정"""
         self._error_occurred_callback = callback
+
+    @property
+    def recovery_state(self) -> str:
+        """Recorder recovery state after a timed-out thread/resource cleanup."""
+        return self._recovery_state
+
+    @property
+    def recovery_error(self) -> Optional[str]:
+        return self._recovery_error
+
+    def _set_recovery_state(self, state: str, error: Optional[str] = None) -> None:
+        self._recovery_state = state
+        self._recovery_error = error
+
+    def _clear_retained_thread_resources(self) -> None:
+        self._capture_thread = None
+        self._collector_thread = None
+        self._frame_buffer = None
+        self._thread_frame_ready_event = None
+        self._thread_frame_consumed_event = None
+        self._thread_stop_event = None
+        self._thread_pause_event = None
+
+    def recover_resources(self) -> bool:
+        """Try to leave the explicit degraded state after thread cleanup timeouts."""
+        active_threads = [
+            thread
+            for thread in (self._capture_thread, self._collector_thread)
+            if thread is not None and thread.is_alive()
+        ]
+        if active_threads:
+            self._set_recovery_state(
+                RECOVERY_DEGRADED,
+                "이전 녹화 스레드가 아직 종료되지 않았습니다.",
+            )
+            return False
+
+        self._set_recovery_state(RECOVERY_RECOVERING)
+        self._clear_retained_thread_resources()
+        self._set_recovery_state(RECOVERY_READY)
+        return True
 
     def _emit_frame_captured(self, frame_num: int):
         """프레임 캡처 이벤트 발생.
@@ -361,6 +410,11 @@ class ScreenRecorder:
 
         self.last_error = None
 
+        if self._recovery_state == RECOVERY_DEGRADED and not self.recover_resources():
+            self.last_error = self.recovery_error
+            self._emit_error_occurred(self.last_error or "녹화 리소스 복구가 완료되지 않았습니다.")
+            return
+
         # 이전 녹화 리소스 정리 (안전 장치)
         if self._capture_thread and self._capture_thread.is_alive():
             logger.warning("Previous capture thread still alive, stopping")
@@ -368,6 +422,10 @@ class ScreenRecorder:
                 self._thread_stop_event.set()
             self._capture_thread.join(timeout=2.0)
             if self._capture_thread.is_alive():
+                self._set_recovery_state(
+                    RECOVERY_DEGRADED,
+                    "이전 캡처 스레드가 종료되지 않았습니다.",
+                )
                 self._handle_capture_failure("이전 캡처 스레드가 종료되지 않았습니다.")
                 return
             self._capture_thread = None
@@ -378,6 +436,10 @@ class ScreenRecorder:
                 self._thread_stop_event.set()
             self._collector_thread.join(timeout=2.0)
             if self._collector_thread.is_alive():
+                self._set_recovery_state(
+                    RECOVERY_DEGRADED,
+                    "이전 프레임 수집 스레드가 종료되지 않았습니다.",
+                )
                 self._handle_capture_failure("이전 프레임 수집 스레드가 종료되지 않았습니다.")
                 return
             self._collector_thread = None
@@ -490,6 +552,7 @@ class ScreenRecorder:
                 logger.warning(f"First frame not ready after {max_wait*1000:.0f}ms, but continuing")
 
             logger.info("Recording started successfully")
+            self._set_recovery_state(RECOVERY_READY)
 
         except Exception as exc:
             self._frame_buffer = None
@@ -579,6 +642,10 @@ class ScreenRecorder:
 
         if threads_alive:
             logger.warning("Skipping buffer/event cleanup - threads still alive")
+            self._set_recovery_state(
+                RECOVERY_DEGRADED,
+                "녹화 스레드가 제한 시간 내 종료되지 않아 복구 대기 상태입니다.",
+            )
             self._capture_thread = (
                 capture_thread
                 if capture_thread and capture_thread.is_alive()
@@ -590,13 +657,8 @@ class ScreenRecorder:
                 else None
             )
         else:
-            self._capture_thread = None
-            self._collector_thread = None
-            self._frame_buffer = None
-            self._thread_frame_ready_event = None
-            self._thread_frame_consumed_event = None
-            self._thread_stop_event = None
-            self._thread_pause_event = None
+            self._clear_retained_thread_resources()
+            self._set_recovery_state(RECOVERY_READY)
 
         # 드롭프레임 통보 (스냅샷된 값 사용)
         if dropped > 0:

@@ -16,7 +16,7 @@ from ui.constants import (
 )
 from ui.theme import Colors, Fonts, ThemedDialog
 from ui.i18n import tr, get_trans_manager
-from ui.capture_control_bar import FlatButton
+from ui.design_system import CommandButton
 from core.settings import AppSettings
 import contextlib
 
@@ -93,9 +93,9 @@ class SettingsDialog(ThemedDialog):
         self.preview_cb.SetToolTip(tr('realtime_preview_tooltip'))
         preview_sizer.Add(self.preview_cb, 0, wx.ALL, 8)
 
-        self.hdr_correction_cb = wx.CheckBox(self.scroll_panel, label="HDR 모니터 보정 (캡처가 너무 밝을 때)")
+        self.hdr_correction_cb = wx.CheckBox(self.scroll_panel, label=tr('hdr_correction'))
         self.hdr_correction_cb.SetForegroundColour(Colors.TEXT_PRIMARY)
-        self.hdr_correction_cb.SetToolTip("HDR 모니터에서 캡처가 비정상적으로 밝게 나오면 켜세요. 톤 매핑을 적용합니다.")
+        self.hdr_correction_cb.SetToolTip(tr('hdr_correction_tooltip'))
         preview_sizer.Add(self.hdr_correction_cb, 0, wx.ALL, 8)
 
         scroll_sizer.Add(preview_sizer, 0, wx.EXPAND | wx.ALL, 10)
@@ -230,23 +230,23 @@ class SettingsDialog(ThemedDialog):
         self.status_label.Hide()
         bottom_sizer.Add(self.status_label, 0, wx.ALL | wx.ALIGN_CENTER, 8)
 
-        # 버튼 행 (FlatButton 사용)
+        # 버튼 행 (shared command buttons)
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # 기본값 복원 버튼
-        self.reset_btn = FlatButton(bottom_panel, label=tr('reset_defaults'), size=(120, 30),
-                                    bg_color=Colors.BG_TERTIARY.Get()[:3],
-                                    fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                    hover_color=Colors.BG_HOVER.Get()[:3])
+        self.reset_btn = CommandButton(bottom_panel, label=tr('reset_defaults'), size=(120, 30),
+                                       bg_color=Colors.BG_TERTIARY,
+                                       fg_color=Colors.TEXT_PRIMARY,
+                                       hover_color=Colors.BG_HOVER)
         self.reset_btn.SetToolTip(tr('reset_tooltip'))
         self.reset_btn.Bind(wx.EVT_BUTTON, self._on_reset)
         btn_sizer.Add(self.reset_btn, 0, wx.ALL, 8)
 
         # 의존성 확인 초기화 버튼
-        self.reset_dep_btn = FlatButton(bottom_panel, label=tr('dep_reset_skip_flags'), size=(150, 30),
-                                         bg_color=Colors.BG_TERTIARY.Get()[:3],
-                                         fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                         hover_color=Colors.BG_HOVER.Get()[:3])
+        self.reset_dep_btn = CommandButton(bottom_panel, label=tr('dep_reset_skip_flags'), size=(150, 30),
+                                           bg_color=Colors.BG_TERTIARY,
+                                           fg_color=Colors.TEXT_PRIMARY,
+                                           hover_color=Colors.BG_HOVER)
         self.reset_dep_btn.SetToolTip(tr('dep_reset_skip_flags_tooltip'))
         self.reset_dep_btn.Bind(wx.EVT_BUTTON, self._on_reset_dep_flags)
         btn_sizer.Add(self.reset_dep_btn, 0, wx.ALL, 8)
@@ -254,21 +254,21 @@ class SettingsDialog(ThemedDialog):
         btn_sizer.AddStretchSpacer()
 
         # 확인 버튼 (Accent 색상)
-        ok_label = tr('ok') if callable(tr) else "확인"
-        self.ok_btn = FlatButton(bottom_panel, label=ok_label, size=(80, 30),
-                                 bg_color=Colors.ACCENT.Get()[:3],
-                                 fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                 hover_color=Colors.ACCENT_HOVER.Get()[:3],
-                                 pressed_color=Colors.ACCENT_PRESSED.Get()[:3])
+        ok_label = tr('ok')
+        self.ok_btn = CommandButton(bottom_panel, label=ok_label, size=(80, 30),
+                                    bg_color=Colors.ACCENT,
+                                    fg_color=Colors.TEXT_PRIMARY,
+                                    hover_color=Colors.ACCENT_HOVER,
+                                    pressed_color=Colors.ACCENT_PRESSED)
         self.ok_btn.Bind(wx.EVT_BUTTON, self._on_ok)
         btn_sizer.Add(self.ok_btn, 0, wx.ALL, 8)
 
         # 취소 버튼
-        cancel_label = tr('cancel') if callable(tr) else "취소"
-        self.cancel_btn = FlatButton(bottom_panel, label=cancel_label, size=(80, 30),
-                                     bg_color=Colors.BG_TERTIARY.Get()[:3],
-                                     fg_color=Colors.TEXT_PRIMARY.Get()[:3],
-                                     hover_color=Colors.BG_HOVER.Get()[:3])
+        cancel_label = tr('cancel')
+        self.cancel_btn = CommandButton(bottom_panel, label=cancel_label, size=(80, 30),
+                                        bg_color=Colors.BG_TERTIARY,
+                                        fg_color=Colors.TEXT_PRIMARY,
+                                        hover_color=Colors.BG_HOVER)
         self.cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
         btn_sizer.Add(self.cancel_btn, 0, wx.ALL, 8)
 
@@ -609,6 +609,8 @@ class SettingsDialog(ThemedDialog):
             self.keyboard_display_cb.SetLabel(tr('keyboard_display'))
         if hasattr(self, 'preview_cb'):
             self.preview_cb.SetLabel(tr('realtime_preview'))
+        if hasattr(self, 'hdr_correction_cb'):
+            self.hdr_correction_cb.SetLabel(tr('hdr_correction'))
         if hasattr(self, 'memory_label'):
             self.memory_label.SetLabel(tr('max_memory'))
         if hasattr(self, 'backend_label'):
@@ -622,6 +624,10 @@ class SettingsDialog(ThemedDialog):
         if hasattr(self, 'reset_dep_btn'):
             self.reset_dep_btn.SetLabel(tr('dep_reset_skip_flags'))
             self.reset_dep_btn.SetToolTip(tr('dep_reset_skip_flags_tooltip'))
+        if hasattr(self, 'ok_btn'):
+            self.ok_btn.SetLabel(tr('ok'))
+        if hasattr(self, 'cancel_btn'):
+            self.cancel_btn.SetLabel(tr('cancel'))
 
         if hasattr(self, 'lang_combo'):
             self.lang_combo.SetToolTip(tr('language_tooltip'))
@@ -635,6 +641,8 @@ class SettingsDialog(ThemedDialog):
             self.keyboard_display_cb.SetToolTip(tr('keyboard_display_tooltip'))
         if hasattr(self, 'preview_cb'):
             self.preview_cb.SetToolTip(tr('realtime_preview_tooltip'))
+        if hasattr(self, 'hdr_correction_cb'):
+            self.hdr_correction_cb.SetToolTip(tr('hdr_correction_tooltip'))
         if hasattr(self, 'memory_limit_combo'):
             self.memory_limit_combo.SetToolTip(tr('max_memory_tooltip'))
         if hasattr(self, 'backend_combo'):

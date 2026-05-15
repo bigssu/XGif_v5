@@ -11,13 +11,55 @@ from tests._ast_helpers import (
 )
 
 
-def test_dark_select_uses_menu_owned_ids_for_popup_items():
+def test_dark_select_uses_fixed_width_popup_instead_of_native_menu():
     source, module = read_module("ui/dark_controls.py")
     show_menu = find_function(find_class(module, "DarkSelect"), "_show_menu")
     menu_source = ast.get_source_segment(source, show_menu)
 
     assert "wx.NewIdRef" not in menu_source
-    assert "menu.Append(wx.ID_ANY" in menu_source
+    assert "wx.Menu" not in menu_source
+    assert "PopupMenu" not in menu_source
+    assert "_DarkSelectPopup(self)" in menu_source
+    assert "self._popup.popup_below_owner()" in menu_source
+    assert "self._popup.dismiss_from_owner()" in menu_source
+    assert "return" in menu_source
+
+
+def test_dark_select_popup_is_left_aligned_below_control():
+    source, module = read_module("ui/dark_controls.py")
+    popup = find_class(module, "_DarkSelectPopup")
+    popup_below = find_function(popup, "popup_below_owner")
+    popup_size = find_function(popup, "_popup_size")
+    popup_below_source = ast.get_source_segment(source, popup_below)
+    popup_size_source = ast.get_source_segment(source, popup_size)
+    row_height = find_function(popup, "_row_height")
+    dropdown_font = find_function(popup, "_dropdown_font")
+    row_height_source = ast.get_source_segment(source, row_height)
+    dropdown_font_source = ast.get_source_segment(source, dropdown_font)
+
+    assert "ClientToScreen((0, self._owner.GetClientSize().height))" in popup_below_source
+    assert "self.Move(origin)" in popup_below_source
+    assert "self.Position(" not in popup_below_source
+    assert "width = max(70, owner_size.width)" in popup_size_source
+    assert "_DROPDOWN_MAX_VISIBLE_ITEMS" in popup_size_source
+    assert "_DROPDOWN_MIN_ROW_HEIGHT" in row_height_source
+    assert "self._list.GetTextExtent" in row_height_source
+    assert "_DROPDOWN_FONT_SIZE" in dropdown_font_source
+    assert "Fonts.get_font(size)" in dropdown_font_source
+
+
+def test_dark_select_popup_commits_mouse_clicks_explicitly():
+    source, module = read_module("ui/dark_controls.py")
+    popup = find_class(module, "_DarkSelectPopup")
+    left_up = find_function(popup, "_on_list_left_up")
+    hit_test = find_function(popup, "_index_from_mouse_event")
+    left_up_source = ast.get_source_segment(source, left_up)
+    hit_test_source = ast.get_source_segment(source, hit_test)
+
+    assert "wx.CallAfter(self._commit, index)" in left_up_source
+    assert "self._list.SetSelection(index)" in left_up_source
+    assert "HitTest" in hit_test_source
+    assert "event.GetY()" in hit_test_source
 
 
 def test_property_bar_syncs_height_from_wrapped_toolbar():

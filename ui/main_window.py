@@ -979,7 +979,7 @@ class MainWindow(wx.Frame):
                 raise ValueError(f"Invalid region size: {w}x{h}")
         except (ValueError, TypeError) as e:
             logger.error(f"Invalid capture region: {e}")
-            wx.MessageBox("캡처 영역이 유효하지 않습니다. 영역을 다시 설정해주세요.", tr('warning'), wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(tr('invalid_capture_area'), tr('warning'), wx.OK | wx.ICON_WARNING)
             return
 
         # capture_control_bar에서 설정값 가져오기
@@ -1070,8 +1070,19 @@ class MainWindow(wx.Frame):
             ):
                 self.audio_recorder.set_max_buffer_mb(self._get_audio_buffer_limit_mb())
                 self.audio_recorder.set_record_mic(True)
-                if not self.audio_recorder.start():
+                audio_start = self.audio_recorder.start()
+                if not audio_start:
                     logger.warning("Audio recording start failed; continuing with video only")
+                    audio_warning = tr('audio_recording_unavailable')
+                    if hasattr(self, 'status_msg_label') and self.status_msg_label:
+                        self.status_msg_label.SetLabel(audio_warning)
+                    wx.MessageBox(audio_warning, tr('warning'), wx.OK | wx.ICON_WARNING)
+                elif getattr(audio_start, "requested_mic_missing", False):
+                    logger.warning("Requested microphone stream did not start; continuing with video only")
+                    with contextlib.suppress(Exception):
+                        if self.audio_recorder.is_recording():
+                            self.audio_recorder.stop()
+                        self.audio_recorder.cleanup()
                     audio_warning = tr('audio_recording_unavailable')
                     if hasattr(self, 'status_msg_label') and self.status_msg_label:
                         self.status_msg_label.SetLabel(audio_warning)
@@ -1497,7 +1508,7 @@ class MainWindow(wx.Frame):
         # 프레임 유효성 검증
         if not self.frames or len(self.frames) == 0:
             logger.error("No frames to encode")
-            wx.MessageBox("인코딩할 프레임이 없습니다.", tr('warning'), wx.OK | wx.ICON_WARNING)
+            wx.MessageBox(tr('no_frames_to_encode'), tr('warning'), wx.OK | wx.ICON_WARNING)
             self._reset_ui()
             return
 
@@ -1510,7 +1521,7 @@ class MainWindow(wx.Frame):
         # encoder 확인
         if self.encoder is None:
             logger.error("Encoder not initialized")
-            wx.MessageBox("인코더가 초기화되지 않았습니다.", tr('error'), wx.OK | wx.ICON_ERROR)
+            wx.MessageBox(tr('encoder_not_initialized'), tr('error'), wx.OK | wx.ICON_ERROR)
             self._reset_ui()
             return
 

@@ -260,19 +260,27 @@ def run_nuitka_build():
     print("Starting Nuitka build process... (This may take a while)")
     subprocess.run(nuitka_cmd, check=True)
 
+
+def _parse_windows_version_tuple(app_version):
+    """Parse APP_VERSION into a four-part Windows version tuple."""
+    version_parts = []
+    for part in app_version.split(".")[:4]:
+        match = re.match(r"\d+", part)
+        version_parts.append(int(match.group()) if match else 0)
+    return tuple((version_parts + [0, 0, 0, 0])[:4])
+
+
 def create_version_file():
     """PyInstaller용 Windows exe 버전 메타데이터 파일 생성"""
     sys.path.insert(0, PROJECT_DIR)
     from core.version import APP_VERSION
     sys.path.pop(0)
-    parts = APP_VERSION.split(".")
-    major = int(re.match(r'\d+', parts[0]).group()) if len(parts) > 0 else 0
-    minor = int(re.match(r'\d+', parts[1]).group()) if len(parts) > 1 else 0
+    file_version = _parse_windows_version_tuple(APP_VERSION)
     version_file = os.path.join(PROJECT_DIR, "file_version_info.txt")
     content = f"""VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=({major}, {minor}, 0, 0),
-    prodvers=({major}, {minor}, 0, 0),
+    filevers={file_version},
+    prodvers={file_version},
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -635,7 +643,14 @@ def run_installer(exe_path):
         cwd=PROJECT_DIR,
         env=env,
     )
+    installer_path = _installer_output_path(APP_VERSION)
+    print(f"  Output: {installer_path}")
     print("  Installer created successfully!")
+    return installer_path
+
+
+def _installer_output_path(app_version):
+    return os.path.join(PROJECT_DIR, "dist", f"XGif_Setup_{app_version}.exe")
 
 
 def _parse_args():
@@ -1052,18 +1067,14 @@ if __name__ == "__main__":
             run_sign(args.sign_pfx, args.sign_password, [exe_path])
 
         if args.installer:
-            run_installer(exe_path)
+            installer_exe = run_installer(exe_path)
 
             # 인스톨러 EXE도 서명
             if args.sign:
-                sys.path.insert(0, PROJECT_DIR)
-                from core.version import APP_VERSION
-                sys.path.pop(0)
-                installer_exe = os.path.join(
-                    PROJECT_DIR, "dist", f"XGif_Setup_{APP_VERSION}.exe"
-                )
                 if os.path.isfile(installer_exe):
                     run_sign(args.sign_pfx, args.sign_password, [installer_exe])
+                else:
+                    print(f"[WARN] Installer output not found for signing: {installer_exe}")
 
         print("\n=== All done! ===")
 
