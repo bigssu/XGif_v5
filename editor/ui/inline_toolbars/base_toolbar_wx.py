@@ -7,6 +7,7 @@ PropertyBar 컨테이너의 자식으로 등록되어 활성 도구에 따라 �
 import wx
 from typing import TYPE_CHECKING, Optional, Callable
 from contextlib import suppress
+from ui.i18n import tr
 from ..style_constants_wx import Colors
 from ..icon_utils_wx import IconFactory
 from ...utils.wx_events import (
@@ -456,9 +457,11 @@ class InlineToolbarBase(wx.Panel):
         button.SetBackgroundColour(color)
         button.Refresh()
 
-    def pick_color(self, current_color: wx.Colour, title: str = "Pick Color",
+    def pick_color(self, current_color: wx.Colour, title: Optional[str] = None,
                    on_color_picked: Optional[Callable[[wx.Colour], None]] = None) -> Optional[wx.Colour]:
         """색상 선택 다이얼로그 표시"""
+        if title is None:
+            title = tr("pick_color_dlg_title")
         data = wx.ColourData()
         data.SetColour(current_color)
 

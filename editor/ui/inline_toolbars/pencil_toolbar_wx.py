@@ -5,7 +5,6 @@ PencilToolbar - 펜슬 그리기 인라인 툴바 (wxPython 버전)
 """
 import wx
 from .base_toolbar_wx import InlineToolbarBase
-from ui.i18n import tr
 
 
 class PencilToolbar(InlineToolbarBase):
