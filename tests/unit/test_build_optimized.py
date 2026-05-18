@@ -27,6 +27,25 @@ def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch)
     assert installer_path.endswith(f"dist\\XGif_Setup_{APP_VERSION}.exe")
 
 
+def test_installer_version_info_uses_release_metadata():
+    script = Path("installer/xgif_setup.iss").read_text(encoding="utf-8")
+
+    assert "VersionInfoVersion={#MyAppVersion}.0" in script
+    assert "VersionInfoProductVersion={#MyAppVersion}" in script
+    assert "VersionInfoTextVersion={#MyAppVersion}" in script
+    assert "VersionInfoProductName={#MyAppName}" in script
+
+
+def test_installer_packages_only_release_exe_not_debug_artifacts():
+    script = Path("installer/xgif_setup.iss").read_text(encoding="utf-8")
+
+    assert 'Source: "{#MyAppExeSource}"' in script
+    assert "XGif_Debug.bat" not in script
+    assert "xgif_diag.log" not in script
+    assert "xgif_stderr.log" not in script
+    assert ".pdb" not in script.lower()
+
+
 def test_nuitka_build_output_name_matches_release_contract(monkeypatch):
     calls = []
 
@@ -93,8 +112,10 @@ def test_generated_pyinstaller_spec_keeps_size_guards(tmp_path, monkeypatch):
 
     assert "optimize=1" in spec
     assert "'_avif'" in spec
+    assert "'_multiarray_tests'" in spec
     assert "requirements-gpu.txt" in spec
     assert "'cv2'" in spec
     assert "'skimage'" in spec
+    assert "'numpy._core._multiarray_tests'" in spec
     assert "upx=True" in spec
     assert "upx_exclude=['vcruntime*.dll', 'msvcp*.dll', 'wx*.dll']" in spec

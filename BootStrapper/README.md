@@ -4,8 +4,8 @@ Python 3.11 embed + wxPython 기반 의존성 설치 부트스트래퍼
 
 ## 현재 기준
 
-- 문서 검증 기준일: `2026-04-22`
-- 현재 커밋된 의존성 floor: `wxPython 4.2.5`, `PyInstaller 6.19.0`
+- 문서 검증 기준일: `2026-05-18`
+- 현재 커밋된 의존성 floor: `wxPython 4.2.5`, `PyInstaller 6.20.0`
 - 저장소에서 바로 재현 가능한 빌드 경로: `build_simple.bat` 또는 수동 `pyinstaller ... app_entry.py`
 - `build.bat`는 로컬 `XGif_Bootstrapper.spec`가 있을 때만 동작한다. 해당 spec 파일은 현재 저장소에 커밋돼 있지 않다.
 

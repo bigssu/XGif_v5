@@ -3,6 +3,7 @@
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import cupy_policy
 
@@ -41,6 +42,121 @@ def test_ui_cupy_dialog_uses_shared_policy(monkeypatch):
 
     monkeypatch.setattr(dependency_dialogs, "_detect_cuda_driver_version", lambda: (10, 2))
     assert dependency_dialogs._get_cupy_packages() == ()
+
+
+def test_frozen_cupy_guide_targets_external_xgif_env():
+    from ui import dependency_dialogs
+
+    command = dependency_dialogs._format_frozen_cupy_install_commands(
+        r"C:\Python311\python.exe",
+        r"C:\Users\me\AppData\Local\XGif\env",
+        cupy_policy.CUDA13_CUPY_PACKAGES,
+        requirements_path=r"C:\Temp\requirements-gpu.txt",
+        use_requirements=True,
+    )
+
+    assert r'"C:\Python311\python.exe" -m venv "C:\Users\me\AppData\Local\XGif\env"' in command
+    assert r'"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe" -m pip install --upgrade "pip>=24.0"' in command
+    assert r'"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe" -m pip install -r "C:\Temp\requirements-gpu.txt"' in command
+
+
+def test_frozen_direct_cupy_install_uses_external_env_commands():
+    from ui import dependency_dialogs
+
+    commands = dependency_dialogs._build_direct_cupy_install_commands(
+        is_frozen=True,
+        system_python=r"C:\Python311\python.exe",
+        external_env_dir=r"C:\Users\me\AppData\Local\XGif\env",
+        cupy_packages=cupy_policy.CUDA13_CUPY_PACKAGES,
+        use_requirements=True,
+        requirements_path=r"C:\Temp\requirements-gpu.txt",
+    )
+
+    assert commands == [
+        [r"C:\Python311\python.exe", "-m", "venv", r"C:\Users\me\AppData\Local\XGif\env"],
+        [
+            r"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe",
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "pip>=24.0",
+            "--quiet",
+        ],
+        [
+            r"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe",
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            r"C:\Temp\requirements-gpu.txt",
+            "--no-cache-dir",
+        ],
+    ]
+
+
+def test_direct_cupy_install_requires_post_install_verification(monkeypatch):
+    from core.dependency_checker import DependencyState, DependencyStatus
+    from ui import dependency_dialogs
+
+    monkeypatch.setattr(
+        dependency_dialogs,
+        "_run_cupy_install_commands",
+        lambda _commands: (True, "pip ok"),
+    )
+    monkeypatch.setattr(
+        dependency_dialogs,
+        "_verify_cupy_install_status",
+        lambda: DependencyStatus(
+            "CuPy",
+            DependencyState.MISSING,
+            error_message="CuPy still cannot import",
+        ),
+    )
+
+    success, message = dependency_dialogs._install_cupy_and_verify([["pip"]])
+
+    assert not success
+    assert message == "CuPy still cannot import"
+
+
+def test_direct_cupy_install_reports_success_only_after_verified(monkeypatch):
+    from core.dependency_checker import DependencyState, DependencyStatus
+    from ui import dependency_dialogs
+
+    monkeypatch.setattr(
+        dependency_dialogs,
+        "_run_cupy_install_commands",
+        lambda _commands: (True, "pip ok"),
+    )
+    monkeypatch.setattr(
+        dependency_dialogs,
+        "_verify_cupy_install_status",
+        lambda: DependencyStatus("CuPy", DependencyState.INSTALLED, installed_version="14.0.1"),
+    )
+
+    success, message = dependency_dialogs._install_cupy_and_verify([["pip"]])
+
+    assert success
+    assert message == "14.0.1"
+
+
+def test_cupy_install_command_runner_stops_on_failed_command(monkeypatch):
+    from ui import dependency_dialogs
+
+    calls = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=1, stdout="", stderr="failed")
+
+    monkeypatch.setattr(dependency_dialogs.subprocess, "run", fake_run)
+
+    success, message = dependency_dialogs._run_cupy_install_commands([["first"], ["second"]])
+
+    assert not success
+    assert message == "failed"
+    assert calls == [["first"]]
 
 
 def test_bootstrapper_installs_from_gpu_requirements(monkeypatch):

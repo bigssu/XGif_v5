@@ -87,8 +87,10 @@ class FlatIconButton(wx.Control):
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
         self.Bind(wx.EVT_ENTER_WINDOW, self._on_enter)
         self.Bind(wx.EVT_LEAVE_WINDOW, self._on_leave)
+        self.Bind(wx.EVT_MOTION, self._on_motion)
         self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
+        self.Bind(wx.EVT_MOUSE_CAPTURE_LOST, self._on_mouse_capture_lost)
 
     def _create_icon(self):
         """아이콘 비트맵 생성"""
@@ -140,32 +142,57 @@ class FlatIconButton(wx.Control):
     # --- 내부 이벤트 ---
 
     def _on_enter(self, event):
-        if self._enabled:
-            self._is_hovered = True
-            self.Refresh()
+        self._set_hovered(True)
 
     def _on_leave(self, event):
-        self._is_hovered = False
-        self._pressed = False
-        self.Refresh()
-
-    def _on_left_down(self, event):
-        if self._enabled:
-            self._pressed = True
-            self.CaptureMouse()
+        self._set_hovered(self._is_mouse_over())
+        if not self._is_hovered:
+            self._pressed = False
             self.Refresh()
 
-    def _on_left_up(self, event):
-        had_capture = self.HasCapture()
-        if had_capture:
-            self.ReleaseMouse()
-        was_pressed = self._pressed
-        self._pressed = False
+    def _on_motion(self, event):
+        self._set_hovered(self._is_mouse_over())
+
+    def _on_left_down(self, event):
+        if not self._enabled or not self._is_mouse_over():
+            return
+        self._set_hovered(True)
+        self._pressed = True
+        if not self.HasCapture():
+            self.CaptureMouse()
         self.Refresh()
-        if was_pressed and self._enabled and self._is_hovered:
+
+    def _on_left_up(self, event):
+        inside = self._is_mouse_over()
+        was_pressed = self._pressed
+        if self.HasCapture():
+            self.ReleaseMouse()
+        self._pressed = False
+        self._set_hovered(inside)
+        self.Refresh()
+        if was_pressed and self._enabled and inside:
             evt = wx.CommandEvent(wx.wxEVT_COMMAND_BUTTON_CLICKED, self.GetId())
             evt.SetEventObject(self)
             self.GetEventHandler().ProcessEvent(evt)
+
+    def _on_mouse_capture_lost(self, event):
+        self._pressed = False
+        self._set_hovered(self._is_mouse_over())
+        self.Refresh()
+
+    def _set_hovered(self, hovered: bool):
+        next_hovered = bool(hovered and self._enabled)
+        if self._is_hovered != next_hovered:
+            self._is_hovered = next_hovered
+            self.Refresh()
+
+    def _is_mouse_over(self) -> bool:
+        try:
+            pos = self.ScreenToClient(wx.GetMousePosition())
+            width, height = self.GetClientSize()
+            return 0 <= pos.x < width and 0 <= pos.y < height
+        except (RuntimeError, TypeError, AttributeError):
+            return False
 
     def _on_paint(self, event):
         dc = wx.PaintDC(self)

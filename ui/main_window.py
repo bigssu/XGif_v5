@@ -822,9 +822,19 @@ class MainWindow(wx.Frame):
         # 편집 모드에서는 오버레이 재생성 안함
         if self._editor_mode:
             return
+
+        if not self._window_allows_overlay_recreate():
+            return
+
         # 오버레이가 닫히면 다시 표시
         if self.record_state == self.STATE_READY:
             wx.CallLater(100, self._show_capture_overlay)
+
+    def _window_allows_overlay_recreate(self) -> bool:
+        """메인 창이 실제로 살아 있고 표시 중일 때만 overlay 재생성을 허용."""
+        with contextlib.suppress(RuntimeError, AttributeError):
+            return bool(self.GetHandle()) and self.IsShown()
+        return False
 
     def _open_help(self):
         """도움말 다이얼로그 열기 (non-modal)"""
@@ -1831,14 +1841,17 @@ class MainWindow(wx.Frame):
 
     def _cleanup_overlay_on_quit(self):
         """앱 종료 직전 캡처 오버레이 강제 정리 (aboutToQuit에서 호출)"""
+        self._destroy_capture_overlay()
+
+    def _destroy_capture_overlay(self):
+        """캡처 overlay를 close 이벤트 없이 파괴해 재생성 루프를 막는다."""
         overlay = getattr(self, 'capture_overlay', None)
         self.capture_overlay = None
         if overlay is not None:
-            try:
+            with contextlib.suppress(RuntimeError, AttributeError, TypeError):
                 overlay.Hide()
+            with contextlib.suppress(RuntimeError, AttributeError, TypeError):
                 overlay.Destroy()
-            except (RuntimeError, AttributeError, TypeError):
-                pass
 
     def OnClose(self, event):
         """윈도우 닫기 이벤트"""
@@ -1869,16 +1882,8 @@ class MainWindow(wx.Frame):
         # 설정을 디스크에 저장 (해상도, FPS 등 유지)
         self._save_settings_to_disk()
 
-        # 캡처 오버레이 먼저 강제 종료 (로컬 참조 사용: Destroy 시 콜백에서 None이 됨 방지)
-        overlay = self.capture_overlay
-        self.capture_overlay = None
-        if overlay is not None:
-            try:
-                overlay.Hide()
-                overlay.Close()
-                overlay.Destroy()
-            except (RuntimeError, AttributeError):
-                pass
+        # 캡처 오버레이 먼저 강제 종료
+        self._destroy_capture_overlay()
 
         # 번역 콜백 등록 해제 (메모리 누수 및 PyDeadObjectError 방지)
         with contextlib.suppress(Exception):
@@ -1923,15 +1928,8 @@ class MainWindow(wx.Frame):
             except (AttributeError, RuntimeError):
                 pass
 
-        # 캡처 오버레이 정리 (wxPython, 로컬 참조 사용)
-        overlay = self.capture_overlay
-        self.capture_overlay = None
-        if overlay is not None:
-            try:
-                overlay.Close()
-                overlay.Destroy()
-            except (RuntimeError, AttributeError):
-                pass
+        # 캡처 오버레이 정리
+        self._destroy_capture_overlay()
 
         # 프레임 버퍼 해제
         self.frames = []

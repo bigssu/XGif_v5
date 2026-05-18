@@ -706,7 +706,10 @@ class FrameListWidget(wx.Panel):
 
         # 다이얼로그 실행
         if dialog.ShowModal() == wx.ID_OK:
-            delay_ms = int(spin.GetValue() * 1000)
+            commit_inline_edit = getattr(spin, "_end_inline_edit", None)
+            if callable(commit_inline_edit):
+                commit_inline_edit(commit=True)
+            delay_ms = int(round(spin.GetValue() * 1000))
             self._set_selected_delay(delay_ms)
 
         dialog.Destroy()

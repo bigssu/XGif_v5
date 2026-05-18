@@ -112,6 +112,8 @@ class HelpDialog(ThemedDialog):
             "  • GIF / MP4 두 가지 형식 지원\n"
             "  • 내장 에디터로 녹화 직후 바로 편집\n"
             "  • CuPy 기반 GPU 가속 GIF 인코딩\n"
+            "  • 항목 높이에 맞는 드롭다운과 필드 안 직접 숫자 입력\n"
+            "  • 저장 시 재생 중인 에디터 프리뷰 자동 정지\n"
             "  • 다크 테마 UI\n"
             "\n"
             f"GitHub: {GITHUB_URL}\n"
@@ -125,11 +127,12 @@ class HelpDialog(ThemedDialog):
     @staticmethod
     def _features_text():
         return (
-            "[ 레코더 — 5대 특이 기능 ]\n"
+            "[ 레코더 — 6대 특이 기능 ]\n"
             "\n"
             "  1. GPU 가속 인코딩\n"
             "     CuPy + NVENC으로 GIF/MP4 인코딩 속도를 대폭 향상.\n"
-            "     GPU가 없으면 자동으로 CPU 폴백.\n"
+            "     설치본은 GPU 버튼에서 CuPy 외부 환경 설치를 안내하고,\n"
+            "     GPU가 없거나 CuPy가 없으면 CPU로 폴백.\n"
             "\n"
             "  2. HDR 자동 톤매핑\n"
             "     HDR 모니터를 감지하면 캡처 백엔드를 GDI로 전환하여\n"
@@ -145,7 +148,12 @@ class HelpDialog(ThemedDialog):
             "\n"
             "  5. 녹화 → 편집 원스텝 전환\n"
             "     녹화 완료 후 '편집' 버튼 하나로 내장 에디터에\n"
-            "     프레임을 전달하여 바로 편집을 시작합니다."
+            "     프레임을 전달하여 바로 편집을 시작합니다.\n"
+            "\n"
+            "  6. 정밀 입력 컨트롤\n"
+            "     FPS/품질 드롭다운은 실제 항목 수에 맞춰 열리고,\n"
+            "     시간/크기/속도 숫자 필드는 별도 팝업 없이 직접 입력합니다.\n"
+            "     에디터 저장 버튼은 재생 중인 프리뷰를 먼저 멈춘 뒤 저장합니다."
         )
 
     @staticmethod

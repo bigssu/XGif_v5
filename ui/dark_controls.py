@@ -9,6 +9,7 @@ from `editor/` is sanctioned by `.claude/rules/architecture-boundaries.md`
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import sys
 from collections.abc import Iterable
 
@@ -22,7 +23,25 @@ from ui.theme import Colors, Fonts
 _MSW_DARK_MODE_VALUE = 2
 _DROPDOWN_MAX_VISIBLE_ITEMS = 8
 _DROPDOWN_FONT_SIZE = Fonts.SIZE_LABEL
-_DROPDOWN_MIN_ROW_HEIGHT = 26
+_DROPDOWN_MIN_ROW_HEIGHT = 17
+_DROPDOWN_FALLBACK_ROW_PADDING = 2
+_MSW_LB_GETITEMHEIGHT = 0x01A1
+
+
+def _destroy_window_later(window) -> None:
+    with contextlib.suppress(RuntimeError, AttributeError):
+        window.Hide()
+    with contextlib.suppress(RuntimeError, AttributeError):
+        if not window.IsBeingDeleted():
+            window.DestroyLater()
+
+
+def _event_belongs_to_editor(event, editor) -> bool:
+    if editor is None:
+        return False
+    with contextlib.suppress(RuntimeError, AttributeError):
+        return event.GetEventObject() is editor
+    return False
 
 
 def enable_msw_dark_mode(target_wx=wx) -> None:
@@ -79,10 +98,41 @@ class _DarkSelectPopup(wx.PopupTransientWindow):
         owner_size = self._owner.GetClientSize()
         width = max(70, owner_size.width)
         visible_items = max(1, min(len(self._owner._choices), _DROPDOWN_MAX_VISIBLE_ITEMS))
-        return width, visible_items * self._row_height() + 2
+        return width, visible_items * self._row_height()
 
     def _row_height(self) -> int:
-        return max(_DROPDOWN_MIN_ROW_HEIGHT, self._list.GetTextExtent("Ag")[1] + 10)
+        fallback_min_height = self._fallback_min_row_height()
+        native_height = self._native_row_height()
+        if native_height > 0:
+            return max(fallback_min_height, native_height)
+
+        best_height = self._best_size_row_height()
+        if best_height > 0:
+            return max(fallback_min_height, best_height)
+        return fallback_min_height
+
+    def _native_row_height(self) -> int:
+        if sys.platform != "win32":
+            return 0
+        with contextlib.suppress(Exception):
+            handle = self._list.GetHandle()
+            if handle:
+                height = ctypes.windll.user32.SendMessageW(handle, _MSW_LB_GETITEMHEIGHT, 0, 0)
+                if height > 0:
+                    return int(height)
+        return 0
+
+    def _best_size_row_height(self) -> int:
+        count = self._list.GetCount()
+        if count <= 0:
+            return 0
+        best_height = self._list.GetBestSize().height
+        if best_height <= 0:
+            return 0
+        return max(1, best_height // count)
+
+    def _fallback_min_row_height(self) -> int:
+        return max(_DROPDOWN_MIN_ROW_HEIGHT, self._list.GetTextExtent("Ag")[1] + _DROPDOWN_FALLBACK_ROW_PADDING)
 
     def _dropdown_font(self):
         owner_font = self._owner.GetFont()
@@ -188,6 +238,9 @@ class DarkSelect(wx.Control):
         self._cached_bmp = None
         self._cached_state = None
         self._popup = None
+        self._editor = None
+        self._closing_editor = False
+        self._destroying = False
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         self.SetMinSize(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
@@ -201,6 +254,8 @@ class DarkSelect(wx.Control):
         self.Bind(wx.EVT_LEAVE_WINDOW, self._on_leave)
         self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
+        self.Bind(wx.EVT_SIZE, self._on_size)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
     def SetBackgroundColour(self, colour):
         self._bg = colour
@@ -222,6 +277,8 @@ class DarkSelect(wx.Control):
 
     def Enable(self, enable=True):
         changed = super().Enable(enable)
+        if not enable:
+            self._end_inline_edit(commit=False)
         self._hovered = False
         self._pressed = False
         self._cached_bmp = None
@@ -229,6 +286,7 @@ class DarkSelect(wx.Control):
         return changed
 
     def Clear(self):
+        self._end_inline_edit(commit=False)
         self._choices.clear()
         self._selection = -1
         self._value = ""
@@ -260,6 +318,7 @@ class DarkSelect(wx.Control):
         return wx.NOT_FOUND
 
     def SetSelection(self, index):
+        self._end_inline_edit(commit=False)
         if 0 <= index < len(self._choices):
             self._selection = index
             self._value = self._choices[index]
@@ -273,6 +332,7 @@ class DarkSelect(wx.Control):
         return self._selection
 
     def SetValue(self, value):
+        self._end_inline_edit(commit=False)
         value = str(value)
         self._value = value
         self._selection = self.FindString(value)
@@ -280,6 +340,8 @@ class DarkSelect(wx.Control):
         self.Refresh()
 
     def GetValue(self):
+        if self._editor is not None:
+            return self._editor.GetValue()
         return self._value
 
     def SetStringSelection(self, value):
@@ -324,20 +386,119 @@ class DarkSelect(wx.Control):
         if not was_pressed:
             return
         if self._editable and event.GetX() < max(0, self.GetSize().width - 28):
-            self._edit_value()
+            self._begin_inline_edit()
         else:
+            self._end_inline_edit(commit=True)
             self._show_menu()
 
-    def _edit_value(self):
-        dlg = wx.TextEntryDialog(self, "", "", self._value)
-        dlg.SetBackgroundColour(Colors.BG_PANEL)
+    def _begin_inline_edit(self):
+        if not self._editable:
+            return
+        if self._editor is not None:
+            self._editor.SetFocus()
+            self._editor.SetSelection(-1, -1)
+            return
+        if self._popup is not None:
+            with contextlib.suppress(RuntimeError):
+                self._popup.dismiss_from_owner()
+            self._popup = None
+
+        rect = self._editor_rect()
+        editor = wx.TextCtrl(
+            self,
+            value=self._value,
+            pos=rect.GetPosition(),
+            size=rect.GetSize(),
+            style=wx.TE_PROCESS_ENTER | wx.BORDER_NONE,
+        )
+        editor.SetFont(self.GetFont())
+        editor.SetBackgroundColour(self._bg)
+        editor.SetForegroundColour(self._fg)
+        editor.Bind(wx.EVT_TEXT, self._on_editor_text)
+        editor.Bind(wx.EVT_TEXT_ENTER, self._on_editor_enter)
+        editor.Bind(wx.EVT_KILL_FOCUS, self._on_editor_kill_focus)
+        editor.Bind(wx.EVT_CHAR_HOOK, self._on_editor_key)
+        self._editor = editor
+        self._cached_bmp = None
+        self.Refresh()
+        editor.SetFocus()
+        editor.SetSelection(-1, -1)
+
+    def _end_inline_edit(self, commit: bool):
+        editor = self._editor
+        if editor is None or self._closing_editor:
+            return
+
+        self._closing_editor = True
+        self._editor = None
         try:
-            if dlg.ShowModal() == wx.ID_OK:
-                self.SetValue(dlg.GetValue())
-                self._emit(wx.wxEVT_TEXT_ENTER)
-                self._emit(wx.wxEVT_COMBOBOX)
+            before = self._value
+            if commit:
+                with contextlib.suppress(RuntimeError):
+                    self._value = editor.GetValue()
+                    self._selection = self.FindString(self._value)
+
+            if not self._destroying:
+                _destroy_window_later(editor)
+            self._cached_bmp = None
+            if not self._destroying:
+                self.Refresh()
+                if commit and self._value != before:
+                    self._emit(wx.wxEVT_TEXT_ENTER)
+                    self._emit(wx.wxEVT_COMBOBOX)
         finally:
-            dlg.Destroy()
+            self._closing_editor = False
+
+    def _discard_inline_editor_for_destroy(self):
+        editor = self._editor
+        self._editor = None
+        if editor is not None:
+            with contextlib.suppress(RuntimeError, AttributeError):
+                editor.Hide()
+
+    def _editor_rect(self):
+        w, h = self.GetClientSize()
+        return wx.Rect(2, 2, max(1, w - 28), max(1, h - 4))
+
+    def _on_editor_text(self, event):
+        with contextlib.suppress(AttributeError):
+            event.StopPropagation()
+
+    def _on_editor_enter(self, event):
+        if not _event_belongs_to_editor(event, self._editor):
+            return
+        self._end_inline_edit(commit=True)
+
+    def _on_editor_kill_focus(self, event):
+        if not _event_belongs_to_editor(event, self._editor):
+            event.Skip()
+            return
+        self._end_inline_edit(commit=True)
+        event.Skip()
+
+    def _on_editor_key(self, event):
+        if not _event_belongs_to_editor(event, self._editor):
+            return
+        key = event.GetKeyCode()
+        if key == wx.WXK_ESCAPE:
+            self._end_inline_edit(commit=False)
+            return
+        event.Skip()
+
+    def _on_size(self, event):
+        if self._editor is not None:
+            self._editor.SetRect(self._editor_rect())
+        event.Skip()
+
+    def _on_destroy(self, event):
+        if event.GetEventObject() is self:
+            self._destroying = True
+            self._discard_inline_editor_for_destroy()
+            if self._popup is not None:
+                with contextlib.suppress(RuntimeError):
+                    self._popup.dismiss_from_owner()
+                self._popup = None
+        event.Skip()
 
     def _show_menu(self):
         if not self._choices:
@@ -449,6 +610,9 @@ class DarkSpinCtrl(wx.Control):
         self._border = Colors.BORDER_SOFT
         self._cached_bmp = None
         self._cached_state = None
+        self._editor = None
+        self._closing_editor = False
+        self._destroying = False
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         self.SetMinSize(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
@@ -461,6 +625,8 @@ class DarkSpinCtrl(wx.Control):
         self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
         self.Bind(wx.EVT_MOUSEWHEEL, self._on_wheel)
+        self.Bind(wx.EVT_SIZE, self._on_size)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
     def SetBackgroundColour(self, colour):
         self._bg = colour
@@ -482,6 +648,8 @@ class DarkSpinCtrl(wx.Control):
 
     def Enable(self, enable=True):
         changed = super().Enable(enable)
+        if not enable:
+            self._end_inline_edit(commit=False)
         self._hovered = False
         self._pressed_part = None
         self._cached_bmp = None
@@ -516,9 +684,13 @@ class DarkSpinCtrl(wx.Control):
         self.Refresh()
 
     def GetValue(self):
+        if self._editor is not None:
+            value = self._coerce(self._editor.GetValue())
+            return value if self._double else int(round(value))
         return self._value if self._double else int(round(self._value))
 
     def SetValue(self, value):
+        self._end_inline_edit(commit=False)
         self._value = self._coerce(value)
         self._cached_bmp = None
         self.Refresh()
@@ -573,15 +745,18 @@ class DarkSpinCtrl(wx.Control):
         self._pressed_part = None
         self.Refresh()
         if part == "up":
+            self._end_inline_edit(commit=True)
             self._step(1)
         elif part == "down":
+            self._end_inline_edit(commit=True)
             self._step(-1)
         elif part == "edit":
-            self._edit_value()
+            self._begin_inline_edit()
 
     def _on_wheel(self, event):
         if not self.IsEnabled():
             return
+        self._end_inline_edit(commit=True)
         self._step(1 if event.GetWheelRotation() > 0 else -1)
 
     def _step(self, direction):
@@ -591,18 +766,102 @@ class DarkSpinCtrl(wx.Control):
             self.Refresh()
             self._emit_change()
 
-    def _edit_value(self):
-        dlg = wx.TextEntryDialog(self, "", "", self._format_value())
-        dlg.SetBackgroundColour(Colors.BG_PANEL)
+    def _begin_inline_edit(self):
+        if self._editor is not None:
+            self._editor.SetFocus()
+            self._editor.SetSelection(-1, -1)
+            return
+
+        rect = self._editor_rect()
+        editor = wx.TextCtrl(
+            self,
+            value=self._format_value(),
+            pos=rect.GetPosition(),
+            size=rect.GetSize(),
+            style=wx.TE_PROCESS_ENTER | wx.TE_CENTER | wx.BORDER_NONE,
+        )
+        editor.SetFont(self.GetFont())
+        editor.SetBackgroundColour(self._bg)
+        editor.SetForegroundColour(self._fg)
+        editor.Bind(wx.EVT_TEXT, self._on_editor_text)
+        editor.Bind(wx.EVT_TEXT_ENTER, self._on_editor_enter)
+        editor.Bind(wx.EVT_KILL_FOCUS, self._on_editor_kill_focus)
+        editor.Bind(wx.EVT_CHAR_HOOK, self._on_editor_key)
+        self._editor = editor
+        self._cached_bmp = None
+        self.Refresh()
+        editor.SetFocus()
+        editor.SetSelection(-1, -1)
+
+    def _end_inline_edit(self, commit: bool):
+        editor = self._editor
+        if editor is None or self._closing_editor:
+            return
+
+        self._closing_editor = True
+        self._editor = None
         try:
-            if dlg.ShowModal() == wx.ID_OK:
-                before = self._value
-                self._value = self._coerce(dlg.GetValue())
+            before = self._value
+            if commit:
+                with contextlib.suppress(RuntimeError):
+                    self._value = self._coerce(editor.GetValue())
+
+            if not self._destroying:
+                _destroy_window_later(editor)
+            self._cached_bmp = None
+            if not self._destroying:
                 self.Refresh()
-                if self._value != before:
+                if commit and self._value != before:
                     self._emit_change()
         finally:
-            dlg.Destroy()
+            self._closing_editor = False
+
+    def _discard_inline_editor_for_destroy(self):
+        editor = self._editor
+        self._editor = None
+        if editor is not None:
+            with contextlib.suppress(RuntimeError, AttributeError):
+                editor.Hide()
+
+    def _editor_rect(self):
+        w, h = self.GetClientSize()
+        return wx.Rect(2, 2, max(1, w - 24), max(1, h - 4))
+
+    def _on_editor_key(self, event):
+        if not _event_belongs_to_editor(event, self._editor):
+            return
+        key = event.GetKeyCode()
+        if key == wx.WXK_ESCAPE:
+            self._end_inline_edit(commit=False)
+            return
+        event.Skip()
+
+    def _on_editor_text(self, event):
+        with contextlib.suppress(AttributeError):
+            event.StopPropagation()
+
+    def _on_editor_enter(self, event):
+        if not _event_belongs_to_editor(event, self._editor):
+            return
+        self._end_inline_edit(commit=True)
+
+    def _on_editor_kill_focus(self, event):
+        if not _event_belongs_to_editor(event, self._editor):
+            event.Skip()
+            return
+        self._end_inline_edit(commit=True)
+        event.Skip()
+
+    def _on_size(self, event):
+        if self._editor is not None:
+            self._editor.SetRect(self._editor_rect())
+        event.Skip()
+
+    def _on_destroy(self, event):
+        if event.GetEventObject() is self:
+            self._destroying = True
+            self._discard_inline_editor_for_destroy()
+        event.Skip()
 
     def _emit_change(self):
         spin_type = wx.wxEVT_SPINCTRLDOUBLE if self._double else wx.wxEVT_SPINCTRL

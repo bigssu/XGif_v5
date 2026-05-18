@@ -2,6 +2,7 @@
 
 import logging
 import threading
+import contextlib
 from typing import TYPE_CHECKING
 
 import wx
@@ -22,6 +23,7 @@ class SystemDetector:
     def __init__(self, window: "MainWindow") -> None:
         self._w = window
         self._gpu_initialized = False
+        self._cupy_install_offer_shown = False
 
     # ─── 비동기 시스템 감지 ───
 
@@ -94,6 +96,9 @@ class SystemDetector:
             logger.info("[SystemDetector] GPU 자동 활성화: CuPy 사용 가능")
         else:
             logger.info("[SystemDetector] GPU 자동 감지 완료: CuPy 미사용")
+            if self._should_offer_cupy_install(gpu_info, respect_skip=True):
+                self._cupy_install_offer_shown = True
+                wx.CallLater(600, self._offer_cupy_install)
 
     # ─── GPU 버튼 ───
 
@@ -120,18 +125,22 @@ class SystemDetector:
         self._gpu_initialized = True
         bar = self._w.capture_control_bar
         bar.gpu_status_button.Enable(True)
-        bar.set_gpu_status(gpu_info.has_cuda)
+        bar.set_gpu_status(gpu_info.has_cupy)
         self._show_gpu_info_dialog()
 
     def _show_gpu_info_dialog(self) -> None:
         try:
-            gpu_info = detect_gpu(skip_cupy=True)
+            gpu_info = detect_gpu(skip_cupy=False)
         except Exception:
             gpu_info = GpuInfo()
 
         if not gpu_info.has_cuda:
             wx.MessageBox(tr("gpu_not_found_msg"), tr("gpu_info_title"),
                           wx.OK | wx.ICON_INFORMATION, self._w)
+            return
+
+        if self._should_offer_cupy_install(gpu_info, respect_skip=False):
+            self._offer_cupy_install()
             return
 
         msg = tr("gpu_info_msg",
@@ -142,6 +151,57 @@ class SystemDetector:
                  driver=gpu_info.driver_version or "N/A")
         wx.MessageBox(msg, tr("gpu_info_title"),
                       wx.OK | wx.ICON_INFORMATION, self._w)
+
+    def _should_offer_cupy_install(self, gpu_info: GpuInfo, *, respect_skip: bool) -> bool:
+        if respect_skip and self._cupy_install_offer_shown:
+            return False
+        if not gpu_info.has_cuda or gpu_info.has_cupy:
+            return False
+        return not (
+            respect_skip and self._w.settings.get("skip_cupy_check", fallback="false") == "true"
+        )
+
+    def _offer_cupy_install(self) -> bool:
+        """CuPy 누락 시 XGif 외부 env 설치 가이드를 표시하고 재감지한다."""
+        if not self._is_window_live():
+            return False
+
+        self._cupy_install_offer_shown = True
+        try:
+            from core.dependency_checker import DependencyState, check_cupy
+            from ui.dependency_dialogs import show_install_flow
+        except Exception as e:
+            logger.warning("[SystemDetector] CuPy 설치 흐름 로드 실패: %s", e)
+            return False
+
+        status = check_cupy()
+        if status.state == DependencyState.INSTALLED:
+            self._refresh_gpu_status()
+            return True
+
+        success = show_install_flow(self._w, "CuPy", status, self._w.settings)
+        if success:
+            self._refresh_gpu_status()
+            return True
+
+        return False
+
+    def _refresh_gpu_status(self) -> None:
+        try:
+            from core import gpu_utils
+            gpu_utils.reset_gpu_cache()
+            info = detect_gpu(skip_cupy=False)
+        except Exception:
+            info = GpuInfo()
+        self._gpu_initialized = True
+        with contextlib.suppress(Exception):
+            self._w.capture_control_bar.set_gpu_status(info.has_cupy)
+
+    def _is_window_live(self) -> bool:
+        try:
+            return bool(self._w and self._w.GetHandle())
+        except RuntimeError:
+            return False
 
     # ─── HDR ───
 

@@ -131,6 +131,21 @@ def _check_cupy():
         return _cupy_available
 
 
+def reset_gpu_cache(reset_cupy: bool = True) -> None:
+    """GPU/CuPy 감지 캐시를 초기화한다.
+
+    CuPy를 런타임에 설치한 뒤 재검사할 때 기존 실패 캐시가 남지 않게 한다.
+    """
+    global _gpu_info, _cupy_available, _cp
+
+    with _gpu_lock:
+        _gpu_info = None
+    if reset_cupy:
+        with _cupy_check_lock:
+            _cupy_available = None
+            _cp = None
+
+
 def detect_gpu(skip_cupy: bool = False) -> GpuInfo:
     """
     GPU 정보를 감지하고 캐싱합니다.

@@ -3,9 +3,23 @@ import ast
 import re
 import json
 
+import wx
+
+
+_WX_APP = None
+
 
 def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
+
+
+def _ensure_wx_app():
+    global _WX_APP
+    app = wx.App.Get()
+    if app is None:
+        _WX_APP = wx.App(False)
+        app = _WX_APP
+    return app
 
 
 def test_recorder_uses_shared_vector_commands_instead_of_symbol_text_icons():
@@ -141,6 +155,42 @@ def test_settings_dialog_uses_form_section_not_staticbox():
 def test_dead_flatbutton_removed_from_capture_control_bar():
     src = _read("ui/capture_control_bar.py")
     assert "class FlatButton(" not in src
+
+
+def test_owner_drawn_buttons_click_by_pointer_position_not_stale_hover():
+    _ensure_wx_app()
+    from ui.design_system import CommandButton
+    from editor.ui.icon_toolbar_wx import FlatIconButton
+
+    frame = wx.Frame(None)
+    try:
+        command = CommandButton(frame, label="Save")
+        icon = FlatIconButton("play", "Play", frame)
+        for button, hover_attr in ((command, "_hovered"), (icon, "_is_hovered")):
+            clicked = []
+            button.Bind(wx.EVT_BUTTON, lambda event, sink=clicked: sink.append(event.GetEventObject()))
+            setattr(button, hover_attr, False)
+            button._pressed = True
+            button._is_mouse_over = lambda: True
+
+            button._on_left_up(None)
+
+            assert clicked == [button]
+            assert getattr(button, hover_attr) is True
+    finally:
+        frame.Destroy()
+
+
+def test_owner_drawn_buttons_recover_from_spurious_leave_events():
+    src = _read("ui/design_system.py")
+    toolbar = _read("editor/ui/icon_toolbar_wx.py")
+
+    for source, hover_name in ((src, "_hovered"), (toolbar, "_is_hovered")):
+        assert "wx.EVT_MOTION" in source
+        assert "wx.EVT_MOUSE_CAPTURE_LOST" in source
+        assert "def _is_mouse_over" in source
+        assert "inside = self._is_mouse_over()" in source
+        assert f"and self.{hover_name}" not in source
 
 
 def test_editor_i18n_common_keys_present_in_both_locales():

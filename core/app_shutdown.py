@@ -45,6 +45,28 @@ def _is_primary_window(win: wx.Window) -> bool:
     return win.__class__.__name__ != "CaptureOverlay"
 
 
+def _is_capture_overlay(win: wx.Window) -> bool:
+    """CaptureOverlay 창인지 판별."""
+    return win.__class__.__name__ == "CaptureOverlay"
+
+
+def destroy_capture_overlays(windows: List[wx.Window] | None = None) -> int:
+    """독립/잔류 CaptureOverlay 창을 전역으로 회수."""
+    if windows is None:
+        windows = _get_live_top_windows()
+
+    destroyed = 0
+    for win in windows:
+        if not _is_capture_overlay(win):
+            continue
+        with contextlib.suppress(Exception):
+            win.Hide()
+        with contextlib.suppress(Exception):
+            win.Destroy()
+            destroyed += 1
+    return destroyed
+
+
 def ensure_exit_if_no_primary_windows(reason: str = "") -> bool:
     """주요 창이 모두 닫혔다면 잔여 창을 정리하고 MainLoop를 종료."""
     app = wx.App.Get()
@@ -52,6 +74,14 @@ def ensure_exit_if_no_primary_windows(reason: str = "") -> bool:
         return False
 
     live_windows = _get_live_top_windows()
+    destroyed_overlays = destroy_capture_overlays(live_windows)
+    if destroyed_overlays:
+        logger.info(
+            "Destroyed %d capture overlay window(s) during shutdown check (reason=%s)",
+            destroyed_overlays,
+            reason or "shutdown_check",
+        )
+
     primary_windows = [win for win in live_windows if _is_primary_window(win)]
 
     if primary_windows:

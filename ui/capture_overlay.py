@@ -154,10 +154,12 @@ class CaptureOverlay(wx.Frame):
         init_w = DEFAULT_CAPTURE_WIDTH + 2 * _padding + 2 * _border_offset
         init_h = DEFAULT_CAPTURE_HEIGHT + 2 * _padding + 2 * _border_offset + OVERLAY_BOTTOM_EXTRA
 
-        # parent를 None으로 생성: 메인 윈도우의 DPI 스케일이 오버레이 크기에 영향 방지
-        wx.Frame.__init__(self, None, style=style, size=(init_w, init_h))
-
         self.parent_window = parent_window
+        self._destroying_for_parent_exit = False
+        self._parent_destroy_bound = False
+
+        # 메인 창 소유 top-level로 생성해 독립 overlay가 프로세스를 붙잡지 않게 한다.
+        wx.Frame.__init__(self, parent_window, style=style, size=(init_w, init_h))
 
         # Windows에서 투명 배경을 위한 설정
         # 특정 색상(검은색)을 투명 키로 설정
@@ -205,6 +207,11 @@ class CaptureOverlay(wx.Frame):
 
         # 배경 지우기 이벤트 처리 (깜박임 방지)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
+
+        if parent_window is not None:
+            with contextlib.suppress(Exception):
+                parent_window.Bind(wx.EVT_WINDOW_DESTROY, self._on_parent_window_destroy)
+                self._parent_destroy_bound = True
 
         # UI 초기화
         self._init_ui()
@@ -274,6 +281,11 @@ class CaptureOverlay(wx.Frame):
         # 영역 변경 시그널을 위한 타이머 (debounce) - wxPython 스타일
         self.emit_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._emit_region, self.emit_timer)
+
+        # 부모 창이 비정상 경로로 사라져도 overlay만 남지 않도록 생존성을 감시한다.
+        self.lifecycle_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._on_lifecycle_timer, self.lifecycle_timer)
+        self.lifecycle_timer.Start(500)
 
         # 윈도우 파괴 시 타이머 정리 (Destroy() 직접 호출 시에도 안전)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_window_destroy)
@@ -683,7 +695,19 @@ class CaptureOverlay(wx.Frame):
         """창 닫기"""
         self._cleanup()
         self._emit_closed()
+        wx.CallAfter(self._ensure_app_shutdown_if_orphaned)
         event.Skip()
+
+    def _on_parent_window_destroy(self, event):
+        """부모 메인 창이 파괴되면 overlay도 즉시 정리."""
+        if event.GetEventObject() is self.parent_window:
+            self._destroy_after_parent_exit()
+        event.Skip()
+
+    def _on_lifecycle_timer(self, _event):
+        """부모 창 생존성 감시: overlay 단독 잔류 방지."""
+        if not self._parent_window_is_live():
+            self._destroy_after_parent_exit()
 
     def _on_window_destroy(self, event):
         """윈도우 파괴 시 타이머 정리"""
@@ -694,10 +718,48 @@ class CaptureOverlay(wx.Frame):
     def _cleanup(self):
         """리소스 정리 - 메모리 누수 방지"""
         from core.utils import safe_delete_timer
+        with contextlib.suppress(Exception):
+            if self.HasCapture():
+                self.ReleaseMouse()
         # 타이머 정리
-        if self.emit_timer is not None:
+        if getattr(self, "emit_timer", None) is not None:
             safe_delete_timer(self.emit_timer)
             self.emit_timer = None
+        if getattr(self, "lifecycle_timer", None) is not None:
+            safe_delete_timer(self.lifecycle_timer)
+            self.lifecycle_timer = None
+        if self._parent_destroy_bound and self.parent_window is not None:
+            with contextlib.suppress(Exception):
+                self.parent_window.Unbind(wx.EVT_WINDOW_DESTROY, handler=self._on_parent_window_destroy)
+            self._parent_destroy_bound = False
+
+    def _parent_window_is_live(self) -> bool:
+        """부모 메인 창이 아직 앱의 유효한 소유자인지 확인."""
+        if self.parent_window is None:
+            return True
+        with contextlib.suppress(RuntimeError, AttributeError):
+            return bool(self.parent_window.GetHandle()) and self.parent_window.IsShown()
+        return False
+
+    def _destroy_after_parent_exit(self):
+        """부모 없는 overlay를 닫고 앱 종료 검사를 예약."""
+        if self._destroying_for_parent_exit:
+            return
+        self._destroying_for_parent_exit = True
+        self._cleanup()
+        self._emit_closed()
+        with contextlib.suppress(RuntimeError, AttributeError):
+            self.Hide()
+        with contextlib.suppress(RuntimeError, AttributeError):
+            self.Destroy()
+        wx.CallAfter(self._ensure_app_shutdown_if_orphaned)
+
+    @staticmethod
+    def _ensure_app_shutdown_if_orphaned():
+        """주요 창이 없다면 잔여 overlay/top-level 창까지 정리하고 앱 루프 종료."""
+        with contextlib.suppress(Exception):
+            from core.app_shutdown import ensure_exit_if_no_primary_windows
+            ensure_exit_if_no_primary_windows("capture_overlay_orphan_guard")
 
     def _schedule_emit(self):
         """영역 변경 시그널 예약 (debounce)"""

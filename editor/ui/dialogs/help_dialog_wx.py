@@ -102,7 +102,7 @@ class HelpDialog(ThemedDialog):
                 # help_app_summary는 이 섹션의 body0 역할 (헤더에서도 재사용됨)
                 tr("help_app_summary", "XGif는 Windows 화면을 GIF 또는 MP4로 녹화하고, 녹화 결과를 프레임 단위로 다듬어 저장하는 경량 캡처/편집 앱입니다."),
                 tr("help_sec_app_summary_body1", "레코더는 캡처 영역, FPS, 해상도, GIF/MP4 출력, GPU 사용 여부를 빠르게 선택하도록 설계되었습니다."),
-                tr("help_sec_app_summary_body2", "에디터는 녹화 직후 프레임 삭제, 시간 조절, 텍스트/스티커/펜슬 추가, 크롭/리사이즈/필터 적용, 저장 최적화를 처리합니다."),
+                tr("help_sec_app_summary_body2", "에디터는 녹화 직후 프레임 삭제, 시간 직접 입력, 텍스트/스티커/펜슬 추가, 크롭/리사이즈/필터 적용, 저장 최적화를 처리합니다."),
             ],
         )
         self._add_section(
@@ -111,7 +111,7 @@ class HelpDialog(ThemedDialog):
             [
                 tr("help_sec_flow_body0", "1. 메인 화면에서 캡처 영역과 출력 형식을 정합니다."),
                 tr("help_sec_flow_body1", "2. 녹화 후 편집 버튼으로 에디터를 열어 불필요한 프레임과 시간을 정리합니다."),
-                tr("help_sec_flow_body2", "3. 필요한 오버레이나 효과를 적용한 뒤 저장합니다."),
+                tr("help_sec_flow_body2", "3. 필요한 오버레이나 효과를 적용한 뒤 저장합니다. 재생 중인 프리뷰는 저장을 누르면 자동으로 멈춥니다."),
             ],
         )
         return page
@@ -122,7 +122,7 @@ class HelpDialog(ThemedDialog):
             page,
             tr("help_sec_frames_title", "프레임과 시간"),
             [
-                tr("help_sec_frames_body0", "프레임 목록에서 선택 프레임을 삭제하거나, 재생 시간을 직접 수정할 수 있습니다."),
+                tr("help_sec_frames_body0", "프레임 목록에서 선택 프레임을 삭제하거나, 시간 필드 안에서 재생 시간을 직접 입력할 수 있습니다."),
                 tr("help_sec_frames_body1", "속도 조절은 전체 프레임 또는 선택 프레임 대상으로 적용됩니다."),
                 tr("help_sec_frames_body2", "프레임 줄이기는 중복/불필요한 프레임을 정리해 파일 크기를 줄이는 작업에 사용합니다."),
             ],

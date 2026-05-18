@@ -6,6 +6,7 @@ Windows 11 Dark Theme 스타일
 
 import logging
 import os
+import subprocess
 import sys
 import wx
 
@@ -251,6 +252,125 @@ def _get_gpu_requirements_path():
     return path if os.path.exists(path) else None
 
 
+def _get_external_cupy_env_dir():
+    """Frozen 앱이 CuPy를 로드하는 외부 venv 경로 반환."""
+    base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    return os.path.join(base, "XGif", "env")
+
+
+def _get_external_cupy_python(env_dir=None):
+    """외부 CuPy venv의 Python 실행 파일 경로 반환."""
+    env_dir = env_dir or _get_external_cupy_env_dir()
+    return os.path.join(env_dir, "Scripts", "python.exe")
+
+
+def _build_cupy_pip_args(use_requirements, requirements_path, cupy_packages):
+    if use_requirements and requirements_path:
+        return ["-r", requirements_path]
+    return list(cupy_packages)
+
+
+def _build_direct_cupy_install_commands(
+    *,
+    is_frozen,
+    system_python,
+    external_env_dir,
+    cupy_packages,
+    use_requirements,
+    requirements_path,
+):
+    """CuPy 직접 설치에 사용할 명령 시퀀스를 구성한다."""
+    pip_args = _build_cupy_pip_args(use_requirements, requirements_path, cupy_packages)
+    if is_frozen:
+        if not system_python:
+            raise RuntimeError(tr('cupy_guide_python_missing_cmd'))
+        env_python = _get_external_cupy_python(external_env_dir)
+        return [
+            [system_python, "-m", "venv", external_env_dir],
+            [env_python, "-m", "pip", "install", "--upgrade", "pip>=24.0", "--quiet"],
+            [env_python, "-m", "pip", "install", *pip_args, "--no-cache-dir"],
+        ]
+    return [[sys.executable, "-m", "pip", "install", *pip_args, "--no-cache-dir"]]
+
+
+def _run_cupy_install_commands(commands, *, timeout=900):
+    """명령 시퀀스를 실행하고 마지막 stdout/stderr를 반환한다."""
+    creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+    last_message = ""
+    for command in commands:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            creationflags=creationflags,
+        )
+        last_message = result.stdout if result.returncode == 0 else result.stderr
+        if result.returncode != 0:
+            return False, last_message
+    return True, last_message
+
+
+def _verify_cupy_install_status():
+    """직접 설치 후 실제 CuPy import 가능 여부를 재검증한다."""
+    import importlib
+
+    importlib.invalidate_caches()
+    with contextlib.suppress(AttributeError):
+        delattr(sys, "_xgif_site_packages_added")
+    with contextlib.suppress(Exception):
+        from core import gpu_utils
+        gpu_utils.reset_gpu_cache()
+    with contextlib.suppress(Exception):
+        from core.utils import ensure_system_site_packages
+        ensure_system_site_packages()
+
+    from core.dependency_checker import check_cupy
+    return check_cupy()
+
+
+def _install_cupy_and_verify(commands):
+    success, message = _run_cupy_install_commands(commands)
+    if not success:
+        return False, message
+
+    status = _verify_cupy_install_status()
+    if status.state == DependencyState.INSTALLED:
+        return True, status.installed_version or message
+
+    return False, status.error_message or tr('dep_cupy_still_missing')
+
+
+def _format_frozen_cupy_install_commands(
+    system_python,
+    env_dir,
+    cupy_packages,
+    *,
+    requirements_path=None,
+    use_requirements=False,
+):
+    """사용자에게 복사할 frozen 앱용 외부 env 설치 명령 생성."""
+    env_python = _get_external_cupy_python(env_dir)
+    if use_requirements and requirements_path:
+        install_cmd = format_gpu_requirements_command(
+            python_executable=env_python,
+            requirements_path=requirements_path,
+        )
+    else:
+        install_cmd = format_pip_install_command(
+            cupy_packages,
+            python_executable=env_python,
+        )
+
+    return "\n".join(
+        [
+            f'"{system_python}" -m venv "{env_dir}"',
+            f'"{env_python}" -m pip install --upgrade "pip>=24.0"',
+            install_cmd,
+        ]
+    )
+
+
 def _has_nvidia_gpu_hardware():
     """NVIDIA GPU 하드웨어 존재 여부 확인"""
     try:
@@ -268,7 +388,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
     NVIDIA GPU 정보, CUDA 드라이버 버전, 설치 명령어를 보여주고
     명령어 복사 및 재검사 기능 제공.
-    dev 모드에서는 직접 설치 버튼도 제공.
+    개발 환경은 현재 Python에, frozen 앱은 XGif 외부 env에 직접 설치한다.
     """
 
     def __init__(self, parent):
@@ -281,12 +401,17 @@ class CuPyInstallGuideDialog(ThemedDialog):
         self._cupy_packages = cupy_packages_for_driver_version(self._cuda_version)
         self._package_name = " ".join(self._cupy_packages)
         self._requirements_path = _get_gpu_requirements_path()
+        self._external_env_dir = _get_external_cupy_env_dir()
         cuda_major = self._cuda_version[0] if self._cuda_version else None
         self._use_requirements = bool(self._requirements_path and should_use_gpu_requirements(cuda_major))
         self._system_python = None
         if self._is_frozen:
-            from core.dependency_checker import find_system_python_exe
-            self._system_python = find_system_python_exe()
+            from core.dependency_checker import check_system_python, find_system_python_exe
+            if check_system_python().state == DependencyState.INSTALLED:
+                self._system_python = find_system_python_exe()
+        self._can_direct_install = bool(
+            self._cupy_packages and (not self._is_frozen or self._system_python)
+        )
         self._build_ui()
         self.CenterOnParent()
 
@@ -319,18 +444,20 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
         sizer.Add((0, 12))
 
-        # 명령어 영역 — frozen 모드에서는 시스템 Python 전체 경로 사용
-        python_executable = self._system_python if self._is_frozen and self._system_python else None
+        # 명령어 영역 — frozen 모드에서는 XGif 외부 env로 설치
         if not self._cupy_packages:
             cmd_text = tr('cupy_cuda_unsupported', cuda_version=cuda_ver_str)
-        elif self._is_frozen and self._system_python:
-            if self._use_requirements:
-                cmd_text = format_gpu_requirements_command(
-                    python_executable=python_executable,
+        elif self._is_frozen:
+            if self._system_python:
+                cmd_text = _format_frozen_cupy_install_commands(
+                    self._system_python,
+                    self._external_env_dir,
+                    self._cupy_packages,
                     requirements_path=self._requirements_path,
+                    use_requirements=self._use_requirements,
                 )
             else:
-                cmd_text = format_pip_install_command(self._cupy_packages, python_executable=python_executable)
+                cmd_text = tr('cupy_guide_python_missing_cmd')
         elif self._use_requirements:
             cmd_text = format_gpu_requirements_command(requirements_path=GPU_REQUIREMENTS_FILE)
         else:
@@ -339,7 +466,8 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
         self._cmd_ctrl = wx.TextCtrl(
             self, value=cmd_text,
-            style=wx.TE_READONLY | wx.BORDER_SIMPLE
+            size=(-1, 66 if "\n" in cmd_text else -1),
+            style=wx.TE_READONLY | wx.BORDER_SIMPLE | wx.TE_MULTILINE | wx.TE_DONTWRAP
         )
         self._cmd_ctrl.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
         self._cmd_ctrl.SetBackgroundColour(wx.Colour(40, 40, 40))
@@ -362,8 +490,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         btn_sizer.AddStretchSpacer()
 
-        # dev 모드에서만 직접 설치 버튼
-        if not self._is_frozen and self._cupy_packages:
+        if self._can_direct_install:
             direct_btn = CommandButton(self, label=tr('cupy_guide_direct_install'), size=(110, 32),
                                      bg_color=Colors.ACCENT.Get()[:3],
                                      fg_color=Colors.TEXT_PRIMARY.Get()[:3],
@@ -426,8 +553,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
             )
 
     def _on_direct_install(self, event):
-        """dev 모드에서 pip install 직접 실행"""
-        import subprocess
+        """CuPy를 현재 개발 env 또는 frozen 앱 외부 env에 직접 설치."""
         import threading
 
         if not self._cupy_packages:
@@ -441,17 +567,21 @@ class CuPyInstallGuideDialog(ThemedDialog):
             return
 
         install_label = self._requirements_path if self._use_requirements else self._package_name
-        self._busy_info = wx.BusyInfo(f"Installing {install_label}...")
+        self._busy_info = wx.BusyInfo(tr('cupy_guide_installing', target=install_label))
 
         def do_install():
             try:
-                pip_args = ["-r", self._requirements_path] if self._use_requirements else list(self._cupy_packages)
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", *pip_args],
-                    capture_output=True, text=True, timeout=600
+                if self._is_frozen:
+                    os.makedirs(os.path.dirname(self._external_env_dir), exist_ok=True)
+                commands = _build_direct_cupy_install_commands(
+                    is_frozen=self._is_frozen,
+                    system_python=self._system_python,
+                    external_env_dir=self._external_env_dir,
+                    cupy_packages=self._cupy_packages,
+                    use_requirements=self._use_requirements,
+                    requirements_path=self._requirements_path,
                 )
-                success = result.returncode == 0
-                msg = result.stdout if success else result.stderr
+                success, msg = _install_cupy_and_verify(commands)
                 wx.CallAfter(_on_done, success, msg)
             except subprocess.TimeoutExpired:
                 wx.CallAfter(_on_done, False, "Installation timed out.")

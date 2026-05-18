@@ -56,6 +56,35 @@ def test_main_window_hides_shared_buttons_for_instant_toolbars():
     assert "self._hide_action_buttons()" in source
 
 
+def test_editor_save_pauses_playing_preview_before_save_or_save_as():
+    source = Path("editor/ui/editor_main_window_wx.py").read_text(encoding="utf-8")
+    main_window = _class(_module("editor/ui/editor_main_window_wx.py"), "MainWindow")
+    save_file = _function(main_window, "save_file")
+    save_file_as = _function(main_window, "save_file_as")
+    stop_preview = _function(main_window, "_stop_preview_before_save")
+
+    save_file_source = ast.get_source_segment(source, save_file)
+    save_file_as_source = ast.get_source_segment(source, save_file_as)
+    stop_preview_source = ast.get_source_segment(source, stop_preview)
+
+    assert "self._stop_preview_before_save()" in save_file_source
+    assert "self._stop_preview_before_save()" in save_file_as_source
+    assert "if self._is_playing:" in stop_preview_source
+    assert "self.pause()" in stop_preview_source
+
+
+def test_frame_time_dialog_commits_inline_spin_before_reading_value():
+    source = Path("editor/ui/frame_list_widget_wx.py").read_text(encoding="utf-8")
+    frame_list = _class(_module("editor/ui/frame_list_widget_wx.py"), "FrameListWidget")
+    bulk_dialog = _function(frame_list, "_show_bulk_time_dialog")
+    bulk_source = ast.get_source_segment(source, bulk_dialog)
+
+    assert 'getattr(spin, "_end_inline_edit", None)' in bulk_source
+    assert "commit_inline_edit(commit=True)" in bulk_source
+    assert "int(round(spin.GetValue() * 1000))" in bulk_source
+    assert "int(spin.GetValue() * 1000)" not in bulk_source
+
+
 def test_editor_buttons_and_override_colors_use_semantic_tokens():
     theme = Path("ui/theme.py").read_text(encoding="utf-8")
     main_window = Path("editor/ui/editor_main_window_wx.py").read_text(encoding="utf-8")

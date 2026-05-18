@@ -787,6 +787,7 @@ class MainWindow(wx.Frame):
 
     def save_file(self):
         """저장"""
+        self._stop_preview_before_save()
         if self._current_file_path:
             self._save_to_path(self._current_file_path)
         else:
@@ -794,6 +795,7 @@ class MainWindow(wx.Frame):
 
     def save_file_as(self):
         """다른 이름으로 저장 (고급 설정 다이얼로그)"""
+        self._stop_preview_before_save()
         dlg = SaveDialog(self)
         if dlg.ShowModal() == wx.ID_OK:
             file_path = dlg.get_file_path()
@@ -805,6 +807,10 @@ class MainWindow(wx.Frame):
                 self._settings.Write("last_directory", self._last_directory)
 
         dlg.Destroy()
+
+    def _stop_preview_before_save(self):
+        if self._is_playing:
+            self.pause()
 
     def _save_to_path_with_settings(self, file_path: str, settings: EncoderSettings, close_after_save: bool = False):
         """지정된 경로에 설정과 함께 저장 (비동기 처리)"""

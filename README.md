@@ -4,11 +4,13 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 
 ## 현재 기준
 
-- 문서 검증 기준일: `2026-05-13`
+- 릴리스 버전: `2.1.5`
+- 문서 검증 기준일: `2026-05-18`
 - 검증 환경: Python 3.11 fresh `.venv`
 - 주요 의존성 floor: `wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.20.0`
-- 테스트 상태: `pytest tests/ -v` → `162 passed`
+- 테스트 상태: `pytest tests/ -v` → `251 passed`
 - 빌드 참고: `build_optimized.py`가 `XGif.spec`를 빌드 시점에 동적 생성
+- 사내 배포 기준: 코드 서명 없이 PyInstaller/선택적 Inno Setup 산출물을 사용
 
 ## 주요 기능
 
@@ -20,6 +22,8 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 - **오디오 녹음**: 마이크 입력 동시 녹음 (MP4)
 - **오버레이**: 워터마크, 키보드 입력 표시, 마우스 클릭 하이라이트
 - **GIF 에디터**: 프레임 편집, 자르기, 크기 변경, 효과, 텍스트/스티커 삽입
+- **정밀 입력 UX**: 드롭다운은 항목 높이에 맞춰 열리고, 숫자/텍스트 필드는 클릭한 자리에서 바로 입력
+- **안정적인 에디터 조작**: 저장 시 재생 중인 프리뷰를 즉시 멈추고, hover가 흔들려도 버튼 클릭이 유실되지 않음
 - **CLI 지원**: 스크립트/자동화를 위한 커맨드라인 인터페이스
 - **다국어**: 한국어 / 영어
 
@@ -64,9 +68,14 @@ py -3.11 -m venv .venv
 ```bash
 # PyInstaller로 exe 빌드
 .venv\Scripts\python build_optimized.py
+
+# 선택: Inno Setup 설치 파일까지 생성
+.venv\Scripts\python build_optimized.py --installer
 ```
 
-빌드 결과물은 `dist/` 폴더에 생성됩니다.
+빌드 결과물은 `dist/` 폴더에 생성됩니다. 사내 배포는 서명 플래그 없이 진행합니다.
+
+설치본은 CuPy를 EXE 안에 묶지 않고 `%LOCALAPPDATA%\XGif\env` 외부 환경에서 로드합니다. NVIDIA GPU가 있지만 CuPy가 없으면 첫 실행 GPU 감지 또는 GPU 버튼 클릭 시 설치 가이드가 열리며, 시스템 Python 3.11 이상이 있으면 `직접 설치` 버튼으로 해당 외부 환경에 자동 설치할 수 있습니다.
 
 ## 사용법
 
@@ -80,6 +89,7 @@ py -3.11 -m venv .venv
 2. **REC** 버튼으로 녹화 시작
 3. **Stop** 버튼으로 녹화 종료 및 저장
 4. 저장된 GIF를 클릭하면 GIF 에디터가 열림
+5. FPS/품질 드롭다운은 항목 수만큼만 열리며, 프레임 시간/크기/속도 같은 숫자 필드는 필드 안에서 직접 입력 가능
 
 ### CLI 모드
 

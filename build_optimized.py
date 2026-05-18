@@ -405,6 +405,8 @@ from PyInstaller.utils.hooks import copy_metadata, collect_submodules
 EXCLUDE_BINARIES = [
     # Pillow AVIF support is large and not part of XGif's documented import/export formats.
     '_avif',
+    # NumPy test extension pulled by PyInstaller hooks; not needed in release builds.
+    '_multiarray_tests',
     # Guard against wx optional modules being collected by hook changes or polluted build envs.
     'wxmsw32u_html', 'wxmsw32u_richtext', 'wxmsw32u_stc',
     'wxmsw32u_propgrid', 'wxmsw32u_aui', 'wxmsw32u_ribbon', 'wxmsw32u_xrc',
@@ -449,6 +451,7 @@ a = Analysis(
         # 미사용 numpy 서브패키지
         'numpy.f2py', 'numpy.testing', 'numpy.tests',
         'numpy.distutils', 'numpy.polynomial', 'numpy.ma.tests',
+        'numpy._core._multiarray_tests',
         # 미사용 PIL 플러그인
         'PIL.ImageTk', 'PIL.ImageQt',
         # 개발 도구
