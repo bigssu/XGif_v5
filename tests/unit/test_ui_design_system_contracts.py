@@ -493,11 +493,33 @@ def test_frame_list_has_explicit_selection_tracker():
         "_get_selected_rows 가 IsInSelection 으로 행을 점검해야 합니다 — "
         "GetSelectedRows/GetSelectionBlock* 만으로는 wxMSW 회귀를 회피하지 못합니다."
     )
-    # delete_selected_frames 가 타이머를 정지
-    delete_section = src[src.index("def delete_selected_frames"):src.index("def delete_selected_frames") + 800]
-    assert "self._selection_timer.Stop()" in delete_section, (
+    # delete_selected_frames 가 타이머를 정지 — 함수 본문 전체를 AST 로 추출하여
+    # 길이가 늘어나도 false negative 가 발생하지 않게 한다.
+    tree = ast.parse(src)
+    delete_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "delete_selected_frames"),
+        None,
+    )
+    assert delete_func is not None, "delete_selected_frames 함수가 사라졌습니다."
+    func_src = ast.unparse(delete_func) if hasattr(ast, "unparse") else ""
+    assert "self._selection_timer.Stop()" in func_src, (
         "delete_selected_frames 가 보류된 selection 타이머를 정지하지 않아 "
         "버튼 클릭과의 race 가 발생할 수 있습니다."
+    )
+
+    # select_frame() 공개 API 도 _tracked_selection 을 동기화해야 한다 — _updating
+    # 가드 동안 EVT_GRID_RANGE_SELECT 가 추적자를 갱신하지 못하므로.
+    select_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "select_frame"),
+        None,
+    )
+    assert select_func is not None, "select_frame 함수가 사라졌습니다."
+    select_src = ast.unparse(select_func) if hasattr(ast, "unparse") else ""
+    assert "self._tracked_selection = {index}" in select_src, (
+        "select_frame() 가 _tracked_selection 을 동기화하지 않습니다 — "
+        "외부 호출 후 즉시 delete 시 이전 선택이 잔존할 수 있습니다."
     )
 
 
