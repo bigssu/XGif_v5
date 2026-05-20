@@ -2,10 +2,12 @@
 MosaicToolbar - 모자이크/검열 효과 인라인 툴바 (wxPython 버전)
 """
 import wx
+import contextlib
 from PIL import Image
 from typing import TYPE_CHECKING, Optional, List
 from .base_toolbar_wx import InlineToolbarBase
 from ...core.image_effects import ImageEffects
+from ...utils.wx_events import EVT_MOSAIC_REGION_CHANGED
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -97,12 +99,11 @@ class MosaicToolbar(InlineToolbarBase):
         self._region_x2 = w * 3 // 4
         self._region_y2 = h * 3 // 4
 
-        # 캔버스 모자이크 모드 시작
+        # 캔버스 모자이크 모드 시작 (wxPython Bind 방식 — PyQt6 시그널 잔재 제거)
         canvas = self._safe_get_canvas()
         if canvas:
             try:
-                if hasattr(canvas, 'mosaic_region_changed'):
-                    canvas.mosaic_region_changed.connect(self._on_canvas_region_changed)
+                canvas.Bind(EVT_MOSAIC_REGION_CHANGED, self._on_canvas_region_changed_event)
                 if hasattr(canvas, 'start_mosaic_mode'):
                     canvas.start_mosaic_mode(
                         self._region_x1, self._region_y1,
@@ -119,11 +120,8 @@ class MosaicToolbar(InlineToolbarBase):
 
         canvas = self._safe_get_canvas()
         if canvas:
-            try:
-                if hasattr(canvas, 'mosaic_region_changed'):
-                    canvas.mosaic_region_changed.disconnect(self._on_canvas_region_changed)
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                canvas.Unbind(EVT_MOSAIC_REGION_CHANGED, handler=self._on_canvas_region_changed_event)
             try:
                 if hasattr(canvas, 'stop_mosaic_mode'):
                     canvas.stop_mosaic_mode()
@@ -155,6 +153,15 @@ class MosaicToolbar(InlineToolbarBase):
         """색상 변경"""
         self._bar_color = event.GetColour()
         self._on_setting_changed(event)
+
+    def _on_canvas_region_changed_event(self, event):
+        """캔버스의 wxPython 이벤트 → 기존 영역 변경 API 로 라우팅.
+
+        canvas_widget_wx 의 MosaicRegionChangedEvent 는 (x1, y1, x2, y2) 를
+        (x, y, width, height) 속성에 담아 전달한다 (event.width 는 우측 X,
+        event.height 는 하단 Y). 의미상 어긋나지만 데이터 흐름은 정합.
+        """
+        self._on_canvas_region_changed(event.x, event.y, event.width, event.height)
 
     def _on_canvas_region_changed(self, x1: int, y1: int, x2: int, y2: int):
         """캔버스에서 영역이 변경됨"""
