@@ -712,6 +712,7 @@
     "msg_dup_no_undo": "프레임이 복제되었습니다.\n(메모리 사용량이 커서 실행 취소 기능을 사용할 수 없습니다: {mb:.1f}MB)",
     "msg_dup_removed_no_undo": "중복 프레임 {removed}개가 제거되었습니다.\n(메모리 제한으로 실행취소 불가: {mb:.1f}MB)",
     "msg_reduce_no_undo": "{removed}개 프레임이 제거되었습니다.\n(메모리 제한으로 Undo 불가: {mb:.1f}MB)",
+    "msg_frame_delete_no_undo": "{removed}개 프레임이 삭제되었습니다.\n(메모리 제한으로 실행 취소 불가: {mb:.1f}MB)",
     "msg_memory_limit_body": "현재 메모리 사용량: {mb:.1f}MB\n\n대용량 GIF 파일을 편집하고 있습니다.\n메모리 제한을 확대하시겠습니까?\n\n(확대하지 않으면 일부 기능에서 Undo가 비활성화됩니다)",
     "dlg_img_seq_folder_title": "이미지 시퀀스 폴더 선택",
     "dlg_frame_delay_msg": "각 프레임의 딜레이를 입력하세요:",

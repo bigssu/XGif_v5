@@ -712,6 +712,7 @@
     "msg_dup_no_undo": "Frame duplicated.\n(Undo unavailable due to high memory usage: {mb:.1f}MB)",
     "msg_dup_removed_no_undo": "{removed} duplicate frames removed.\n(Undo unavailable due to memory limit: {mb:.1f}MB)",
     "msg_reduce_no_undo": "{removed} frames removed.\n(Undo unavailable due to memory limit: {mb:.1f}MB)",
+    "msg_frame_delete_no_undo": "{removed} frame(s) deleted.\n(Undo unavailable due to memory limit: {mb:.1f}MB)",
     "msg_memory_limit_body": "Current memory usage: {mb:.1f}MB\n\nEditing a large GIF file.\nExpand memory limit?\n\n(Without expansion, Undo will be disabled for some operations)",
     "dlg_img_seq_folder_title": "Select Image Sequence Folder",
     "dlg_frame_delay_msg": "Enter delay for each frame:",

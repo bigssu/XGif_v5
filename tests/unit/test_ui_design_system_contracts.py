@@ -523,6 +523,102 @@ def test_frame_list_has_explicit_selection_tracker():
     )
 
 
+def test_memory_manager_method_names_match_mb_suffix():
+    """
+    Regression lock: `_check_memory_limit` 가 `FrameMemoryManager` 의 메서드 이름을
+    `set_memory_limit_mb` / `get_memory_limit_mb` (mb 접미사 포함) 로 호출해야 한다.
+    이전에 `set_memory_limit` / `get_memory_limit` 로 잘못 호출해 사용자가 메모리
+    확대 다이얼로그에서 "예" 를 누르면 AttributeError 가 발생하던 회귀가 있었다.
+    """
+    main_src = _read("editor/ui/editor_main_window_wx.py")
+    frame_src = _read("editor/core/frame.py")
+
+    # FrameMemoryManager 가 mb 접미사 메서드만 정의
+    assert "def get_memory_limit_mb" in frame_src, (
+        "FrameMemoryManager.get_memory_limit_mb 정의가 사라졌습니다."
+    )
+    assert "def set_memory_limit_mb" in frame_src, (
+        "FrameMemoryManager.set_memory_limit_mb 정의가 사라졌습니다."
+    )
+    # 메인 윈도우가 mb 접미사 메서드를 호출
+    assert "_memory_manager.set_memory_limit_mb(" in main_src, (
+        "_check_memory_limit 가 set_memory_limit_mb 를 호출하지 않습니다 — "
+        "AttributeError 회귀 위험."
+    )
+    assert "_memory_manager.get_memory_limit_mb(" in main_src, (
+        "_check_memory_limit 가 get_memory_limit_mb 를 호출하지 않습니다 — "
+        "AttributeError 회귀 위험."
+    )
+    # mb 접미사 없는 호출이 새로 도입되지 않았는지
+    assert "_memory_manager.set_memory_limit(" not in main_src, (
+        "_memory_manager.set_memory_limit() 는 존재하지 않는 메서드입니다 — "
+        "set_memory_limit_mb 로 호출해야 합니다."
+    )
+    assert "_memory_manager.get_memory_limit(" not in main_src, (
+        "_memory_manager.get_memory_limit() 는 존재하지 않는 메서드입니다 — "
+        "get_memory_limit_mb 로 호출해야 합니다."
+    )
+
+
+def test_delete_selected_frames_has_large_gif_undo_guard():
+    """
+    Regression lock: `delete_selected_frames` 는 대용량 GIF (메모리 100MB+) 에서
+    `frames.clone()` 으로 인한 OOM/swap 을 피하기 위해 undo 등록을 생략하는 가드를
+    가져야 한다. `_duplicate_frame` / `_reduce_frames` 와 동일 패턴.
+
+    또한 "모든 프레임 선택 후 삭제" silent return 은 사용자에게 무응답으로 보이므로
+    `msg_min_one_frame_body` 다이얼로그로 표면화되어야 한다.
+    """
+    src = _read("editor/ui/frame_list_widget_wx.py")
+    tree = ast.parse(src)
+    delete_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "delete_selected_frames"),
+        None,
+    )
+    assert delete_func is not None, "delete_selected_frames 함수가 사라졌습니다."
+    func_src = ast.unparse(delete_func) if hasattr(ast, "unparse") else ""
+
+    # 100MB 임계 가드
+    assert "get_memory_usage_mb" in func_src, (
+        "delete_selected_frames 가 메모리 사용량을 점검하지 않습니다 — "
+        "대용량 GIF 에서 undo clone OOM 위험."
+    )
+    assert "current_memory_mb > 100" in func_src, (
+        "delete_selected_frames 가 100MB 임계 가드를 갖추지 않았습니다."
+    )
+    assert "msg_frame_delete_no_undo" in func_src, (
+        "대용량 모드에서 사용자에게 undo 불가 알림을 표시해야 합니다."
+    )
+    # 모두 선택 silent return 대신 다이얼로그
+    assert "msg_min_one_frame_body" in func_src, (
+        "'모든 프레임 선택' 무응답을 다이얼로그로 표면화해야 합니다 — "
+        "silent return 은 사용자에게 버튼이 작동하지 않는 것으로 보입니다."
+    )
+
+
+def test_frame_list_refresh_forces_grid_repaint():
+    """
+    Regression lock: `FrameListWidget.refresh()` 가 데이터 채움 직후 `ForceRefresh()`
+    를 호출해야 한다. wx.grid 는 SetCellValue 만으로 자동 repaint 가 보장되지
+    않아, GIF 로드 직후 그리드가 빈 화면으로 보이고 Play 를 눌러야 비로소 표시되는
+    회귀가 있었다.
+    """
+    src = _read("editor/ui/frame_list_widget_wx.py")
+    tree = ast.parse(src)
+    refresh_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "refresh"),
+        None,
+    )
+    assert refresh_func is not None, "FrameListWidget.refresh 함수가 사라졌습니다."
+    func_src = ast.unparse(refresh_func) if hasattr(ast, "unparse") else ""
+    assert "ForceRefresh()" in func_src, (
+        "refresh() 가 ForceRefresh 를 호출하지 않습니다 — "
+        "wx.grid 초기 페인트 누락 회귀에 노출됩니다."
+    )
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in
