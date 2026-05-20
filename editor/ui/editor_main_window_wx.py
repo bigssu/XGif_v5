@@ -1053,6 +1053,25 @@ class MainWindow(wx.Frame):
                     memory_mb = self._frames.get_memory_usage_mb()
                     self._memory_value.SetLabel(f"{memory_mb:.1f}MB")
 
+                    # 자동 unload: 큰 GIF (200+ 프레임 & 메모리 800MB+) 에서 비활성
+                    # 프레임의 _image (decompressed PIL) 을 해제. _image_bytes (PNG
+                    # 압축) 는 유지되어 다음 paint 시 _decompress_image 로 복원된다.
+                    # current_index / selected 프레임은 즉시 표시되므로 keep.
+                    # (paint 빈도 vs decompress 비용 트레이드오프 — 비활성 프레임에만
+                    # 적용하므로 사용자 체감 거의 없음.)
+                    if (memory_mb > 800 and self._frames.frame_count > 200):
+                        with contextlib.suppress(Exception):
+                            self._frames.lazy_load_enabled = True
+                            unloaded = self._frames.unload_frames(
+                                keep_current=True, keep_selected=True,
+                            )
+                            if unloaded > 0 and hasattr(self, '_logger') and self._logger:
+                                self._logger.debug(
+                                    "auto-unload: 비활성 프레임 %d개 해제 "
+                                    "(memory=%.1fMB, frame_count=%d)",
+                                    unloaded, memory_mb, self._frames.frame_count,
+                                )
+
                     # 메모리 제한 체크 (1GB 초과 시)
                     if memory_mb > 1024 and not self._memory_limit_expanded:
                         self._check_memory_limit(memory_mb)
