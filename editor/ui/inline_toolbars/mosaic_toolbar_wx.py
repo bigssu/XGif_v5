@@ -7,10 +7,13 @@ from PIL import Image
 from typing import TYPE_CHECKING, Optional, List
 from .base_toolbar_wx import InlineToolbarBase
 from ...core.image_effects import ImageEffects
+from ...utils.logger import get_logger
 from ...utils.wx_events import EVT_MOSAIC_REGION_CHANGED
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
+
+_logger = get_logger()
 
 
 class MosaicToolbar(InlineToolbarBase):
@@ -99,18 +102,30 @@ class MosaicToolbar(InlineToolbarBase):
         self._region_x2 = w * 3 // 4
         self._region_y2 = h * 3 // 4
 
-        # 캔버스 모자이크 모드 시작 (wxPython Bind 방식 — PyQt6 시그널 잔재 제거)
+        # 캔버스 모자이크 모드 시작 (wxPython Bind 방식 — PyQt6 시그널 잔재 제거).
+        # Bind 와 start_mosaic_mode 의 실패 모드는 진단 가능해야 한다 — 무음 삼킴은
+        # 정확히 이번 패치가 막으려 한 "이벤트 연결 누락 → 좌표 중앙 고정" 증상을
+        # 재현하므로, 각각 분리된 try 블록에서 어느 쪽이 실패했는지 로그로 남긴다.
         canvas = self._safe_get_canvas()
         if canvas:
             try:
                 canvas.Bind(EVT_MOSAIC_REGION_CHANGED, self._on_canvas_region_changed_event)
-                if hasattr(canvas, 'start_mosaic_mode'):
+            except Exception:
+                _logger.warning(
+                    "MosaicToolbar: EVT_MOSAIC_REGION_CHANGED 바인딩 실패 — "
+                    "기즈모 드래그가 좌표에 반영되지 않을 수 있음",
+                    exc_info=True,
+                )
+            if hasattr(canvas, 'start_mosaic_mode'):
+                try:
                     canvas.start_mosaic_mode(
                         self._region_x1, self._region_y1,
                         self._region_x2, self._region_y2
                     )
-            except Exception:
-                pass
+                except Exception:
+                    _logger.warning(
+                        "MosaicToolbar: start_mosaic_mode 호출 실패", exc_info=True,
+                    )
 
         self._update_preview()
 
