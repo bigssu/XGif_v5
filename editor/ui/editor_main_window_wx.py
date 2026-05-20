@@ -969,13 +969,11 @@ class MainWindow(wx.Frame):
                 duration = self._frames.total_duration / 1000.0
                 self._duration_info.SetLabel(self._translations.tr("info_duration", duration=f"{duration:.1f}"))
 
-                # 메모리 사용량 표시
+                # 메모리 사용량 표시 — mode-aware 정확한 계산 (`w*h*4*N` 추정은 P/RGB
+                # 모드 보존 시 최대 4× 과대 추정이므로, FrameCollection.
+                # get_memory_usage_mb() 의 mode 별 합산을 사용한다.
                 if hasattr(self, '_memory_value') and self._memory_value:
-                    if self._is_low_end_mode:
-                        memory_mb = self._frames.get_memory_usage_mb()
-                    else:
-                        memory_bytes = self._frames.width * self._frames.height * 4 * self._frames.frame_count
-                        memory_mb = memory_bytes / (1024 * 1024)
+                    memory_mb = self._frames.get_memory_usage_mb()
                     self._memory_value.SetLabel(f"{memory_mb:.1f}MB")
 
                     # 메모리 제한 체크 (1GB 초과 시)

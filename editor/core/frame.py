@@ -105,11 +105,18 @@ class Frame:
     _next_id = 0  # 프레임 ID 생성용
     _id_lock = threading.Lock()  # 스레드 안전한 ID 생성
 
+    # 원본 mode 를 보존할 안전 화이트리스트. 이 외 mode (CMYK, YCbCr, I, F 등) 는
+    # 픽셀 데이터 모델이 다르거나 wx 렌더 경로가 어려우므로 RGBA 로 정규화한다.
+    # P (인덱스 컬러) 는 256색 GIF 의 원본 표현으로, RGBA 4 byte/픽셀 → 1 byte/픽셀
+    # + 팔레트 ~1KB 로 메모리 ~1/4 절감. pil_to_wx_image 가 자동 RGBA 변환을 수행
+    # 하므로 렌더링 경로는 호환 유지.
+    _PRESERVED_MODES = frozenset({'P', 'L', 'LA', 'RGB', 'RGBA'})
+
     def __init__(self, image: Image.Image, delay_ms: int = 100,
                  lazy_load: bool = True, source_path: Optional[str] = None):
         """
         Args:
-            image: PIL Image 객체 (RGBA 모드로 변환됨)
+            image: PIL Image 객체 (P/L/LA/RGB/RGBA 는 mode 보존, 그 외는 RGBA 정규화)
             delay_ms: 프레임 표시 시간 (밀리초)
             lazy_load: True면 이미지를 압축하여 저장 (메모리 절약)
             source_path: 원본 파일 경로 (lazy loading 시 사용)
@@ -129,8 +136,8 @@ class Frame:
         self._image_size: Tuple[int, int] = (0, 0)
 
         if image is not None:
-            # RGBA 모드로 변환
-            if image.mode != 'RGBA':
+            # 안전 화이트리스트 외 mode 만 RGBA 로 정규화 (메모리 절약을 위해 P 등 보존).
+            if image.mode not in Frame._PRESERVED_MODES:
                 image = image.convert('RGBA')
 
             self._image_size = image.size
@@ -155,17 +162,25 @@ class Frame:
         self._image = None
 
     def _decompress_image(self) -> Image.Image:
-        """압축된 이미지 복원"""
+        """압축된 이미지 복원 — PNG 가 보존한 원본 mode 그대로 반환"""
         if self._image_bytes is None:
             raise ValueError("압축된 이미지 데이터가 없습니다")
         buffer = io.BytesIO(self._image_bytes)
-        return Image.open(buffer).convert('RGBA')
+        img = Image.open(buffer)
+        img.load()  # lazy decode 회피 — buffer 가 close 되어도 안전
+        if img.mode not in Frame._PRESERVED_MODES:
+            img = img.convert('RGBA')
+        return img
 
     def _load_from_source(self) -> Image.Image:
-        """원본 파일에서 이미지 로드"""
+        """원본 파일에서 이미지 로드 — 보존 가능 mode 는 유지"""
         if self._source_path is None:
             raise ValueError("원본 파일 경로가 없습니다")
-        return Image.open(self._source_path).convert('RGBA')
+        img = Image.open(self._source_path)
+        img.load()
+        if img.mode not in Frame._PRESERVED_MODES:
+            img = img.convert('RGBA')
+        return img
 
     def _ensure_image_loaded(self):
         """이미지가 메모리에 로드되어 있는지 확인하고 필요시 로드"""
@@ -186,15 +201,28 @@ class Frame:
                 self._compress_image(self._image)
             self._image = None
 
+    # mode 별 픽셀당 byte 수. 인덱스 컬러 GIF (P) 보존 시 1 byte/픽셀 + 팔레트.
+    _MODE_BYTES_PER_PIXEL = {'P': 1, 'L': 1, 'LA': 2, 'RGB': 3, 'RGBA': 4}
+
     def get_memory_usage(self) -> int:
-        """현재 메모리 사용량 (바이트) 반환"""
+        """현재 메모리 사용량 (바이트) 반환 — mode-aware.
+
+        P (인덱스 컬러) / L (그레이) 는 1 byte/픽셀, RGB 는 3, RGBA 는 4 등 mode 별
+        실제 픽셀 byte 수를 합산한다. 4 byte/픽셀 고정 가정은 P 모드를 보존하면서도
+        메모리 추정을 4× 부풀려 1.8GB 같은 과대 추정으로 사용자를 혼란시켰다.
+        """
         usage = 0
         if self._image is not None:
-            usage += self._image_size[0] * self._image_size[1] * 4
+            bpp = Frame._MODE_BYTES_PER_PIXEL.get(self._image.mode, 4)
+            usage += self._image_size[0] * self._image_size[1] * bpp
+            # P 모드 팔레트 (~768 byte)
+            if self._image.mode == 'P':
+                usage += 1024
         if self._image_bytes is not None:
             usage += len(self._image_bytes)
         for thumb in self._thumbnail_cache.values():
-            usage += thumb.size[0] * thumb.size[1] * 4
+            bpp = Frame._MODE_BYTES_PER_PIXEL.get(thumb.mode, 4)
+            usage += thumb.size[0] * thumb.size[1] * bpp
         return usage
 
     @classmethod
@@ -277,10 +305,18 @@ class Frame:
 
     @property
     def numpy_array(self) -> np.ndarray:
-        """numpy 배열로 반환 (H, W, 4) RGBA"""
+        """numpy 배열로 반환 (H, W, 4) RGBA — 효과/배치 처리 경로의 진입점.
+
+        Frame 내부 저장은 P/RGB 등 mode 보존이지만, ImageEffects, FastImage,
+        gpu_utils 등이 모두 4채널 RGBA 가정을 따르므로 numpy 변환은 항상 RGBA로
+        정규화한다. (P → RGBA 변환은 Pillow 의 C 구현이라 빠름.)
+        """
         try:
             self._ensure_image_loaded()
-            return np.array(self._image)
+            img = self._image
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+            return np.array(img)
         except Exception:
             # 이미지 로드 실패 시 빈 배열 반환 (배치 처리 크래시 방지)
             w = self._image_size[0] if self._image_size[0] > 0 else 100

@@ -147,9 +147,12 @@ class GifDecoder:
                             if delay <= 0:
                                 delay = 100
 
-                            # RGBA로 변환
+                            # PIL 이 디스포잘 처리 후 결정한 mode 그대로 사용 — P (인덱스
+                            # 컬러) 면 메모리 1/4 절약. 합성 필요한 케이스에서 PIL 이
+                            # 자동으로 RGBA 변환하므로 안전. Frame.__init__ 의
+                            # _PRESERVED_MODES 화이트리스트가 추가 검증.
                             try:
-                                frame_img = img.convert('RGBA')
+                                frame_img = img.copy()
                                 frame = Frame(frame_img, delay)
                                 collection.add_frame(frame)
                             except Exception:
@@ -179,12 +182,15 @@ class GifDecoder:
 
     @classmethod
     def _load_image(cls, path: Path) -> LoadResult:
-        """단일 이미지 파일 로드"""
+        """단일 이미지 파일 로드 — Frame 이 mode 보존 여부 결정"""
         try:
             collection = FrameCollection()
 
             with Image.open(path) as img:
-                frame = Frame(img.convert('RGBA'), 100)
+                # mode 보존: Frame.__init__ 의 _PRESERVED_MODES 화이트리스트가 P/RGB 등
+                # 메모리 효율적 mode 를 유지한다. with-block 종료 전 load 필요.
+                img.load()
+                frame = Frame(img.copy(), 100)
                 collection.add_frame(frame)
 
             return LoadResult.ok(collection)
@@ -202,7 +208,9 @@ class GifDecoder:
             for path in file_paths:
                 try:
                     with Image.open(path) as img:
-                        frame = Frame(img.convert('RGBA'), default_delay)
+                        # mode 보존 — Frame 이 안전 화이트리스트로 검증
+                        img.load()
+                        frame = Frame(img.copy(), default_delay)
                         collection.add_frame(frame)
                 except Exception:
                     pass
