@@ -92,20 +92,31 @@ class Logger:
         file_handler.setFormatter(file_format)
         self._logger.addHandler(file_handler)
 
-    def debug(self, message: str):
-        self._logger.debug(message)
+    # 표준 `logging.Logger` 호환 시그니처 — *args 는 % 형식 인자, **kwargs 는
+    # exc_info / stack_info / stacklevel / extra 등 표준 키워드를 그대로 전달.
+    # 이전 `(message: str)` 단독 시그니처는 `_logger.error(..., exc_info=True)` 호출을
+    # `TypeError: got an unexpected keyword argument 'exc_info'` 로 깨뜨려, 예외
+    # 경로마다 진단 다이얼로그가 표면적 root cause 를 가리는 회귀를 유발했다.
+    def debug(self, message, *args, **kwargs):
+        self._logger.debug(message, *args, **kwargs)
 
-    def info(self, message: str):
-        self._logger.info(message)
+    def info(self, message, *args, **kwargs):
+        self._logger.info(message, *args, **kwargs)
 
-    def warning(self, message: str):
-        self._logger.warning(message)
+    def warning(self, message, *args, **kwargs):
+        self._logger.warning(message, *args, **kwargs)
 
-    def error(self, message: str):
-        self._logger.error(message)
+    def error(self, message, *args, **kwargs):
+        self._logger.error(message, *args, **kwargs)
 
-    def exception(self, message: str):
-        self._logger.exception(message)
+    def exception(self, message, *args, **kwargs):
+        self._logger.exception(message, *args, **kwargs)
+
+    def critical(self, message, *args, **kwargs):
+        self._logger.critical(message, *args, **kwargs)
+
+    def log(self, level, message, *args, **kwargs):
+        self._logger.log(level, message, *args, **kwargs)
 
 
 def get_logger() -> Logger:

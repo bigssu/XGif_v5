@@ -756,6 +756,45 @@ def test_main_window_offers_index_color_at_500mb():
     )
 
 
+def test_logger_wrapper_accepts_standard_logging_kwargs():
+    """
+    Regression lock: `editor.utils.logger.Logger` wrapper 의 모든 레벨 메서드
+    (debug/info/warning/error/exception/critical/log) 가 표준 `logging.Logger`
+    와 동일하게 `*args` (% format) 와 `**kwargs` (`exc_info`, `stack_info`,
+    `extra`, `stacklevel`) 를 받아야 한다.
+
+    이전엔 `(message: str)` 단독 시그니처라 코드베이스의
+    `_logger.error(..., exc_info=True)` 호출 12군데가 모두 TypeError 를 던질
+    수 있었고, 1.8GB GIF 로드 실패 시 그 진짜 root cause 가 logger TypeError
+    ("got an unexpected keyword argument 'exc_info'") 다이얼로그로 가려졌다.
+    """
+    from editor.utils.logger import get_logger
+    log = get_logger()
+
+    # 1) plain message
+    log.error("plain message")
+
+    # 2) exc_info=True 키워드 — 이전 회귀 시점
+    try:
+        raise ValueError("test exc_info")
+    except Exception as e:
+        log.error(f"caught: {e}", exc_info=True)
+        log.warning(f"warn: {e}", exc_info=True)
+        log.exception(f"exception: {e}")
+
+    # 3) %-format args
+    log.info("format %s %d", "arg", 42)
+    log.debug("debug %s", "ok")
+
+    # 4) stack_info 등 다른 표준 kwargs
+    log.warning("stack test", stack_info=False)
+
+    # 5) critical / log 신규 메서드
+    log.critical("critical test")
+    import logging
+    log.log(logging.WARNING, "log() test")
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in
