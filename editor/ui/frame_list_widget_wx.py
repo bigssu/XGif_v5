@@ -757,6 +757,11 @@ class FrameListWidget(wx.Panel):
             self._grid.ClearSelection()
             self._grid.SelectRow(index)
             self._grid.MakeCellVisible(index, 0)
+            # _updating 가드 동안 EVT_GRID_RANGE_SELECT 가 추적자를 갱신하지 못하므로,
+            # 외부에서 select_frame() 직후 즉시 delete_selected_frames() 를 호출했을 때
+            # 이전 선택이 추적자에 남는 race 를 막기 위해 명시적으로 동기화한다.
+            self._tracked_selection = {index}
+            self._last_selection = {index}
             self._updating = False
 
     def update_texts(self, translations: 'Translations'):
