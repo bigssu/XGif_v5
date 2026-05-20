@@ -1004,8 +1004,12 @@ class MainWindow(wx.Frame):
                         self._memory_info.Show()
                         # 라벨은 숨기지 않음 - 값은 항상 표시
 
-                # 프레임 수가 많으면 자동으로 저사양 모드 활성화
-                if self._frames.frame_count > 200 and not self._is_low_end_mode:
+                # 프레임 수가 많으면 자동으로 저사양 모드 활성화.
+                # 임계 200 → 500 으로 상향: 200~500 프레임은 일반적인 캡처/녹화
+                # 범위라 사용자 입장에서 "상대적으로 작은 용량" 임에도 알림이 떴다는
+                # 보고가 있었다. 500+ 부터 의미 있는 성능 영향이 시작되므로 그 시점만
+                # 알림.
+                if self._frames.frame_count > 500 and not self._is_low_end_mode:
                     self._enable_low_end_mode_for_large_gif()
 
             # GPU 상태 업데이트
@@ -2046,7 +2050,11 @@ class MainWindow(wx.Frame):
         return False
 
     def _enable_low_end_mode_for_large_gif(self):
-        """큰 GIF에 대해 저사양 모드 활성화"""
+        """큰 GIF에 대해 저사양 모드 활성화.
+
+        한 번 알림을 본 사용자에게는 다시 표시하지 않는다 (settings 영구 기록).
+        활성화 자체는 매번 자동 수행되어 성능 효과는 동일.
+        """
         if self._is_low_end_mode:
             return  # 이미 활성화됨
 
@@ -2064,11 +2072,19 @@ class MainWindow(wx.Frame):
             if hasattr(toolbar, '_preview_delay'):
                 toolbar._preview_delay = 300
 
+        # 이전에 알림을 본 사용자에겐 재표시하지 않는다 (오픈할 때마다 같은 다이얼로그가
+        # 뜨면 피로하다는 보고에 대한 응답). 활성화 자체는 매번 자동 수행.
+        with contextlib.suppress(Exception):
+            if self._settings.ReadBool("low_end_mode_notified", False):
+                return
+
         wx.MessageBox(
             self._translations.tr("msg_low_end_mode_body", count=self._frames.frame_count),
             self._translations.tr("msg_low_end_mode_title"),
             wx.OK | wx.ICON_INFORMATION
         )
+        with contextlib.suppress(Exception):
+            self._settings.WriteBool("low_end_mode_notified", True)
 
     def _add_recent_file(self, file_path: str):
         """최근 파일 추가"""
