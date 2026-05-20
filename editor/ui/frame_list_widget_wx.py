@@ -5,7 +5,7 @@ PyQt6 QTableWidget를 wx.grid.Grid로 마이그레이션
 """
 import wx
 import wx.grid as grid
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Set
 from .style_constants_wx import Colors, Fonts
 from .icon_toolbar_wx import FlatIconButton
 from ..utils.wx_events import (
@@ -91,7 +91,11 @@ class FrameListWidget(wx.Panel):
         # 선택 변경 감지용 타이머 (안전장치)
         self._selection_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_selection_timer, self._selection_timer)
-        self._last_selection = set()
+        self._last_selection: Set[int] = set()
+        # 명시적 선택 추적 — wx.grid 의 GetSelected* API 가 wxMSW + Ctrl+클릭에서
+        # 비연속 선택을 일관성 없게 노출하는 회귀에 대한 권위 있는 기록.
+        # EVT_GRID_RANGE_SELECT 에서 갱신, refresh() 시 초기화.
+        self._tracked_selection: Set[int] = set()
 
         # 윈도우 파괴 시 타이머 정리
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_frame_list_destroy)
@@ -188,6 +192,9 @@ class FrameListWidget(wx.Panel):
         # 선택 타이머 중지
         if self._selection_timer.IsRunning():
             self._selection_timer.Stop()
+        # 그리드가 ClearSelection 으로 시각 상태를 재구성하므로 추적 기록도 초기화.
+        # 아래 selected_indices 동기화 블록에서 모델로부터 재구축한다.
+        self._tracked_selection.clear()
 
         if not self._main_window:
             self._grid.ClearGrid()
@@ -266,26 +273,43 @@ class FrameListWidget(wx.Panel):
                 # 첫 번째 선택된 행으로 스크롤
                 self._grid.MakeCellVisible(first_selected, 0)
 
-                # _last_selection 업데이트
+                # _last_selection 업데이트 + 추적 기록 동기화
                 self._last_selection = set(selected_indices)
+                self._tracked_selection = set(selected_indices)
             else:
                 # 선택된 프레임이 없으면 현재 프레임만 선택
                 if 0 <= frames.current_index < frames.frame_count:
                     self._grid.SelectRow(frames.current_index)
                     self._last_selection = {frames.current_index}
+                    self._tracked_selection = {frames.current_index}
 
         self._updating = False
 
     def _on_range_select(self, event):
-        """범위 선택 처리 (다중 선택 시)"""
+        """범위 선택 처리 (다중 선택 시).
+
+        wx.grid 가 노출하는 GetSelected*/SelectionBlock* API 가 wxMSW + SelectRows
+        모드 + Ctrl+클릭 비연속 선택에서 일관성 없는 결과를 반환하는 회귀가
+        있으므로, 여기서 모든 RANGE_SELECT 이벤트를 가로채 권위 있는
+        `_tracked_selection` 집합을 유지한다. delete_selected_frames 가 이를
+        근거로 일관된 선택 목록을 얻는다.
+        """
         if self._updating:
             event.Skip()
             return
 
-        # 선택이 추가/변경되는 경우에만 처리
-        if event.Selecting():
-            # 타이머를 사용하여 선택 처리 지연 (Grid가 선택 상태를 업데이트할 시간을 줌)
-            self._selection_timer.Start(50, wx.TIMER_ONE_SHOT)
+        top_row = event.GetTopRow()
+        bottom_row = event.GetBottomRow()
+        if top_row >= 0 and bottom_row >= top_row:
+            if event.Selecting():
+                for row in range(top_row, bottom_row + 1):
+                    self._tracked_selection.add(row)
+            else:
+                for row in range(top_row, bottom_row + 1):
+                    self._tracked_selection.discard(row)
+
+        # 모델 동기화는 기존처럼 타이머로 지연 처리.
+        self._selection_timer.Start(50, wx.TIMER_ONE_SHOT)
 
         event.Skip()
 
@@ -477,31 +501,38 @@ class FrameListWidget(wx.Panel):
             event.Skip()
 
     def _get_selected_rows(self) -> List[int]:
-        """선택된 행 인덱스 목록 반환"""
-        selected = set()
+        """선택된 행 인덱스 목록 반환.
 
-        # GetSelectedRows()가 항상 신뢰할 수 없으므로, 직접 확인
-        rows = self._grid.GetSelectedRows()
-        if rows:
-            selected.update(rows)
-
-        # 선택된 셀들로부터도 행 추출
-        cells = self._grid.GetSelectedCells()
-        for cell in cells:
-            selected.add(cell[0])
-
-        # 선택된 블록들로부터도 행 추출
-        blocks = self._grid.GetSelectionBlockTopLeft()
-        if blocks:
-            bottom_rights = self._grid.GetSelectionBlockBottomRight()
-            for (top_left, bottom_right) in zip(blocks, bottom_rights, strict=False):
-                for row in range(top_left[0], bottom_right[0] + 1):
+        wx.grid.Grid 의 GetSelectedRows/GetSelectedCells/GetSelectionBlock* 가
+        wxMSW + Ctrl+클릭 비연속 선택을 일관성 없게 보고하는 회귀가 있어,
+        다음 두 권위 출처를 합산한다:
+          1) IsInSelection(row, 0) 의 행별 조회 — 그리드 시각 상태의 단일
+             진실. SelectRows 모드에서는 행 전체 선택을 정확히 알린다.
+          2) `_tracked_selection` — EVT_GRID_RANGE_SELECT 에서 직접 누적한
+             기록. 포커스 전환·이벤트 타이밍으로 (1) 이 잠시 비어도 회복.
+        두 결과의 합집합을 반환한다.
+        """
+        selected: Set[int] = set()
+        num_rows = self._grid.GetNumberRows()
+        for row in range(num_rows):
+            with contextlib.suppress(Exception):
+                if self._grid.IsInSelection(row, 0):
                     selected.add(row)
+
+        # _tracked_selection 도 합산 (회복 경로)
+        for row in self._tracked_selection:
+            if 0 <= row < num_rows:
+                selected.add(row)
 
         return sorted(selected)
 
     def delete_selected_frames(self):
         """선택한 프레임 삭제"""
+        # 보류된 선택 타이머가 있으면 즉시 정지 — 버튼 포커스 전환과의 race 방지.
+        # _tracked_selection 이 선택의 권위 있는 출처이므로 모델 갱신 지연은 무관.
+        if self._selection_timer.IsRunning():
+            self._selection_timer.Stop()
+
         selected_rows = self._get_selected_rows()
         if not selected_rows:
             return
