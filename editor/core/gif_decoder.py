@@ -70,7 +70,7 @@ class GifDecoder:
         ext = path.suffix.lower()
 
         if ext == '.gif':
-            return cls._load_gif(path)
+            return cls._load_gif(path, progress_callback=progress_callback)
         elif ext in cls.VIDEO_EXTENSIONS:
             return cls._load_video(path, video_fps, video_max_frames, progress_callback)
         elif ext in cls.SUPPORTED_EXTENSIONS:
@@ -106,8 +106,17 @@ class GifDecoder:
             return LoadResult.error(f"비디오 로드 실패: {str(e)}")
 
     @classmethod
-    def _load_gif(cls, path: Path) -> LoadResult:
-        """GIF 파일 로드"""
+    def _load_gif(cls, path: Path,
+                  progress_callback: Optional[Callable[[int, int], None]] = None
+                  ) -> LoadResult:
+        """GIF 파일 로드.
+
+        Args:
+            path: GIF 파일 경로
+            progress_callback: 진행률 콜백 (current, total). 비동기 워커에서 호출 시
+                ProgressDialog 갱신용. 콜백 내부에서 `InterruptedError` 를 던지면
+                로드를 취소하고 빈 결과를 반환.
+        """
         try:
             # 파일 존재 확인
             if not path.exists():
@@ -131,9 +140,17 @@ class GifDecoder:
                     loop_count = img.info.get('loop', 0)
                     collection.loop_count = loop_count
 
+                    # 진행률 계산용 총 프레임 수 (Pillow 9.1+ 의 n_frames). 정확히
+                    # 모르면 max_frames 로 폴백 — 콜백의 분모가 큰 값이 되지만
+                    # 사용자 경험은 양호 (느린 GIF 도 진행률이 점진적으로 100% 에 근접).
+                    max_frames = 10000  # 최대 프레임 수 제한 (메모리 보호)
+                    try:
+                        total_frames = int(getattr(img, 'n_frames', max_frames))
+                    except Exception:
+                        total_frames = max_frames
+
                     # 각 프레임 처리
                     frame_index = 0
-                    max_frames = 10000  # 최대 프레임 수 제한 (메모리 보호)
 
                     try:
                         while frame_index < max_frames:
@@ -161,6 +178,11 @@ class GifDecoder:
                                 continue
 
                             frame_index += 1
+                            # 비동기 워커 진행률 보고. InterruptedError 는 워커 취소 신호
+                            # 이므로 외부의 일반 Exception catch 를 통과하도록 그대로
+                            # 재전파한다 (VideoLoadWorker.run 이 emit_cancelled 처리).
+                            if progress_callback is not None:
+                                progress_callback(frame_index, total_frames)
                     except EOFError:
                         pass  # 모든 프레임 처리 완료
                     except Exception as e:
@@ -177,6 +199,9 @@ class GifDecoder:
 
         except MemoryError:
             return LoadResult.error("메모리 부족으로 파일을 로드할 수 없습니다")
+        except InterruptedError:
+            # 사용자 취소 — 워커가 처리하도록 그대로 전파.
+            raise
         except Exception as e:
             return LoadResult.error(f"GIF 로드 실패: {str(e)}")
 

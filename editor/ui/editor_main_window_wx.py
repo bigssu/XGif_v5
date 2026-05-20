@@ -762,35 +762,105 @@ class MainWindow(wx.Frame):
             self._open_video_file(file_path)
             return
 
+        # GIF 디코드는 큰 파일 (수천 프레임) 에서 수 초가 걸리므로 비동기 워커 +
+        # ProgressDialog 패턴으로 처리. 비디오 로드와 동일한 VideoLoadWorker 사용
+        # (이름은 비디오용이나 실제론 generic — load_func 와 progress_callback 만 사용).
+        self._open_gif_async(file_path)
+
+    def _open_gif_async(self, file_path: str) -> None:
+        """GIF 파일을 백그라운드 워커로 로드하면서 ProgressDialog 를 표시."""
+        # 진행률 다이얼로그 (취소 가능)
+        self._gif_progress = wx.ProgressDialog(
+            self._translations.tr("prog_gif_load_title"),
+            self._translations.tr("prog_gif_load_msg"),
+            maximum=100,
+            parent=self,
+            style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_CAN_ABORT,
+        )
+        self._gif_file_path = file_path
+
+        # 비동기 워커 — VideoLoadWorker 는 generic 한 progress_callback 주입 래퍼.
+        worker = VideoLoadWorker(GifDecoder.load, file_path)
+        worker.signals.connect('progress', self._on_gif_load_progress)
+        worker.signals.connect('finished', self._on_gif_load_finished)
+        worker.signals.connect('error', self._on_gif_load_error)
+        worker.signals.connect('cancelled', self._on_gif_load_cancelled)
+        self._gif_worker = worker
+        get_worker_manager().start(worker)
+
+    def _on_gif_load_progress(self, current: int, total: int) -> None:
+        """GIF 디코드 진행률 갱신. PD_CAN_ABORT 의 Cancel 버튼은 다이얼로그의 반환값
+        으로 확인하므로 여기서 워커 취소 여부도 함께 점검."""
         try:
-            # GIF 로딩
-            result = GifDecoder.load(file_path)
+            if not (hasattr(self, '_gif_progress') and self._gif_progress):
+                return
+            percent = int((current / total) * 100) if total > 0 else 0
+            cont, _ = self._gif_progress.Update(
+                percent,
+                self._translations.tr(
+                    "prog_gif_load_msg_detail", current=current, total=total,
+                ),
+            )
+            if not cont and hasattr(self, '_gif_worker') and self._gif_worker:
+                self._gif_worker.cancel()
+        except (RuntimeError, wx.PyDeadObjectError):
+            pass
 
-            if not result.success:
-                raise Exception(result.error_message)
+    def _on_gif_load_finished(self, result) -> None:
+        """GIF 로드 완료 — 컬렉션 세팅 + UI 갱신 + 인덱스 컬러 제안."""
+        if hasattr(self, '_gif_progress') and self._gif_progress:
+            with contextlib.suppress(Exception):
+                self._gif_progress.Destroy()
+            self._gif_progress = None
 
-            if result.frames:
-                self._frames = result.frames
-                # undo 스택 초기화 — 이전 FrameCollection에 대한 클로저 참조 무효화 방지
-                if hasattr(self, '_undo_manager') and self._undo_manager:
-                    self._undo_manager.clear()
-
-            self._current_file_path = file_path
-            self._is_modified = False
-            # 새 파일이므로 인덱스 컬러 제안 플래그 리셋
-            self._index_color_offer_done = False
-            self._add_recent_file(file_path)
-            self._update_title()
-            self._update_info_bar()
-            self._refresh_all()
-            # 큰 RGBA/RGB GIF/비디오 디코드 결과면 인덱스 컬러 변환 제안.
-            # 비동기로 호출하여 open_file 의 wx 이벤트 처리가 끝난 후 표시.
-            wx.CallAfter(self._offer_index_color_optimization)
-
-        except Exception as e:
+        if not result.success:
             wx.MessageBox(
-                self._translations.tr("msg_open_failed_body", e=str(e)),
-                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+                self._translations.tr("msg_open_failed_body", e=result.error_message),
+                self._translations.tr("msg_error"),
+                wx.OK | wx.ICON_ERROR,
+            )
+            return
+
+        file_path = getattr(self, '_gif_file_path', None)
+
+        if result.frames:
+            self._frames = result.frames
+            # undo 스택 초기화 — 이전 FrameCollection 에 대한 클로저 참조 무효화 방지
+            if hasattr(self, '_undo_manager') and self._undo_manager:
+                self._undo_manager.clear()
+
+        if file_path:
+            self._current_file_path = file_path
+            self._add_recent_file(file_path)
+
+        self._is_modified = False
+        # 새 파일이므로 인덱스 컬러 제안 플래그 리셋
+        self._index_color_offer_done = False
+
+        self._update_title()
+        self._update_info_bar()
+        self._refresh_all()
+        # 큰 RGBA/RGB GIF 디코드 결과면 인덱스 컬러 변환 제안.
+        wx.CallAfter(self._offer_index_color_optimization)
+
+    def _on_gif_load_error(self, error_msg: str, traceback_str: str) -> None:
+        """GIF 로드 에러 — 진행 다이얼로그 닫고 사용자에게 보고."""
+        if hasattr(self, '_gif_progress') and self._gif_progress:
+            with contextlib.suppress(Exception):
+                self._gif_progress.Destroy()
+            self._gif_progress = None
+        wx.MessageBox(
+            self._translations.tr("msg_open_failed_body", e=error_msg),
+            self._translations.tr("msg_error"),
+            wx.OK | wx.ICON_ERROR,
+        )
+
+    def _on_gif_load_cancelled(self) -> None:
+        """GIF 로드 취소 — 다이얼로그 닫기만."""
+        if hasattr(self, '_gif_progress') and self._gif_progress:
+            with contextlib.suppress(Exception):
+                self._gif_progress.Destroy()
+            self._gif_progress = None
 
     def save_file(self):
         """저장"""
