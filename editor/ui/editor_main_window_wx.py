@@ -1203,6 +1203,12 @@ class MainWindow(wx.Frame):
         self._is_playing = True
         self._update_play_button_icon(True)  # 재생 중 -> 일시정지 아이콘
 
+        # 첫 5 프레임 preload — 자동 unload 후 재생 시작 시점에 decompress 비용
+        # ((PNG → PIL) × N) 을 한꺼번에 치러 첫 몇 프레임의 dropped/지연 방지.
+        with contextlib.suppress(Exception):
+            current = self._frames.current_index
+            self._frames.preload_range(current, current + 4)
+
         frame = self._frames.current_frame
         delay = 100  # 기본값
         if frame and hasattr(frame, 'delay_ms'):
@@ -1233,6 +1239,12 @@ class MainWindow(wx.Frame):
 
         # current_index 직접 변경 (select_frame은 selected_indices만 변경함)
         self._frames.current_index = next_idx
+
+        # 다음 2 프레임 미리 decompress — 재생이 자동 unload 와 만나 dropped frame
+        # 을 유발하는 것을 방지. preload_range 는 _ensure_image_loaded 만 트리거
+        # 하므로 추가 메모리는 최대 2 프레임 분.
+        with contextlib.suppress(Exception):
+            self._frames.preload_range(next_idx + 1, next_idx + 2)
 
         self._update_slider()
         self._canvas.Refresh()
