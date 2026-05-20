@@ -2132,10 +2132,12 @@ class MainWindow(wx.Frame):
 
             if dlg.ShowModal() == wx.ID_YES:
                 # 메모리 제한 2배 확대
-                self._memory_manager.set_memory_limit(self._memory_manager.get_memory_limit() * 2)
+                # FrameMemoryManager 의 실제 메서드는 *_mb 접미사. (set_memory_limit/
+                # get_memory_limit 이라는 이름은 존재하지 않아 AttributeError 회귀를 유발했다.)
+                self._memory_manager.set_memory_limit_mb(self._memory_manager.get_memory_limit_mb() * 2)
                 self._memory_limit_expanded = True
                 wx.MessageBox(
-                    self._translations.tr("msg_memory_limit_expanded", mb=self._memory_manager.get_memory_limit()),
+                    self._translations.tr("msg_memory_limit_expanded", mb=self._memory_manager.get_memory_limit_mb()),
                     self._translations.tr("common_done"),
                     wx.OK | wx.ICON_INFORMATION
                 )
