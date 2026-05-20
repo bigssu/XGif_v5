@@ -619,6 +619,143 @@ def test_frame_list_refresh_forces_grid_repaint():
     )
 
 
+def test_frame_preserves_low_memory_modes():
+    """
+    Regression lock: `Frame.__init__` 가 P (인덱스 컬러) / L (그레이) / LA / RGB
+    / RGBA 를 RGBA 로 강제 변환하지 않고 보존한다. 256색 GIF 가 본래 P 모드인데
+    RGBA 로 풀어버리면 메모리 4× 부풀어 사용자 시나리오 (12MB GIF → 1.8GB) 의
+    근본 원인이 된다.
+    """
+    from PIL import Image as PILImage
+    from editor.core.frame import Frame
+
+    # P 모드 보존
+    p_img = PILImage.new('P', (10, 10), 0)
+    p_frame = Frame(p_img, 100, lazy_load=False)
+    assert p_frame.image.mode == 'P', (
+        "Frame 가 P 모드 입력을 RGBA 로 강제 변환합니다 — 메모리 4× 부풀음 회귀."
+    )
+
+    # RGB 모드 보존
+    rgb_img = PILImage.new('RGB', (10, 10), (255, 0, 0))
+    rgb_frame = Frame(rgb_img, 100, lazy_load=False)
+    assert rgb_frame.image.mode == 'RGB', (
+        "Frame 가 RGB 모드 입력을 RGBA 로 강제 변환합니다."
+    )
+
+    # 화이트리스트 외 mode 는 RGBA 변환
+    cmyk_img = PILImage.new('CMYK', (10, 10), (0, 0, 0, 255))
+    cmyk_frame = Frame(cmyk_img, 100, lazy_load=False)
+    assert cmyk_frame.image.mode == 'RGBA', (
+        "Frame 가 안전 화이트리스트 외 mode (CMYK) 를 RGBA 로 정규화하지 않습니다."
+    )
+
+
+def test_frame_memory_usage_is_mode_aware():
+    """
+    Regression lock: `Frame.get_memory_usage` 가 mode 별 byte 수를 정확히 계산.
+    이전 `w*h*4` 고정은 P 모드 (1 byte/픽셀) 보존 시 4× 과대 추정이었다.
+    """
+    from PIL import Image as PILImage
+    from editor.core.frame import Frame
+
+    p_frame = Frame(PILImage.new('P', (100, 100), 0), 100, lazy_load=False)
+    rgba_frame = Frame(PILImage.new('RGBA', (100, 100), (0, 0, 0, 0)), 100, lazy_load=False)
+
+    p_usage = p_frame.get_memory_usage()
+    rgba_usage = rgba_frame.get_memory_usage()
+    # P 모드는 1 byte/픽셀 + 팔레트 ~1KB, RGBA 는 4 byte/픽셀.
+    # 100x100 기준 P=10000+1024=11024, RGBA=40000.
+    assert p_usage < rgba_usage / 3, (
+        f"get_memory_usage 가 mode-aware 가 아닙니다 (P={p_usage}, RGBA={rgba_usage}) — "
+        "P 모드 보존 효과가 메모리 추정에 반영되지 않습니다."
+    )
+
+
+def test_gif_decoder_does_not_force_rgba_conversion():
+    """
+    Regression lock: GifDecoder 의 디코드 경로가 `convert('RGBA')` 를 강제하지
+    않는다. PIL 이 디스포잘 합성 시 자동으로 mode 결정하도록 `copy()` 만 사용.
+    """
+    src = _read("editor/core/gif_decoder.py")
+    # _load_gif, _load_image, load_image_sequence 모두 .convert('RGBA') 가 없어야 함
+    assert "img.convert('RGBA')" not in src, (
+        "GifDecoder 가 디코드 시 RGBA 강제 변환을 사용합니다 — P 모드 보존이 깨집니다."
+    )
+    # frame_img = img.copy() 또는 img.copy() 패턴 사용
+    assert "img.copy()" in src, (
+        "GifDecoder 가 `img.copy()` 로 mode 보존하지 않습니다."
+    )
+
+
+def test_frame_collection_has_p_mode_batch_conversion():
+    """
+    Regression lock: `FrameCollection.convert_all_to_p_mode` + `has_non_p_mode_frames`
+    API 가 존재하고 작동한다. MainWindow 의 메모리 최적화 제안 다이얼로그가 이 API
+    를 호출.
+    """
+    from PIL import Image as PILImage
+    from editor.core.frame import Frame
+    from editor.core.frame_collection import FrameCollection
+
+    col = FrameCollection()
+    col.add_frame(Frame(PILImage.new('RGBA', (100, 100), (255, 0, 0, 255)), 100, lazy_load=False))
+    col.add_frame(Frame(PILImage.new('RGBA', (100, 100), (0, 255, 0, 255)), 100, lazy_load=False))
+
+    assert col.has_non_p_mode_frames(), "RGBA 컬렉션이 has_non_p_mode_frames=True 여야 합니다."
+
+    before_mb = col.get_memory_usage_mb()
+    converted = col.convert_all_to_p_mode()
+    after_mb = col.get_memory_usage_mb()
+
+    assert converted == 2, f"두 RGBA 프레임이 변환되어야 합니다 (변환됨: {converted})."
+    assert not col.has_non_p_mode_frames(), (
+        "변환 후 has_non_p_mode_frames=False 여야 합니다."
+    )
+    assert after_mb < before_mb / 2, (
+        f"P 변환이 메모리를 절반 미만으로 줄여야 합니다 (전: {before_mb}MB, 후: {after_mb}MB)."
+    )
+    # numpy_array 호환성 — 효과 코드들이 RGBA (H, W, 4) 가정
+    arr = col[0].numpy_array
+    assert arr.shape == (100, 100, 4), (
+        f"P 모드 프레임의 numpy_array 가 RGBA 4채널을 반환해야 합니다 (실제: {arr.shape})."
+    )
+
+
+def test_main_window_offers_index_color_at_500mb():
+    """
+    Regression lock: `_offer_index_color_optimization` 메서드가 500MB 임계와
+    `has_non_p_mode_frames` 체크, 그리고 `msg_index_color_offer_*` i18n 키를
+    사용하는지 검증.
+    """
+    src = _read("editor/ui/editor_main_window_wx.py")
+    tree = ast.parse(src)
+    offer_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_offer_index_color_optimization"),
+        None,
+    )
+    assert offer_func is not None, "_offer_index_color_optimization 메서드가 사라졌습니다."
+    func_src = ast.unparse(offer_func) if hasattr(ast, "unparse") else ""
+
+    assert "memory_mb < 500" in func_src, (
+        "_offer_index_color_optimization 가 500MB 임계 가드를 갖추지 않았습니다."
+    )
+    assert "has_non_p_mode_frames" in func_src, (
+        "이미 P 모드인 컬렉션은 변환 효과가 없으므로 has_non_p_mode_frames 체크 필요."
+    )
+    assert "msg_index_color_offer_body" in func_src, (
+        "사용자에게 표시할 다이얼로그 본문이 누락되었습니다."
+    )
+    assert "convert_all_to_p_mode" in func_src, (
+        "batch 변환 API 호출이 누락되었습니다."
+    )
+    # open_file 직후 wx.CallAfter 로 트리거되는지
+    assert "_offer_index_color_optimization" in src.split("def _offer_index_color_optimization")[0], (
+        "open_file 경로에서 _offer_index_color_optimization 가 호출되지 않습니다."
+    )
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in
