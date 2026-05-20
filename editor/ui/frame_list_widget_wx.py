@@ -284,6 +284,11 @@ class FrameListWidget(wx.Panel):
                     self._tracked_selection = {frames.current_index}
 
         self._updating = False
+        # wx.grid 는 SetCellValue 만으로는 자동 repaint 가 보장되지 않아, 첫 데이터
+        # 채움 직후 그리드가 빈 화면으로 보이는 회귀가 있었다 (사용자가 Play 를 누르면
+        # 캔버스 재페인트와 함께 그리드가 비로소 표시됨). ForceRefresh 로 강제.
+        with contextlib.suppress(Exception):
+            self._grid.ForceRefresh()
 
     def _on_range_select(self, event):
         """범위 선택 처리 (다중 선택 시).
@@ -538,12 +543,59 @@ class FrameListWidget(wx.Panel):
             return
 
         frames = self._main_window.frames
+        translations = getattr(self._main_window, '_translations', None)
 
-        # 최소 1개 프레임은 남겨야 함
+        # 최소 1개 프레임은 남겨야 함 — silent return 은 사용자에게 무응답으로 보이므로 알림.
         if len(selected_rows) >= frames.frame_count:
+            wx.MessageBox(
+                translations.tr("msg_min_one_frame_body") if translations else "최소 1개 이상의 프레임이 필요합니다.",
+                translations.tr("common_warning") if translations else "경고",
+                wx.OK | wx.ICON_WARNING,
+            )
             return
 
-        translations = getattr(self._main_window, '_translations', None)
+        # 대용량 GIF: undo 등록을 위한 clone 이 OOM 또는 매우 느린 swap 을 유발하므로,
+        # 100MB 초과 시 undo 등록 없이 직접 삭제. (`_duplicate_frame` /
+        # `_reduce_frames` / `_remove_duplicates` 와 동일 가드 패턴.)
+        try:
+            current_memory_mb = frames.get_memory_usage_mb()
+        except Exception:
+            current_memory_mb = 0.0
+
+        if current_memory_mb > 100:
+            try:
+                for row in reversed(selected_rows):
+                    if 0 <= row < frames.frame_count:
+                        frames.delete_frame(row)
+                self._main_window._is_modified = True
+                self._main_window._refresh_all()
+                if translations:
+                    wx.MessageBox(
+                        translations.tr(
+                            "msg_frame_delete_no_undo",
+                            removed=len(selected_rows),
+                            mb=current_memory_mb,
+                        ),
+                        translations.tr("common_done"),
+                        wx.OK | wx.ICON_INFORMATION,
+                    )
+                evt = FrameDeletedEvent(selected_rows)
+                wx.PostEvent(self, evt)
+            except MemoryError:
+                wx.MessageBox(
+                    translations.tr("msg_out_of_memory") if translations
+                    else "메모리가 부족하여 작업을 수행할 수 없습니다.",
+                    translations.tr("common_out_of_memory") if translations else "메모리 부족",
+                    wx.OK | wx.ICON_WARNING,
+                )
+            except Exception as e:
+                wx.MessageBox(
+                    translations.tr("msg_frame_delete_error", e=str(e)) if translations
+                    else f"프레임 삭제 중 오류가 발생했습니다:\n{str(e)}",
+                    translations.tr("common_error") if translations else "오류",
+                    wx.OK | wx.ICON_ERROR,
+                )
+            return
 
         try:
             # Undo 등록
