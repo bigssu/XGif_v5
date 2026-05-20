@@ -155,9 +155,20 @@ class Frame:
         get_memory_manager().register_frame(self._id, self)
 
     def _compress_image(self, image: Image.Image):
-        """이미지를 PNG 바이트로 압축"""
+        """이미지를 PNG 바이트로 압축 — 적응형 레벨.
+
+        디코드는 일회성, 압축본은 컬렉션 수명 동안 메모리에 상주하므로 큰
+        프레임일수록 압축률을 높이는 게 유리 (CPU 비용 ↑ vs 메모리 ↓).
+        HD (1280×720) 초과: compress_level=6 (PNG 표준 기본값, 균형). 그 이하는
+        compress_level=1 (빠른 압축) 유지.
+
+        모드 보존도 함께 — P/RGB/L 등 원본 mode 그대로 PNG 가 저장 (Frame.
+        _PRESERVED_MODES 화이트리스트의 메모리 효과를 압축본에서도 유지).
+        """
         buffer = io.BytesIO()
-        image.save(buffer, format='PNG', compress_level=1)  # 빠른 압축
+        pixels = image.size[0] * image.size[1]
+        compress_level = 6 if pixels > 1280 * 720 else 1
+        image.save(buffer, format='PNG', compress_level=compress_level)
         self._image_bytes = buffer.getvalue()
         self._image = None
 
