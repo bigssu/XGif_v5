@@ -406,6 +406,101 @@ def _collect_korean_offenders(editor_ui: Path) -> list:
     return offenders
 
 
+def test_no_pyqt6_signal_pattern_in_inline_toolbars():
+    """
+    Regression lock: 인라인 툴바는 wxPython 이벤트 바인딩 패턴
+    `canvas.Bind(EVT_*_CHANGED, handler)` 만 사용해야 한다.
+    PyQt6 잔재인 `canvas.X_changed.connect(...)` / `.disconnect(...)` 패턴은
+    wxPython 캔버스에서 그 속성이 존재하지 않아 `hasattr` 가드와 결합되면
+    연결이 조용히 건너뛰어지고, 그 결과 기즈모 드래그가 툴바 상태에 전파되지
+    못해 효과가 초기 위치에 고정되는 버그를 만든다. (실제로 모자이크 툴바에서
+    `_region_x1..y2` 가 중앙값에 고정되는 회귀가 있었다.)
+    """
+    toolbars_dir = Path("editor/ui/inline_toolbars")
+    offenders = []
+
+    for fpath in sorted(toolbars_dir.rglob("*.py")):
+        if fpath.name == "__init__.py":
+            continue
+        src = fpath.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(src, filename=str(fpath))
+        except SyntaxError:
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr not in ("connect", "disconnect"):
+                continue
+            outer = node.func.value
+            if not isinstance(outer, ast.Attribute):
+                continue
+            if not outer.attr.endswith("_changed"):
+                continue
+            base_repr = ast.unparse(outer.value) if hasattr(ast, "unparse") else ""
+            if "canvas" not in base_repr.lower():
+                continue
+            snippet = ast.unparse(node) if hasattr(ast, "unparse") else ""
+            offenders.append((fpath.as_posix(), node.lineno, snippet[:140]))
+
+    assert offenders == [], (
+        f"\n{len(offenders)} PyQt6-style canvas signal call(s) in inline_toolbars — "
+        "use `canvas.Bind(EVT_*_CHANGED, handler)` (wxPython) instead:\n"
+        + "\n".join(f"  {p}:{ln}: {snip}" for p, ln, snip in offenders)
+    )
+
+
+def test_mosaic_toolbar_binds_region_changed_event():
+    """
+    Regression lock: 모자이크 툴바는 활성화 시 `EVT_MOSAIC_REGION_CHANGED` 를
+    캔버스에 바인딩해야 한다. 이 바인딩이 없으면 사용자가 기즈모를 드래그해도
+    툴바의 `_region_x*/_region_y*` 가 갱신되지 않아 효과가 초기 위치에 머문다.
+    """
+    src = _read("editor/ui/inline_toolbars/mosaic_toolbar_wx.py")
+    assert "EVT_MOSAIC_REGION_CHANGED" in src, (
+        "mosaic_toolbar_wx.py 가 EVT_MOSAIC_REGION_CHANGED 를 import 하지 않습니다."
+    )
+    assert "canvas.Bind(EVT_MOSAIC_REGION_CHANGED" in src, (
+        "mosaic_toolbar_wx.py 의 _on_activated 에서 "
+        "canvas.Bind(EVT_MOSAIC_REGION_CHANGED, ...) 호출이 사라졌습니다."
+    )
+
+
+def test_frame_list_has_explicit_selection_tracker():
+    """
+    Regression lock: 프레임 리스트 위젯은 wx.grid 의 GetSelected* API 가
+    wxMSW + Ctrl+클릭 비연속 선택에서 일관성 없는 결과를 반환하는 회귀에 대비해
+    `_tracked_selection` 집합을 직접 유지해야 한다.
+
+    - 다중 프레임 선택 후 '한 프레임만 삭제' 증상이 이 추적자 부재로 발생했다.
+    - `_on_range_select` 가 Selecting/!Selecting 양쪽에서 갱신해야 한다.
+    - `delete_selected_frames` 호출 시 보류된 selection 타이머를 정지하여
+      포커스 전환과의 race 를 차단해야 한다.
+    """
+    src = _read("editor/ui/frame_list_widget_wx.py")
+    assert "self._tracked_selection" in src, (
+        "FrameListWidget 가 _tracked_selection 집합을 유지하지 않습니다 — "
+        "wx.grid Ctrl+클릭 회귀에 노출됩니다."
+    )
+    # _on_range_select 가 양방향 갱신을 수행
+    assert "self._tracked_selection.add(row)" in src
+    assert "self._tracked_selection.discard(row)" in src
+    # _get_selected_rows 가 IsInSelection 기반인지
+    assert "IsInSelection(row, 0)" in src, (
+        "_get_selected_rows 가 IsInSelection 으로 행을 점검해야 합니다 — "
+        "GetSelectedRows/GetSelectionBlock* 만으로는 wxMSW 회귀를 회피하지 못합니다."
+    )
+    # delete_selected_frames 가 타이머를 정지
+    delete_section = src[src.index("def delete_selected_frames"):src.index("def delete_selected_frames") + 800]
+    assert "self._selection_timer.Stop()" in delete_section, (
+        "delete_selected_frames 가 보류된 selection 타이머를 정지하지 않아 "
+        "버튼 클릭과의 race 가 발생할 수 있습니다."
+    )
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in
