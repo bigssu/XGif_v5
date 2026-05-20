@@ -1071,6 +1071,12 @@ class MainWindow(wx.Frame):
                                     "(memory=%.1fMB, frame_count=%d)",
                                     unloaded, memory_mb, self._frames.frame_count,
                                 )
+                            # 캔버스 paint LRU 도 함께 비움 — 큰 GIF 의 zoom 토글
+                            # 캐시 (각 ~8MB) 가 누적되면 메모리 압박을 가중시킴.
+                            if hasattr(self, '_canvas') and self._canvas and hasattr(
+                                self._canvas, 'clear_bitmap_cache'
+                            ):
+                                self._canvas.clear_bitmap_cache()
 
                     # 메모리 제한 체크 (1GB 초과 시)
                     if memory_mb > 1024 and not self._memory_limit_expanded:

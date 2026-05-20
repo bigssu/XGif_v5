@@ -6,6 +6,7 @@ PyQt6 QWidget을 wxPython wx.Panel로 마이그레이션
 """
 import wx
 import math
+from collections import OrderedDict
 from typing import Optional, List, Tuple, TYPE_CHECKING
 from PIL import Image
 from .style_constants_wx import Colors, Fonts
@@ -146,6 +147,15 @@ class CanvasWidget(wx.Panel):
         self._speech_bubble_drag_start = wx.Point()
         self._speech_bubble_original_rect = RectF()
 
+        # paint 결과 캐시 — LRU OrderedDict, 키: (id(pil_image), zoom, w, h),
+        # 값: wx.Bitmap. 단일 캐시 항목은 zoom toggle / 인접 프레임 토글에서 매번
+        # cache miss → PIL→wxImage→Scale 비용을 유발했다. LRU 6개를 유지하여
+        # 정주적인 사용자 토글 (현재 zoom 2-3개 + 인접 프레임 1-2개) 의 비용을 0
+        # 으로 만든다. 각 항목 메모리는 frame size × 4 byte 정도 (1920×1080 RGBA
+        # ≈ 8MB, 6 항목 ≈ 48MB) — 큰 부담 없음.
+        self._scaled_bitmap_cache: "OrderedDict[tuple, wx.Bitmap]" = OrderedDict()
+        self._scaled_bitmap_cache_max = 6
+
         # 설정
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)  # 더블 버퍼링 활성화
         self._skip_auto_theme = True
@@ -217,6 +227,10 @@ class CanvasWidget(wx.Panel):
         """원본 크기 (100%)"""
         self.zoom = 1.0
         self._pan_offset = wx.Point(0, 0)
+
+    def clear_bitmap_cache(self) -> None:
+        """paint LRU 캐시 비우기 — 메모리 압박 시 호출됨."""
+        self._scaled_bitmap_cache.clear()
 
     # ========================================================================
     # 좌표 변환
@@ -381,11 +395,14 @@ class CanvasWidget(wx.Panel):
             if scaled_width <= 0 or scaled_height <= 0:
                 return
 
-            # 캐시 키: (프레임 ID, 줌, 표시 크기) — GDI 객체 생성 최소화
-            getattr(self._main_window, 'frames', None)
+            # 캐시 키: (프레임 ID, 줌, 표시 크기). LRU OrderedDict — hit 시 항목을
+            # MRU 위치로 이동, miss 시 변환 후 LRU 제거.
             cache_key = (id(pil_image), self._zoom, scaled_width, scaled_height)
-            if hasattr(self, '_scaled_bitmap_cache_key') and self._scaled_bitmap_cache_key == cache_key:
-                scaled_bitmap = self._scaled_bitmap_cache
+            cached = self._scaled_bitmap_cache.get(cache_key)
+            if cached is not None:
+                # MRU 위치로 이동 (move_to_end)
+                self._scaled_bitmap_cache.move_to_end(cache_key)
+                scaled_bitmap = cached
             else:
                 # PIL → wx.Bitmap 변환
                 wx_bitmap = pil_to_wx_bitmap(pil_image)
@@ -397,8 +414,10 @@ class CanvasWidget(wx.Panel):
                 quality = wx.IMAGE_QUALITY_HIGH if self._zoom > 1.0 else wx.IMAGE_QUALITY_NORMAL
                 scaled_image = wx_image.Scale(scaled_width, scaled_height, quality)
                 scaled_bitmap = wx.Bitmap(scaled_image)
-                self._scaled_bitmap_cache_key = cache_key
-                self._scaled_bitmap_cache = scaled_bitmap
+                # LRU 추가 + 한도 초과 시 가장 오래된 항목 제거
+                self._scaled_bitmap_cache[cache_key] = scaled_bitmap
+                while len(self._scaled_bitmap_cache) > self._scaled_bitmap_cache_max:
+                    self._scaled_bitmap_cache.popitem(last=False)
 
             # 비트맵 그리기
             dc.DrawBitmap(scaled_bitmap, img_rect.x, img_rect.y, True)
