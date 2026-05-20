@@ -198,6 +198,8 @@ class MainWindow(wx.Frame):
         # 메모리 관리
         self._memory_manager = get_memory_manager()
         self._memory_limit_expanded = False
+        # 인덱스 컬러 변환 제안 다이얼로그를 한 파일 당 1회만 표시. open_file 에서 리셋.
+        self._index_color_offer_done = False
 
         # 언어 설정
         self._is_korean = True
@@ -775,10 +777,15 @@ class MainWindow(wx.Frame):
 
             self._current_file_path = file_path
             self._is_modified = False
+            # 새 파일이므로 인덱스 컬러 제안 플래그 리셋
+            self._index_color_offer_done = False
             self._add_recent_file(file_path)
             self._update_title()
             self._update_info_bar()
             self._refresh_all()
+            # 큰 RGBA/RGB GIF/비디오 디코드 결과면 인덱스 컬러 변환 제안.
+            # 비동기로 호출하여 open_file 의 wx 이벤트 처리가 끝난 후 표시.
+            wx.CallAfter(self._offer_index_color_optimization)
 
         except Exception as e:
             wx.MessageBox(
@@ -2108,6 +2115,102 @@ class MainWindow(wx.Frame):
                 self._translations.tr("common_done"), wx.OK | wx.ICON_INFORMATION)
 
         dlg.Destroy()
+
+    def _offer_index_color_optimization(self) -> None:
+        """대용량 RGBA/RGB 컬렉션을 인덱스 컬러 (P, 256색) 로 변환할지 사용자에게 제안.
+
+        조건: 한 파일 당 1회, 메모리 500MB 초과, 비-P 프레임 존재. yes 응답 시
+        ProgressDialog 와 함께 일괄 변환 후 메모리·캔버스 새로고침.
+        화질은 256색으로 손실되지만 원본 파일은 변경되지 않는다.
+        """
+        if self._index_color_offer_done:
+            return
+        if self._frames is None or self._frames.is_empty:
+            return
+
+        try:
+            memory_mb = self._frames.get_memory_usage_mb()
+        except Exception:
+            return
+
+        # 임계: 500MB. 작은 GIF 는 변환 비용·화질 손실 대비 이득이 적다.
+        if memory_mb < 500:
+            return
+
+        # 모든 프레임이 이미 P 모드면 변환 효과 없음 — 다이얼로그 생략.
+        try:
+            has_non_p = self._frames.has_non_p_mode_frames()
+        except Exception:
+            has_non_p = True
+        if not has_non_p:
+            self._index_color_offer_done = True
+            return
+
+        self._index_color_offer_done = True
+
+        expected_mb = memory_mb / 4.0
+        dlg = wx.MessageDialog(
+            self,
+            self._translations.tr(
+                "msg_index_color_offer_body", mb=memory_mb, expected=expected_mb,
+            ),
+            self._translations.tr("msg_index_color_offer_title"),
+            wx.YES_NO | wx.ICON_QUESTION,
+        )
+        choice = dlg.ShowModal()
+        dlg.Destroy()
+        if choice != wx.ID_YES:
+            return
+
+        # 진행률 다이얼로그 + 배치 변환
+        total = self._frames.frame_count
+        progress = wx.ProgressDialog(
+            self._translations.tr("prog_index_color_title"),
+            self._translations.tr("prog_index_color_msg", current=0, total=total),
+            maximum=total,
+            parent=self,
+            style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_SMOOTH,
+        )
+
+        def _cb(current: int, total_count: int) -> None:
+            progress.Update(
+                current,
+                self._translations.tr(
+                    "prog_index_color_msg", current=current, total=total_count,
+                ),
+            )
+
+        try:
+            converted = self._frames.convert_all_to_p_mode(progress_callback=_cb)
+        except Exception as e:
+            progress.Destroy()
+            wx.MessageBox(
+                self._translations.tr("msg_index_color_failed", e=str(e)),
+                self._translations.tr("common_error"),
+                wx.OK | wx.ICON_ERROR,
+            )
+            return
+        finally:
+            with contextlib.suppress(Exception):
+                progress.Destroy()
+
+        # 변환 후 메모리·UI 새로고침
+        self._update_info_bar()
+        self._refresh_all()
+        try:
+            new_mb = self._frames.get_memory_usage_mb()
+        except Exception:
+            new_mb = expected_mb
+        wx.MessageBox(
+            self._translations.tr(
+                "msg_index_color_converted",
+                converted=converted,
+                before=memory_mb,
+                after=new_mb,
+            ),
+            self._translations.tr("common_done"),
+            wx.OK | wx.ICON_INFORMATION,
+        )
 
     def _check_memory_limit(self, memory_mb: float) -> None:
         """메모리 사용량이 1GB를 초과할 때 사용자에게 메모리 제한 확대 여부를 물어봄

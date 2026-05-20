@@ -895,6 +895,77 @@ class FrameCollection:
 
         return total
 
+    # === 메모리 최적화: 인덱스 컬러 변환 ===
+
+    def has_non_p_mode_frames(self) -> bool:
+        """현재 컬렉션에 P (인덱스 컬러) 가 아닌 프레임이 하나라도 있는지 반환.
+
+        모든 프레임이 이미 P 면 인덱스 컬러 변환 제안 다이얼로그를 표시할 필요 없다.
+        """
+        from PIL import Image as PILImage  # noqa: F401  (forward import 안내용)
+        for frame in self._frames:
+            if frame is None:
+                continue
+            mode = frame.image.mode if frame.is_loaded else None
+            # is_loaded 가 False (압축 상태) 면 디코드해서 mode 확인 — 비용이 있으므로
+            # 첫 비-P 프레임을 찾으면 즉시 반환.
+            if mode is None:
+                try:
+                    mode = frame.image.mode
+                except Exception:
+                    continue
+            if mode != 'P':
+                return True
+        return False
+
+    def convert_all_to_p_mode(
+        self,
+        colors: int = 256,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
+        """모든 프레임을 P (인덱스 컬러, 256색) 모드로 양자화.
+
+        RGBA/RGB 등 풀 컬러 프레임을 256색 팔레트로 변환하여 메모리를 약 1/4 로
+        줄인다. 이미 P 모드인 프레임은 건너뛴다. 변환은 Pillow 의 adaptive
+        palette quantization 으로 수행.
+
+        Args:
+            colors: 팔레트 색상 수 (기본 256)
+            progress_callback: 진행률 콜백 (current, total)
+
+        Returns:
+            변환된 프레임 수 (이미 P 인 프레임 제외)
+        """
+        from PIL import Image as PILImage
+        converted = 0
+        total = len(self._frames)
+        for i, frame in enumerate(self._frames):
+            if frame is None:
+                continue
+            try:
+                img = frame.image
+                if img.mode != 'P':
+                    # `Image.convert('P', palette=ADAPTIVE)` 는 RGBA/RGB/LA 모두
+                    # 처리한다. RGBA quantize 는 Pillow 12 에서 method=FASTOCTREE
+                    # /libimagequant 만 허용하는 제약이 있어, 단일 경로의 convert 가
+                    # 안전·일관. RGBA 의 완전 투명 영역은 임의 팔레트 인덱스가 되며
+                    # 알파는 평탄화된다 (사용자가 화질 손실에 동의한 후 진행).
+                    quantized = img.convert(
+                        'P', palette=PILImage.Palette.ADAPTIVE, colors=colors,
+                    )
+                    frame._image = quantized
+                    frame._image_size = quantized.size
+                    frame._invalidate_cache()
+                    # 압축 캐시 무효화 (다음 unload 시 P 모드로 재압축)
+                    frame._image_bytes = None
+                    converted += 1
+            except Exception:
+                # 개별 프레임 변환 실패는 무시하고 진행 (전체 작업 중단 방지)
+                pass
+            if progress_callback:
+                progress_callback(i + 1, total)
+        return converted
+
     def __repr__(self) -> str:
         loaded = self.get_loaded_frame_count()
         total = len(self._frames)
