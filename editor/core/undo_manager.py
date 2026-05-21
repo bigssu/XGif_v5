@@ -159,6 +159,21 @@ class UndoManager:
         action = LambdaAction(description, execute_func, undo_func, memory_usage)
         self.execute(action)
 
+    def push_executed(self, action: UndoableAction) -> None:
+        """이미 실행된 액션을 history 에 추가 (execute 호출 안 함).
+
+        run_with_progress 등 background thread 에서 이미 작업이 완료된 후
+        undo history 만 등록하고 싶을 때 사용. execute_lambda 가 즉시 execute
+        를 호출하는 패턴과 충돌하지 않도록 별도 진입점을 제공.
+        """
+        if self._group_depth > 0:
+            self._group_actions.append(action)
+            return
+        self._redo_stack.clear()
+        self._undo_stack.append(action)
+        self._trim_history()
+        self._notify_state_changed()
+
     # === Undo/Redo ===
     @property
     def can_undo(self) -> bool:

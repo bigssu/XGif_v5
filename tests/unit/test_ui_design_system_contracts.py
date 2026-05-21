@@ -897,6 +897,59 @@ def test_gizmo_class_supports_corner_only_and_all_handles():
     assert len(ALL_HANDLES) == 8
 
 
+def test_progress_helper_exists_for_long_running_ops():
+    """
+    Regression lock: `editor/utils/progress.py` 의 `run_with_progress` 헬퍼가
+    존재하고 background thread + ProgressDialog + cancel 지원의 표준 진입점을
+    제공해야 한다.
+
+    이전엔 모든 장시간 작업 (프레임 줄이기, 뒤집기, 회전, 중복 제거 등) 이 동기
+    실행되어 UI 가 "정지 상태" 로 보이는 회귀가 빈번했다. 새 작업 추가 시 이
+    helper 를 재활용하도록 강제하는 가드.
+    """
+    from editor.utils.progress import run_with_progress
+    import inspect
+    sig = inspect.signature(run_with_progress)
+    # 표준 시그니처 검증 — work_func, total_hint, can_abort 필수 인자
+    assert 'work_func' in sig.parameters
+    assert 'total_hint' in sig.parameters
+    assert 'can_abort' in sig.parameters
+
+
+def test_reduce_frames_uses_progress_helper():
+    """
+    Regression lock: `_reduce_frames` 가 `run_with_progress` 를 사용해
+    ProgressDialog 를 표시해야 한다. 사용자 보고 ("700→350 줄이기 중 정지 상태")
+    의 직접 응답.
+    """
+    src = _read("editor/ui/editor_main_window_wx.py")
+    tree = ast.parse(src)
+    reduce_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_reduce_frames"),
+        None,
+    )
+    assert reduce_func is not None, "_reduce_frames 메서드가 사라졌습니다."
+    func_src = ast.unparse(reduce_func) if hasattr(ast, "unparse") else ""
+    assert "run_with_progress" in func_src, (
+        "_reduce_frames 가 run_with_progress 헬퍼를 사용하지 않습니다 — "
+        "장시간 작업 중 UI 가 정지 상태로 보입니다."
+    )
+    # FrameCollection.reduce_frames 도 progress_callback 인자 보유
+    fc_src = _read("editor/core/frame_collection.py")
+    fc_tree = ast.parse(fc_src)
+    reduce_method = next(
+        (node for node in ast.walk(fc_tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "reduce_frames"),
+        None,
+    )
+    assert reduce_method is not None
+    arg_names = [a.arg for a in reduce_method.args.args]
+    assert "progress_callback" in arg_names, (
+        "FrameCollection.reduce_frames 에 progress_callback 인자가 없습니다."
+    )
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in

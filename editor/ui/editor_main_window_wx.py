@@ -1775,62 +1775,113 @@ class MainWindow(wx.Frame):
                 self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _reduce_frames(self):
-        """프레임 감소 (매 2번째 프레임만 유지)"""
+        """프레임 감소 (매 2번째 프레임만 유지) — ProgressDialog 표시."""
         if self._frames.is_empty:
             return
 
+        from ..utils.progress import run_with_progress
+
+        # 대용량 GIF: undo 등록 (clone) 자체가 OOM 위험 — 메모리 임계로 분기.
+        current_memory_mb = self._frames.get_memory_usage_mb()
+        large_mode = current_memory_mb > 100
+        original_count = self._frames.frame_count
+
+        def _work(progress):
+            """ProgressDialog thread 에서 실행되는 reduce 작업."""
+            if not large_mode:
+                # undo 등록을 위해 clone — 큰 컬렉션에서도 progress 갱신
+                # (clone 자체는 빠르지만 시작 진입을 알린다)
+                progress(0, original_count, self._translations.tr(
+                    "prog_reduce_msg_detail", current=0, total=original_count,
+                ))
+                # clone 은 thread 안에서 — 메모리 부담 큰 경우 large_mode 가 처리
+                cloned = self._frames.clone()
+                progress(1, original_count, self._translations.tr(
+                    "prog_reduce_msg_detail", current=1, total=original_count,
+                ))
+            else:
+                cloned = None
+            removed = self._frames.reduce_frames(
+                2,
+                progress_callback=lambda c, t: progress(
+                    c, t, self._translations.tr(
+                        "prog_reduce_msg_detail", current=c, total=t,
+                    ),
+                ),
+            )
+            return cloned, removed
+
         try:
-            # 메모리 사용량 체크
-            current_memory_mb = self._frames.get_memory_usage_mb()
-            if current_memory_mb > 100:
-                # 대용량 GIF는 히스토리 저장 생략
-                old_count = self._frames.frame_count
-                self._frames.reduce_frames(2)
-                removed = old_count - self._frames.frame_count
-                self._refresh_all()
-                self._is_modified = True
-                wx.MessageBox(
-                    self._translations.tr("msg_reduce_no_undo", removed=removed, mb=current_memory_mb),
-                    self._translations.tr("common_done"),
-                    wx.OK | wx.ICON_INFORMATION
-                )
-                return
-
-            # Undo 등록
-            old_frames = self._frames.clone()
-            memory_usage = old_frames.get_memory_usage()
-
-            def execute():
-                try:
-                    self._frames.reduce_frames(2)
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_frame_reduce_error") + f":\n{e}",
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            def undo():
-                try:
-                    self._frames = old_frames
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_undo_error", e=e),
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            self._undo_manager.execute_lambda("프레임 감소", execute, undo, memory_usage)
-            self._is_modified = True
-
+            result, cancelled = run_with_progress(
+                parent=self,
+                title=self._translations.tr("prog_reduce_title"),
+                work_func=_work,
+                total_hint=max(1, original_count),
+                can_abort=False,  # 도중 취소는 컬렉션을 부분 상태로 남겨 위험
+                message=self._translations.tr("prog_reduce_msg"),
+            )
         except MemoryError:
             wx.MessageBox(
                 self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
+                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING,
+            )
+            return
         except Exception as e:
             wx.MessageBox(
                 self._translations.tr("msg_frame_reduce_error") + f": {e}",
-                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR,
+            )
+            return
+
+        if cancelled or result is None:
+            return
+
+        cloned, removed = result
+        self._is_modified = True
+
+        if large_mode:
+            self._refresh_all()
+            wx.MessageBox(
+                self._translations.tr(
+                    "msg_reduce_no_undo", removed=removed, mb=current_memory_mb,
+                ),
+                self._translations.tr("common_done"),
+                wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+
+        # undo 등록 — 작업이 이미 실행되었으므로 redo 시 다시 실행, undo 시 cloned 로 복원.
+        old_frames = cloned
+        memory_usage = old_frames.get_memory_usage()
+
+        def execute():
+            try:
+                # 첫 호출은 이미 완료 — execute_lambda 가 호출하면 redo 시점.
+                self._frames.reduce_frames(2)
+                self._refresh_all()
+            except Exception as e:
+                wx.MessageBox(
+                    self._translations.tr("msg_frame_reduce_error") + f":\n{e}",
+                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+                raise
+
+        def undo():
+            try:
+                self._frames = old_frames
+                self._refresh_all()
+            except Exception as e:
+                wx.MessageBox(
+                    self._translations.tr("msg_undo_error", e=e),
+                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+                raise
+
+        # work 가 background thread 에서 이미 완료됐으므로 execute_lambda 의
+        # "즉시 실행" 패턴과 충돌. push_executed 는 history 등록만 수행.
+        from ..core.undo_manager import LambdaAction
+        action = LambdaAction("프레임 감소", execute, undo, memory_usage)
+        self._undo_manager.push_executed(action)
+
+        self._refresh_all()
 
     def _scale_speed(self, factor: float):
         """속도 조절 (딜레이에 역수 적용)

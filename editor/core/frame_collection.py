@@ -140,12 +140,19 @@ class FrameCollection:
             self.add_frame(self._frames[i].clone())
 
     # === 프레임 감소 ===
-    def reduce_frames(self, keep_every_n: int, target_indices: Optional[List[int]] = None) -> int:
+    def reduce_frames(
+        self,
+        keep_every_n: int,
+        target_indices: Optional[List[int]] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
         """N개 중 1개만 유지
 
         Args:
             keep_every_n: N개마다 1개 유지
             target_indices: 적용할 프레임 인덱스 리스트 (None이면 모든 프레임)
+            progress_callback: 진행률 콜백 (current, total). 큰 컬렉션에서
+                ProgressDialog 갱신용. InterruptedError 시 작업 취소.
 
         Returns:
             제거된 프레임 수
@@ -156,14 +163,19 @@ class FrameCollection:
             return 0
 
         if target_indices is None:
-            # 모든 프레임에 적용
-            # N개마다 1개만 유지: 인덱스가 keep_every_n의 배수인 프레임만 유지
-            # 예: keep_every_n=2면 인덱스 0, 2, 4, 6... (2개마다 1개)
+            # 모든 프레임에 적용 — 큰 컬렉션 (700+ 프레임) 에서 list-comprehension
+            # 이 수 초 걸려 UI 가 멈춰 보였다. 명시 루프로 변환하여 매 단계 progress
+            # 호출 가능하게 한다. 비용 차이는 미미 (list comp 가 약간 더 빠르지만
+            # 사용자 응답성이 더 중요).
             original_count = len(self._frames)
-            # 유지할 인덱스 계산
-            kept_indices = [i for i in range(original_count) if i % keep_every_n == 0]
-            _logger.debug(f"reduce_frames: 원본 {original_count}개, keep_every_n={keep_every_n}, 유지할 프레임 {len(kept_indices)}개")
-            self._frames = [f for i, f in enumerate(self._frames) if i % keep_every_n == 0]
+            _logger.debug(f"reduce_frames: 원본 {original_count}개, keep_every_n={keep_every_n}")
+            kept: list = []
+            for i, frame in enumerate(self._frames):
+                if i % keep_every_n == 0:
+                    kept.append(frame)
+                if progress_callback is not None and (i % 32 == 0 or i == original_count - 1):
+                    progress_callback(i + 1, original_count)
+            self._frames = kept
             final_count = len(self._frames)
             _logger.debug(f"reduce_frames: 최종 프레임 수 {final_count}개")
             self._current_index = min(self._current_index, max(0, len(self._frames) - 1))
