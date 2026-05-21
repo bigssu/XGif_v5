@@ -1263,12 +1263,15 @@ class MainWindow(wx.Frame):
             return
 
         if 0 <= value < self._frames.frame_count:
-            # 슬라이더를 직접 움직였을 때는 current_index 직접 설정
+            # 슬라이더는 navigation 이지 selection 이 아니다. current_index 만 변경
+            # 하여 캔버스 미리보기를 갱신하되, 사용자가 프레임 리스트에서 선택한
+            # `selected_indices` 는 보존한다.
+            # (이전엔 deselect_all + select_frame 으로 선택을 덮어써, 사용자가
+            #  모자이크 등 적용을 위해 선택해둔 프레임이 슬라이더 클릭 한 번에
+            #  사라지는 회귀가 있었다.)
             self._frames.current_index = value
-            # 선택도 업데이트
-            self._frames.deselect_all()
-            self._frames.select_frame(value, add_to_selection=True)
-            # 프레임 리스트 UI 업데이트
+            # 프레임 리스트 UI 업데이트 — 기존 selection 은 그대로 표시,
+            # current_index 변경은 캔버스가 반영한다.
             if hasattr(self, '_frame_list') and self._frame_list:
                 self._frame_list.refresh()
             # 캔버스 업데이트

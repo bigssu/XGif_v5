@@ -1035,6 +1035,38 @@ def test_editor_main_shows_window_before_load():
     )
 
 
+def test_slider_does_not_overwrite_user_selection():
+    """
+    Regression lock: `_on_slider_changed` 는 navigation 만 담당하고 사용자의
+    `selected_indices` (모자이크/효과 적용 대상 선택) 를 보존해야 한다.
+
+    이전엔 슬라이더 클릭 시 `deselect_all + select_frame(value)` 로 선택을 덮어써,
+    사용자가 모자이크 적용을 위해 여러 프레임을 선택해둔 상태에서 슬라이더로
+    리뷰하려는 순간 모든 선택이 사라지는 회귀가 있었다. "선택과 하이라이트는
+    달라야" (사용자 보고).
+    """
+    src = _read("editor/ui/editor_main_window_wx.py")
+    tree = ast.parse(src)
+    slider_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_on_slider_changed"),
+        None,
+    )
+    assert slider_func is not None, "_on_slider_changed 메서드가 사라졌습니다."
+    func_src = ast.unparse(slider_func) if hasattr(ast, "unparse") else ""
+    # 사용자 선택을 덮어쓰는 패턴이 제거됐는지
+    assert "deselect_all" not in func_src, (
+        "_on_slider_changed 가 deselect_all() 을 호출합니다 — "
+        "사용자 선택 보존이 깨집니다."
+    )
+    assert "select_frame" not in func_src, (
+        "_on_slider_changed 가 select_frame() 을 호출합니다 — "
+        "사용자 선택이 슬라이더 위치로 덮어쓰입니다."
+    )
+    # current_index 만 변경 (navigation)
+    assert "current_index" in func_src
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in
