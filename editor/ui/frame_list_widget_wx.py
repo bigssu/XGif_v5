@@ -96,6 +96,9 @@ class FrameListWidget(wx.Panel):
         # 비연속 선택을 일관성 없게 노출하는 회귀에 대한 권위 있는 기록.
         # EVT_GRID_RANGE_SELECT 에서 갱신, refresh() 시 초기화.
         self._tracked_selection: Set[int] = set()
+        # 슬라이더 navigation 현재 프레임 추적 — highlight_current_frame() 가
+        # 이전 행 복원 + 새 행 칠하기 위해 필요.
+        self._last_current_index: int = -1
 
         # 윈도우 파괴 시 타이머 정리
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_frame_list_destroy)
@@ -158,11 +161,53 @@ class FrameListWidget(wx.Panel):
         self._grid.SetCellHighlightPenWidth(0)
         self._grid.SetCellHighlightROPenWidth(0)
 
-    def _style_row(self, row: int):
-        bg = Colors.FRAME_LIST_ROW_ALT_BG if row % 2 else Colors.FRAME_LIST_ROW_BG
+    def _style_row(self, row: int, current_index: int = -1):
+        """행에 zebra striping 적용. current_index 와 일치하면 navigation 강조색.
+
+        wx.grid 의 cell-level color override 는 selection 색보다 우선도가 낮으므로
+        같은 행이 selected 면 selection 색이 우선 표시된다 (의도된 동작 — 선택은
+        이미 강조 상태). 사용자가 보고한 "선택과 하이라이트는 달라야" 는
+        not-selected + current 케이스만 시각 분리하면 충족된다.
+        """
+        if row == current_index and current_index >= 0:
+            bg = Colors.FRAME_LIST_CURRENT_BG
+            fg = Colors.FRAME_LIST_CURRENT_FG
+        else:
+            bg = Colors.FRAME_LIST_ROW_ALT_BG if row % 2 else Colors.FRAME_LIST_ROW_BG
+            fg = Colors.TEXT_SECONDARY
         for col in range(self._grid.GetNumberCols()):
             self._grid.SetCellBackgroundColour(row, col, bg)
-            self._grid.SetCellTextColour(row, col, Colors.TEXT_SECONDARY)
+            self._grid.SetCellTextColour(row, col, fg)
+
+    def highlight_current_frame(self, new_index: int) -> None:
+        """슬라이더 navigation 시 current_index 시각 표시만 (data 재채움 X).
+
+        refresh() 통째로 호출하면 N × SetCellValue 가 매 슬라이더 step 마다 실행
+        되어, 359-frame 환경에서 드래그가 끊긴다. 이 메서드는 이전 current 행과
+        새 current 행 두 줄만 색을 다시 칠하고 (4 SetCellBackgroundColour 호출),
+        새 행으로 스크롤한다.
+
+        selection 은 절대 건드리지 않는다 — 사용자가 모자이크 적용을 위해
+        선택해둔 프레임이 슬라이더 클릭 한 번에 사라지는 회귀가 있었다
+        ("선택과 하이라이트는 달라야" — 사용자 보고 2026-05-21).
+        """
+        if new_index < 0 or new_index >= self._grid.GetNumberRows():
+            return
+        if new_index == self._last_current_index:
+            return
+
+        # 이전 current 행을 normal zebra 로 복원 (단, 그동안 행이 삭제됐을 수도)
+        prev = self._last_current_index
+        if 0 <= prev < self._grid.GetNumberRows():
+            self._style_row(prev, current_index=-1)
+        # 새 current 행에 강조색
+        self._style_row(new_index, current_index=new_index)
+        self._last_current_index = new_index
+
+        with contextlib.suppress(Exception):
+            self._grid.MakeCellVisible(new_index, 0)
+        with contextlib.suppress(Exception):
+            self._grid.ForceRefresh()
 
     def _on_grid_size(self, event):
         width = self._grid.GetClientSize().width
@@ -220,7 +265,8 @@ class FrameListWidget(wx.Panel):
         elif current_rows > needed_rows:
             self._grid.DeleteRows(0, current_rows - needed_rows)
 
-        # 프레임 데이터 채우기
+        # 프레임 데이터 채우기 — current_index 행은 navigation 강조색으로 표시
+        current_index = getattr(frames, 'current_index', -1)
         frame_count = 0
         for i, frame in enumerate(frames):
             frame_count += 1
@@ -245,10 +291,15 @@ class FrameListWidget(wx.Panel):
                 if not hasattr(self, '_cell_data'):
                     self._cell_data = {}
                 self._cell_data[(i, 1)] = delay_ms
-                self._style_row(i)
+                self._style_row(i, current_index=current_index)
 
             except Exception:
                 continue
+
+        # highlight_current_frame() 의 추적값을 refresh 후 모델과 동기화 —
+        # data 가 재채워졌으므로 다음 슬라이더 navigation 이 prev 행 복원을
+        # 정상 행에서 시작하도록.
+        self._last_current_index = current_index
 
 
         # 선택된 프레임들을 그리드에 반영
@@ -270,14 +321,18 @@ class FrameListWidget(wx.Panel):
                     if isinstance(idx, int) and 0 <= idx < frames.frame_count:
                         self._grid.SelectRow(idx, addToSelected=True)
 
-                # 첫 번째 선택된 행으로 스크롤
-                self._grid.MakeCellVisible(first_selected, 0)
+                # current_index 가 보이도록 스크롤 (이미 first_selected 와 동기화되어 있음).
+                # 두 값이 다른 경우 current_index 우선 — 슬라이더 navigation 의 의도.
+                with contextlib.suppress(Exception):
+                    self._grid.MakeCellVisible(frames.current_index, 0)
 
                 # _last_selection 업데이트 + 추적 기록 동기화
                 self._last_selection = set(selected_indices)
                 self._tracked_selection = set(selected_indices)
             else:
-                # 선택된 프레임이 없으면 현재 프레임만 선택
+                # 선택된 프레임이 없으면 현재 프레임만 선택 (기존 동작 — 첫 로드 시
+                # 첫 행 자동 선택 등). 슬라이더 navigation 은 refresh() 대신
+                # highlight_current_frame() 을 사용하므로 이 분기를 거치지 않는다.
                 if 0 <= frames.current_index < frames.frame_count:
                     self._grid.SelectRow(frames.current_index)
                     self._last_selection = {frames.current_index}

@@ -89,6 +89,10 @@ class Colors:
     FRAME_LIST_SELECTED_FG = wx.Colour(234, 240, 247)
     FRAME_LIST_GRID = wx.Colour(35, 45, 60)
     FRAME_LIST_RAIL = wx.Colour(17, 22, 30)
+    # 슬라이더 navigation 현재 프레임 표시 (selection 과 구분되는 어두운 적색).
+    # SELECTED_BG (청회색 50,66,86) 와 명확히 구분되어 "선택 ≠ 현재" 시각 분리.
+    FRAME_LIST_CURRENT_BG = wx.Colour(120, 50, 50)
+    FRAME_LIST_CURRENT_FG = wx.Colour(248, 232, 232)
 
     # 헥스 색상 문자열 (DC 그리기용)
     BG_PRIMARY_HEX = "#080a0e"

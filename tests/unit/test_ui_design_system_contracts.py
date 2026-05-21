@@ -1065,6 +1065,63 @@ def test_slider_does_not_overwrite_user_selection():
     )
     # current_index 만 변경 (navigation)
     assert "current_index" in func_src
+    # 슬라이더는 navigation 시각 표시 (frame_list 스크롤 + 강조색) 가 필요.
+    # 이전 fix 가 refresh() 까지 빼서 "현재 어느 프레임인지 알 수가 없다" 회귀가
+    # 생겼다 (사용자 보고 2026-05-21). highlight_current_frame() 호출이 있어야
+    # navigation 시각 피드백 보장.
+    assert "highlight_current_frame" in func_src, (
+        "_on_slider_changed 가 highlight_current_frame() 을 호출하지 않습니다 — "
+        "슬라이더 이동해도 frame_list 가 스크롤/하이라이트 안 되어 사용자가 현재 "
+        "프레임 위치를 알 수 없습니다."
+    )
+
+
+def test_frame_list_has_navigation_highlight_distinct_from_selection():
+    """
+    Regression lock: frame_list 가 슬라이더 navigation 의 current_index 를
+    selection 과 구분되는 시각 표시 + 스크롤 메서드 `highlight_current_frame`
+    을 제공해야 한다.
+
+    필요 조건:
+    1. `Colors.FRAME_LIST_CURRENT_BG` 가 정의되어 있고 selection 색과 다르다.
+    2. `FrameListWidget.highlight_current_frame` 메서드가 존재한다.
+    3. 그 메서드는 selection 을 건드리지 않는다 (SelectRow/ClearSelection 호출 X).
+    4. MakeCellVisible 로 스크롤한다.
+
+    이는 사용자 보고 "타임슬라이더 클릭/드래그 해도 왼쪽 프레임 리스트가 전혀
+    움직이지 않아서 몇 번째 프레임인지 알 수가 없다 ... 선택은 하지 마" (2026-05-21)
+    의 직접 응답.
+    """
+    theme_src = _read("ui/theme.py")
+    assert "FRAME_LIST_CURRENT_BG" in theme_src, (
+        "Colors.FRAME_LIST_CURRENT_BG 가 정의되지 않았습니다 — slider navigation "
+        "current_index 시각 표시 색이 없습니다."
+    )
+
+    src = _read("editor/ui/frame_list_widget_wx.py")
+    tree = ast.parse(src)
+
+    highlight_fn = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "highlight_current_frame"),
+        None,
+    )
+    assert highlight_fn is not None, (
+        "FrameListWidget.highlight_current_frame 메서드가 사라졌습니다."
+    )
+    fn_src = ast.unparse(highlight_fn) if hasattr(ast, "unparse") else ""
+    assert "SelectRow" not in fn_src and "ClearSelection" not in fn_src, (
+        "highlight_current_frame 이 selection 을 건드립니다 — "
+        "사용자 선택 보존이 깨집니다 ('선택과 하이라이트는 달라야')."
+    )
+    assert "MakeCellVisible" in fn_src, (
+        "highlight_current_frame 이 MakeCellVisible 로 스크롤하지 않습니다 — "
+        "사용자가 현재 프레임을 볼 수 없습니다."
+    )
+    assert "FRAME_LIST_CURRENT_BG" in src, (
+        "frame_list_widget_wx.py 가 FRAME_LIST_CURRENT_BG 를 참조하지 않습니다 — "
+        "current_index 시각 강조가 실제로 그려지지 않습니다."
+    )
 
 
 def test_resize_toolbar_uses_lazy_snapshot_to_avoid_activation_freeze():

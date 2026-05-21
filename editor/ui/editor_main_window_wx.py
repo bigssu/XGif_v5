@@ -1270,10 +1270,12 @@ class MainWindow(wx.Frame):
             #  모자이크 등 적용을 위해 선택해둔 프레임이 슬라이더 클릭 한 번에
             #  사라지는 회귀가 있었다.)
             self._frames.current_index = value
-            # 프레임 리스트 UI 업데이트 — 기존 selection 은 그대로 표시,
-            # current_index 변경은 캔버스가 반영한다.
+            # 프레임 리스트: refresh() 통째 호출 대신 highlight_current_frame() —
+            # 슬라이더 드래그 시 N × SetCellValue 가 매 step 마다 발생하는 비용
+            # 회피 (359-frame 환경에서 드래그 끊김). 새 메서드는 이전/현재 행
+            # 색만 swap + MakeCellVisible 로 스크롤 (selection 은 안 건드림).
             if hasattr(self, '_frame_list') and self._frame_list:
-                self._frame_list.refresh()
+                self._frame_list.highlight_current_frame(value)
             # 캔버스 업데이트
             self._canvas.Refresh()
             self._canvas.Update()
