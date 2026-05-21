@@ -795,6 +795,31 @@ def test_logger_wrapper_accepts_standard_logging_kwargs():
     log.log(logging.WARNING, "log() test")
 
 
+def test_safe_canvas_update_invalidates_paint_lru_cache():
+    """
+    Regression lock: `InlineToolbarBase._safe_canvas_update` 가 caller 의 frame.image
+    교체 직후 호출되므로, canvas paint LRU 캐시도 함께 invalidate 해야 한다.
+
+    paint 캐시 key 가 `id(pil_image)` 를 포함하는데 CPython 의 id() 는 메모리
+    재할당 시 재사용되므로, `_apply_text` 등이 새 PIL Image 를 만들어도 옛 id 와
+    일치 → LRU hit 으로 옛 비트맵 표시. 텍스트/모자이크 기즈모 이동 시 효과가
+    옛 위치에 머무는 회귀의 root cause.
+    """
+    src = _read("editor/ui/inline_toolbars/base_toolbar_wx.py")
+    tree = ast.parse(src)
+    update_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_safe_canvas_update"),
+        None,
+    )
+    assert update_func is not None, "_safe_canvas_update 메서드가 사라졌습니다."
+    func_src = ast.unparse(update_func) if hasattr(ast, "unparse") else ""
+    assert "clear_bitmap_cache" in func_src, (
+        "_safe_canvas_update 가 canvas.clear_bitmap_cache() 를 호출하지 않습니다 — "
+        "LRU 캐시의 id() 재사용 회귀에 노출됩니다."
+    )
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in

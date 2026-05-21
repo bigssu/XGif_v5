@@ -377,10 +377,24 @@ class InlineToolbarBase(wx.Panel):
         return self._canvas
 
     def _safe_canvas_update(self):
-        """캔버스 안전하게 업데이트"""
+        """캔버스 안전하게 업데이트.
+
+        효과/텍스트/모자이크 등 toolbar 가 frame.image 를 교체한 직후 호출되므로,
+        canvas paint LRU 캐시도 함께 invalidate 해야 한다. paint 캐시 key 가
+        `id(pil_image)` 를 포함하는데 CPython 의 id() 는 메모리 재할당 시
+        재사용되므로 (예: PIL `Image.alpha_composite` 결과가 GC 된 옛 PIL Image
+        의 메모리 주소를 가져갈 수 있음), 옛 비트맵 (옛 텍스트 위치) 이 hit 되어
+        새 frame.image 와 무관한 시각 결과를 표시하는 회귀가 있었다.
+
+        zoom 토글은 cache_key 의 zoom 인자로 구분되므로, frame.image id 변경 없을
+        때 LRU hit 효과는 유지된다.
+        """
         try:
             if self._main_window and hasattr(self._main_window, '_canvas') and self._main_window._canvas:
-                self._main_window._canvas.Refresh()
+                canvas = self._main_window._canvas
+                if hasattr(canvas, 'clear_bitmap_cache'):
+                    canvas.clear_bitmap_cache()
+                canvas.Refresh()
         except Exception:
             pass
 
