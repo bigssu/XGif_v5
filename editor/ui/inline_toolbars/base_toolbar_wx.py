@@ -411,6 +411,21 @@ class InlineToolbarBase(wx.Panel):
         """Capture original frame images for preview/apply/cancel flows."""
         return snapshot_original_images(self.frames) if self.frames else []
 
+    def _ensure_original_images_snapshot(self):
+        """Lazy snapshot — capture originals only when first needed.
+
+        Activation-time snapshot causes a perceptible UI freeze when N is large
+        (보고된 359-frame 1.8GB GIF 에서 ~1초). Toolbars that don't actually
+        change anything before deactivate (사용자가 클릭만 하고 나감) shouldn't
+        pay this cost at all. Call this from preview/apply/cancel entry points
+        so the snapshot is taken at the moment of first real change.
+
+        Returns the (possibly newly captured) originals list.
+        """
+        if not getattr(self, '_original_images', None):
+            self._original_images = self._snapshot_original_images()
+        return self._original_images
+
     def _clear_original_images(self):
         """Release captured originals and stop any pending preview timer."""
         self._original_images = []

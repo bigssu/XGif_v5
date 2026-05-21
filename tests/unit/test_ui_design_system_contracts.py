@@ -1067,6 +1067,63 @@ def test_slider_does_not_overwrite_user_selection():
     assert "current_index" in func_src
 
 
+def test_resize_toolbar_uses_lazy_snapshot_to_avoid_activation_freeze():
+    """
+    Regression lock: `ResizeToolbar._on_activated` 는 N × `Image.copy()` 가 발생하는
+    `_snapshot_original_images()` 를 직접 호출하지 말아야 한다.
+
+    이전엔 활성화 즉시 모든 frame 의 image 를 copy 해, 359-frame / 1.8GB GIF 환경
+    에서 toolbar 클릭 시 ~1초 UI freeze 가 발생했다 (사용자 보고 2026-05-21).
+    snapshot 은 `_ensure_original_images_snapshot()` 가 preview/apply/cancel 시작
+    시점의 lazy 호출로 옮긴다. 클릭만 하고 변경 없이 닫는 케이스는 비용 0.
+
+    필요 조건:
+    1. `_on_activated` 가 `_snapshot_original_images()` 또는 `snapshot_original_images(`
+       를 호출하지 않는다.
+    2. base_toolbar 에 `_ensure_original_images_snapshot` helper 가 존재한다.
+    3. `_update_preview` 또는 `_on_apply` 가 ensure helper 를 호출한다.
+    """
+    src = _read("editor/ui/inline_toolbars/resize_toolbar_wx.py")
+    tree = ast.parse(src)
+
+    on_activated = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_on_activated"),
+        None,
+    )
+    assert on_activated is not None, "ResizeToolbar._on_activated 메서드가 사라졌습니다."
+    on_activated_src = ast.unparse(on_activated) if hasattr(ast, "unparse") else ""
+    assert "_snapshot_original_images()" not in on_activated_src, (
+        "_on_activated 가 _snapshot_original_images() 를 동기 호출합니다 — "
+        "N × Image.copy() 로 359-frame 환경에서 ~1초 UI freeze 가 발생합니다. "
+        "lazy snapshot (_ensure_original_images_snapshot) 으로 전환하세요."
+    )
+    assert "snapshot_original_images(" not in on_activated_src, (
+        "_on_activated 가 snapshot_original_images() 를 호출합니다 — "
+        "활성화 시점 N × Image.copy() 회귀."
+    )
+
+    base = _read("editor/ui/inline_toolbars/base_toolbar_wx.py")
+    assert "def _ensure_original_images_snapshot" in base, (
+        "base_toolbar 에 lazy snapshot ensure helper 가 없습니다."
+    )
+
+    # preview 또는 apply 가 ensure 호출하는지 (둘 중 하나는 반드시)
+    preview_or_apply = []
+    for fname in ("_update_preview", "_on_apply"):
+        fn = next(
+            (node for node in ast.walk(tree)
+             if isinstance(node, ast.FunctionDef) and node.name == fname),
+            None,
+        )
+        if fn:
+            preview_or_apply.append(ast.unparse(fn) if hasattr(ast, "unparse") else "")
+    assert any("_ensure_original_images_snapshot" in s for s in preview_or_apply), (
+        "_update_preview / _on_apply 어느 곳에서도 _ensure_original_images_snapshot() "
+        "를 호출하지 않습니다 — lazy snapshot 이 실제로 trigger 되지 않습니다."
+    )
+
+
 def test_property_bar_on_size_defers_height_sync_to_avoid_recursion():
     """
     Regression lock: `PropertyBar._on_size` 는 `sync_active_toolbar_height` 를

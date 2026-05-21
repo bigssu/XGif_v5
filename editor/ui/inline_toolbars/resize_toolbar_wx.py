@@ -91,12 +91,19 @@ class ResizeToolbar(InlineToolbarBase):
 
 
     def _on_activated(self):
-        """툴바 활성화"""
+        """툴바 활성화 — snapshot 은 lazy (사용자가 실제로 크기 변경할 때만).
+
+        활성화 시 N × Image.copy() 가 1.8GB / 359 프레임 환경에서 ~1초 UI
+        freeze 를 유발해, 사용자가 "크기조절 클릭 시 1초 화면 정지" 를 보고함.
+        snapshot 은 _update_preview/_on_apply/_on_cancel 시작점의 lazy ensure
+        로 옮긴다. 클릭만 하고 변경 없이 닫는 케이스는 비용 0.
+        """
         frames = self.frames
         if not frames or getattr(frames, 'is_empty', False):
             return
 
-        self._original_images = self._snapshot_original_images()
+        # lazy snapshot — 첫 변경 시점에 _ensure_original_images_snapshot() 가 받음
+        self._original_images = []
 
         try:
             self._original_width = getattr(frames, 'width', 1)
@@ -163,6 +170,8 @@ class ResizeToolbar(InlineToolbarBase):
 
     def _update_preview(self):
         """실시간 프리뷰 업데이트"""
+        # lazy snapshot — 첫 호출에서 원본 캡처
+        self._ensure_original_images_snapshot()
         if not self._original_images:
             return
 
@@ -186,8 +195,10 @@ class ResizeToolbar(InlineToolbarBase):
         self._height_spin.SetValue(self._original_height)
         self._updating = False
 
-        self._restore_original_images_with_size()
-        self._safe_canvas_update()
+        # snapshot 없으면 변경한 적 없음 → 복원할 것도 없음
+        if self._original_images:
+            self._restore_original_images_with_size()
+            self._safe_canvas_update()
 
     def _on_apply(self, event):
         """적용"""
@@ -197,16 +208,22 @@ class ResizeToolbar(InlineToolbarBase):
 
         # 크기가 변경되지 않으면 원본 복원 후 종료
         if new_width == self._original_width and new_height == self._original_height:
-            self._restore_original_images_with_size()
+            # snapshot 없으면 이미 원본 상태 → 복원 불필요
+            if self._original_images:
+                self._restore_original_images_with_size()
             self._finish_apply()
             return
 
+        # 실제 변경이 있을 때만 lazy snapshot
+        self._ensure_original_images_snapshot()
         self._apply_resized_images(new_width, new_height, resample)
         self._finish_apply()
 
     def _on_cancel(self, event):
         """취소 - 원본으로 복원"""
-        self._restore_original_images_with_size()
+        # snapshot 없으면 변경한 적 없음 → 복원할 것도 없음
+        if self._original_images:
+            self._restore_original_images_with_size()
         self._finish_cancel()
 
     def get_new_size(self) -> Tuple[int, int]:
