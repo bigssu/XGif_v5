@@ -1352,72 +1352,26 @@ class MainWindow(wx.Frame):
                 self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
     def _remove_duplicates(self):
-        """중복 프레임 제거"""
+        """중복 프레임 제거 — ProgressDialog 표시."""
         if self._frames.is_empty:
             return
 
-        try:
-            # 메모리 사용량 체크 (100MB 이상이면 히스토리 저장 건너뛰기)
-            current_memory_mb = self._frames.get_memory_usage_mb()
-            if current_memory_mb > 100:
-                old_count = self._frames.frame_count
-                self._frames.remove_duplicates()
-                removed = old_count - self._frames.frame_count
-                self._refresh_all()
-                self._is_modified = True
-                wx.MessageBox(
-                    self._translations.tr("msg_dup_removed_no_undo", removed=removed, mb=current_memory_mb),
-                    self._translations.tr("common_done"),
-                    wx.OK | wx.ICON_INFORMATION
-                )
-                return
-
-            # Undo 등록
-            old_frames = self._frames.clone()
-            old_count = self._frames.frame_count
-            memory_usage = old_frames.get_memory_usage()
-
-            def execute():
-                try:
-                    self._frames.remove_duplicates()
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_duplicate_remove_error") + f":\n{e}",
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            def undo():
-                try:
-                    self._frames = old_frames
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_undo_error", e=e),
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            self._undo_manager.execute_lambda("중복 프레임 제거", execute, undo, memory_usage)
-            self._is_modified = True
-
-            removed = old_count - self._frames.frame_count
-            wx.MessageBox(
-                self._translations.tr("msg_duplicate_removed", count=removed),
-                self._translations.tr("common_done"),
-                wx.OK | wx.ICON_INFORMATION
+        def _work(progress):
+            self._frames.remove_duplicates(
+                progress_callback=lambda c, t: progress(
+                    c, t, self._translations.tr(
+                        "prog_general_msg_detail", current=c, total=t,
+                    ),
+                ),
             )
-        except MemoryError:
-            wx.MessageBox(
-                self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("common_warning"),
-                wx.OK | wx.ICON_WARNING
-            )
-        except Exception as e:
-            wx.MessageBox(
-                self._translations.tr("msg_duplicate_remove_error") + f":\n{e}",
-                self._translations.tr("msg_error"),
-                wx.OK | wx.ICON_ERROR
-            )
+
+        self._run_undoable_with_progress(
+            title_key="prog_dedupe_title",
+            description="중복 프레임 제거",
+            work_fn=_work,
+            no_undo_msg_key="msg_dup_removed_no_undo",
+            error_key="msg_duplicate_remove_error",
+        )
 
     def _show_mosaic_toolbar(self):
         """모자이크 인라인 툴바 표시"""
@@ -1661,92 +1615,49 @@ class MainWindow(wx.Frame):
             self._video_progress = None
 
     def _flip_frames(self, direction: str):
-        """프레임 뒤집기"""
+        """프레임 뒤집기 (가로/세로) — ProgressDialog 표시."""
         if self._frames.is_empty:
             return
+        direction_name = "가로" if direction == 'h' else "세로"
+        op = 'flip_horizontal' if direction == 'h' else 'flip_vertical'
 
-        try:
-            # Undo 등록
-            old_frames = self._frames.clone()
-            direction_name = "가로" if direction == 'h' else "세로"
-            memory_usage = old_frames.get_memory_usage()
+        def _work(progress):
+            n = self._frames.frame_count
+            for i, frame in enumerate(self._frames):
+                if frame:
+                    getattr(frame, op)()
+                if i % 8 == 0 or i == n - 1:
+                    progress(i + 1, n, self._translations.tr(
+                        "prog_general_msg_detail", current=i + 1, total=n,
+                    ))
 
-            def execute():
-                try:
-                    for frame in self._frames:
-                        if frame:
-                            if direction == 'h':
-                                frame.flip_horizontal()
-                            else:
-                                frame.flip_vertical()
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_flip_error") + f":\n{e}",
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            def undo():
-                try:
-                    self._frames = old_frames
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_undo_error", e=e),
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            self._undo_manager.execute_lambda(f"프레임 뒤집기 ({direction_name})", execute, undo, memory_usage)
-            self._is_modified = True
-
-        except MemoryError:
-            wx.MessageBox(
-                self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
-        except Exception as e:
-            wx.MessageBox(
-                self._translations.tr("msg_flip_error") + f": {e}",
-                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+        self._run_undoable_with_progress(
+            title_key="prog_flip_title",
+            description=f"프레임 뒤집기 ({direction_name})",
+            work_fn=_work,
+            error_key="msg_flip_error",
+        )
 
     def _reverse_frames(self):
-        """역재생 (프레임 순서 뒤집기)"""
+        """역재생 (프레임 순서 뒤집기) — ProgressDialog 표시."""
         if self._frames.is_empty or self._frames.frame_count < 2:
             return
 
-        try:
-            old_frames = self._frames.clone()
-            memory_usage = old_frames.get_memory_usage()
+        def _work(progress):
+            self._frames.reverse_frames(
+                progress_callback=lambda c, t: progress(
+                    c, t, self._translations.tr(
+                        "prog_general_msg_detail", current=c, total=t,
+                    ),
+                ),
+            )
 
-            def execute():
-                try:
-                    self._frames.reverse_frames()
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_reverse_error") + f":\n{e}",
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            def undo():
-                try:
-                    self._frames = old_frames
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_undo_error", e=e),
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            self._undo_manager.execute_lambda("프레임 순서 반전", execute, undo, memory_usage)
-            self._is_modified = True
-        except MemoryError:
-            wx.MessageBox(
-                self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
-        except Exception as e:
-            wx.MessageBox(
-                self._translations.tr("msg_reverse_error") + f": {e}",
-                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+        self._run_undoable_with_progress(
+            title_key="prog_reverse_title",
+            description="프레임 순서 반전",
+            work_fn=_work,
+            error_key="msg_reverse_error",
+        )
 
     def _delete_selected_frames(self):
         """선택한 프레임 삭제"""
@@ -1774,51 +1685,48 @@ class MainWindow(wx.Frame):
                 self._translations.tr("msg_frame_reduce_error") + f": {e}",
                 self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
 
-    def _reduce_frames(self):
-        """프레임 감소 (매 2번째 프레임만 유지) — ProgressDialog 표시."""
-        if self._frames.is_empty:
+    def _run_undoable_with_progress(
+        self,
+        *,
+        title_key: str,
+        description: str,
+        work_fn,
+        no_undo_msg_key: Optional[str] = None,
+        error_key: str = "msg_error",
+        large_threshold_mb: float = 100.0,
+    ) -> None:
+        """undo 가능한 frame 일괄 작업의 표준 진입점.
+
+        - work_fn(progress) 을 background thread (run_with_progress) 에서 실행.
+        - 메모리 100MB+ 면 clone 생략 (OOM 회피) + no_undo_msg_key 알림.
+        - 100MB- 면 LambdaAction + push_executed 로 undo history 등록.
+        - 모든 long-running frame 변형 작업이 동일 UX 를 갖도록 한다 (사용자
+          요청: "프로세스가 오래 걸릴 때 무조건 프로그래시브 바가 나오는 로직").
+        """
+        if self._frames is None or self._frames.is_empty:
             return
 
         from ..utils.progress import run_with_progress
+        from ..core.undo_manager import LambdaAction
 
-        # 대용량 GIF: undo 등록 (clone) 자체가 OOM 위험 — 메모리 임계로 분기.
         current_memory_mb = self._frames.get_memory_usage_mb()
-        large_mode = current_memory_mb > 100
-        original_count = self._frames.frame_count
+        large_mode = current_memory_mb > large_threshold_mb
+        total = self._frames.frame_count
+        old_count_box = {'count': total}
 
-        def _work(progress):
-            """ProgressDialog thread 에서 실행되는 reduce 작업."""
-            if not large_mode:
-                # undo 등록을 위해 clone — 큰 컬렉션에서도 progress 갱신
-                # (clone 자체는 빠르지만 시작 진입을 알린다)
-                progress(0, original_count, self._translations.tr(
-                    "prog_reduce_msg_detail", current=0, total=original_count,
-                ))
-                # clone 은 thread 안에서 — 메모리 부담 큰 경우 large_mode 가 처리
-                cloned = self._frames.clone()
-                progress(1, original_count, self._translations.tr(
-                    "prog_reduce_msg_detail", current=1, total=original_count,
-                ))
-            else:
-                cloned = None
-            removed = self._frames.reduce_frames(
-                2,
-                progress_callback=lambda c, t: progress(
-                    c, t, self._translations.tr(
-                        "prog_reduce_msg_detail", current=c, total=t,
-                    ),
-                ),
-            )
-            return cloned, removed
+        def _wrapper(progress):
+            cloned = None if large_mode else self._frames.clone()
+            old_count_box['count'] = self._frames.frame_count
+            work_fn(progress)
+            return cloned
 
         try:
-            result, cancelled = run_with_progress(
+            cloned, cancelled = run_with_progress(
                 parent=self,
-                title=self._translations.tr("prog_reduce_title"),
-                work_func=_work,
-                total_hint=max(1, original_count),
-                can_abort=False,  # 도중 취소는 컬렉션을 부분 상태로 남겨 위험
-                message=self._translations.tr("prog_reduce_msg"),
+                title=self._translations.tr(title_key),
+                work_func=_wrapper,
+                total_hint=max(1, total),
+                can_abort=False,
             )
         except MemoryError:
             wx.MessageBox(
@@ -1828,41 +1736,44 @@ class MainWindow(wx.Frame):
             return
         except Exception as e:
             wx.MessageBox(
-                self._translations.tr("msg_frame_reduce_error") + f": {e}",
+                self._translations.tr(error_key) + f":\n{e}",
                 self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR,
             )
             return
 
-        if cancelled or result is None:
+        if cancelled:
             return
 
-        cloned, removed = result
         self._is_modified = True
 
         if large_mode:
+            if no_undo_msg_key:
+                removed = old_count_box['count'] - self._frames.frame_count
+                with contextlib.suppress(Exception):
+                    wx.MessageBox(
+                        self._translations.tr(
+                            no_undo_msg_key, removed=removed, mb=current_memory_mb,
+                        ),
+                        self._translations.tr("common_done"),
+                        wx.OK | wx.ICON_INFORMATION,
+                    )
             self._refresh_all()
-            wx.MessageBox(
-                self._translations.tr(
-                    "msg_reduce_no_undo", removed=removed, mb=current_memory_mb,
-                ),
-                self._translations.tr("common_done"),
-                wx.OK | wx.ICON_INFORMATION,
-            )
             return
 
-        # undo 등록 — 작업이 이미 실행되었으므로 redo 시 다시 실행, undo 시 cloned 로 복원.
+        # undo 등록 — work_fn 은 thread 에서 이미 실행됐으므로 push_executed.
         old_frames = cloned
-        memory_usage = old_frames.get_memory_usage()
+        memory_usage = old_frames.get_memory_usage() if old_frames else 0
 
         def execute():
             try:
-                # 첫 호출은 이미 완료 — execute_lambda 가 호출하면 redo 시점.
-                self._frames.reduce_frames(2)
+                # redo 시점 — progress 는 no-op 으로 무시.
+                work_fn(lambda *a, **k: None)
                 self._refresh_all()
             except Exception as e:
                 wx.MessageBox(
-                    self._translations.tr("msg_frame_reduce_error") + f":\n{e}",
-                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+                    self._translations.tr(error_key) + f":\n{e}",
+                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR,
+                )
                 raise
 
         def undo():
@@ -1872,16 +1783,32 @@ class MainWindow(wx.Frame):
             except Exception as e:
                 wx.MessageBox(
                     self._translations.tr("msg_undo_error", e=e),
-                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+                    self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR,
+                )
                 raise
 
-        # work 가 background thread 에서 이미 완료됐으므로 execute_lambda 의
-        # "즉시 실행" 패턴과 충돌. push_executed 는 history 등록만 수행.
-        from ..core.undo_manager import LambdaAction
-        action = LambdaAction("프레임 감소", execute, undo, memory_usage)
+        action = LambdaAction(description, execute, undo, memory_usage)
         self._undo_manager.push_executed(action)
-
         self._refresh_all()
+
+    def _reduce_frames(self):
+        """프레임 감소 (매 2번째 프레임만 유지)."""
+        def _work(progress):
+            self._frames.reduce_frames(
+                2,
+                progress_callback=lambda c, t: progress(
+                    c, t, self._translations.tr(
+                        "prog_general_msg_detail", current=c, total=t,
+                    ),
+                ),
+            )
+        self._run_undoable_with_progress(
+            title_key="prog_reduce_title",
+            description="프레임 감소",
+            work_fn=_work,
+            no_undo_msg_key="msg_reduce_no_undo",
+            error_key="msg_frame_reduce_error",
+        )
 
     def _scale_speed(self, factor: float):
         """속도 조절 (딜레이에 역수 적용)
@@ -1993,44 +1920,26 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def _apply_yoyo(self):
-        """요요 효과 (순방향 + 역방향)"""
+        """요요 효과 (순방향 + 역방향) — ProgressDialog 표시."""
         if self._frames.is_empty or self._frames.frame_count < 2:
             return
 
-        try:
-            old_frames = self._frames.clone()
-            memory_usage = old_frames.get_memory_usage()
+        def _work(progress):
+            self._frames.apply_yoyo_effect(
+                progress_callback=lambda c, t: progress(
+                    c, t, self._translations.tr(
+                        "prog_general_msg_detail", current=c, total=t,
+                    ),
+                ),
+            )
 
-            def execute():
-                try:
-                    self._frames.apply_yoyo_effect()
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_yoyo_error") + f"\n{e}",
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            def undo():
-                try:
-                    self._frames = old_frames
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_undo_error", e=e),
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            self._undo_manager.execute_lambda("요요 효과 적용", execute, undo, memory_usage)
-            self._is_modified = True
-        except MemoryError:
-            wx.MessageBox(
-                self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
-        except Exception as e:
-            wx.MessageBox(
-                self._translations.tr("msg_yoyo_error") + f"\n{e}",
-                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+        self._run_undoable_with_progress(
+            title_key="prog_yoyo_title",
+            description="요요 효과 적용",
+            work_fn=_work,
+            error_key="msg_yoyo_error",
+        )
+        return
 
     def _show_speed_dialog(self):
         """속도 조절 툴바 표시"""
@@ -2854,58 +2763,30 @@ class MainWindow(wx.Frame):
         self._show_inline_toolbar(self._rotate_toolbar)
 
     def _rotate_frames(self, angle: int):
-        """프레임 회전
+        """프레임 회전 — ProgressDialog 표시.
 
         Args:
             angle: 회전 각도 (0, 90, 180, 270)
         """
-        if self._frames.is_empty:
+        if self._frames.is_empty or angle == 0:
             return
 
-        try:
-            # Undo 등록
-            old_frames = self._frames.clone()
-            memory_usage = old_frames.get_memory_usage()
+        def _work(progress):
+            n = self._frames.frame_count
+            for i, frame in enumerate(self._frames):
+                if frame:
+                    frame.rotate(angle)
+                if i % 8 == 0 or i == n - 1:
+                    progress(i + 1, n, self._translations.tr(
+                        "prog_general_msg_detail", current=i + 1, total=n,
+                    ))
 
-            def execute():
-                try:
-                    # 모든 프레임에 회전 적용
-                    for frame in self._frames:
-                        if frame:
-                            frame.rotate(angle)
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_rotate_error") + f"\n{e}",
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            def undo():
-                try:
-                    self._frames = old_frames
-                    self._refresh_all()
-                except Exception as e:
-                    wx.MessageBox(
-                        self._translations.tr("msg_undo_error", e=e),
-                        self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
-                    raise
-
-            self._undo_manager.execute_lambda(f"프레임 회전 ({angle}도)", execute, undo, memory_usage)
-            self._is_modified = True
-            self._update_title()
-
-        except MemoryError:
-            wx.MessageBox(
-                self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("common_warning"),
-                wx.OK | wx.ICON_WARNING
-            )
-        except Exception as e:
-            wx.MessageBox(
-                self._translations.tr("msg_rotate_error") + f"\n{e}",
-                self._translations.tr("msg_error"),
-                wx.OK | wx.ICON_ERROR
-            )
+        self._run_undoable_with_progress(
+            title_key="prog_rotate_title",
+            description=f"프레임 회전 ({angle}도)",
+            work_fn=_work,
+            error_key="msg_rotate_error",
+        )
 
     def _show_pencil_dialog(self):
         """펜슬 인라인 툴바 표시"""

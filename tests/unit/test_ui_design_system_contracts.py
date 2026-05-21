@@ -916,38 +916,61 @@ def test_progress_helper_exists_for_long_running_ops():
     assert 'can_abort' in sig.parameters
 
 
-def test_reduce_frames_uses_progress_helper():
+def test_long_running_frame_ops_use_progress_helper():
     """
-    Regression lock: `_reduce_frames` 가 `run_with_progress` 를 사용해
-    ProgressDialog 를 표시해야 한다. 사용자 보고 ("700→350 줄이기 중 정지 상태")
-    의 직접 응답.
+    Regression lock: 모든 장시간 frame 변형 작업이 표준 ProgressDialog 진입점
+    (`_run_undoable_with_progress` 또는 직접 `run_with_progress`) 을 사용해야 한다.
+
+    사용자 보고 ("700→350 줄이기 중 정지 상태", "프로세스가 오래 걸릴 때 무조건
+    프로그래시브 바") 의 직접 응답. 회귀 차단 대상:
+        _reduce_frames / _flip_frames / _reverse_frames / _rotate_frames /
+        _remove_duplicates / _apply_yoyo.
     """
     src = _read("editor/ui/editor_main_window_wx.py")
     tree = ast.parse(src)
-    reduce_func = next(
+
+    target_methods = (
+        '_reduce_frames', '_flip_frames', '_reverse_frames',
+        '_rotate_frames', '_remove_duplicates', '_apply_yoyo',
+    )
+    for method_name in target_methods:
+        func = next(
+            (node for node in ast.walk(tree)
+             if isinstance(node, ast.FunctionDef) and node.name == method_name),
+            None,
+        )
+        assert func is not None, f"{method_name} 메서드가 사라졌습니다."
+        func_src = ast.unparse(func) if hasattr(ast, "unparse") else ""
+        assert ("_run_undoable_with_progress" in func_src
+                or "run_with_progress" in func_src), (
+            f"{method_name} 가 ProgressDialog helper 를 사용하지 않습니다 — "
+            "장시간 작업 중 UI 가 정지 상태로 보입니다."
+        )
+
+    # _run_undoable_with_progress 가 실제로 run_with_progress 를 호출
+    helper = next(
         (node for node in ast.walk(tree)
-         if isinstance(node, ast.FunctionDef) and node.name == "_reduce_frames"),
+         if isinstance(node, ast.FunctionDef) and node.name == "_run_undoable_with_progress"),
         None,
     )
-    assert reduce_func is not None, "_reduce_frames 메서드가 사라졌습니다."
-    func_src = ast.unparse(reduce_func) if hasattr(ast, "unparse") else ""
-    assert "run_with_progress" in func_src, (
-        "_reduce_frames 가 run_with_progress 헬퍼를 사용하지 않습니다 — "
-        "장시간 작업 중 UI 가 정지 상태로 보입니다."
-    )
-    # FrameCollection.reduce_frames 도 progress_callback 인자 보유
+    assert helper is not None, "_run_undoable_with_progress helper 가 사라졌습니다."
+    helper_src = ast.unparse(helper) if hasattr(ast, "unparse") else ""
+    assert "run_with_progress" in helper_src
+
+    # FrameCollection 의 진행률 지원 메서드들도 progress_callback 인자 보유
     fc_src = _read("editor/core/frame_collection.py")
     fc_tree = ast.parse(fc_src)
-    reduce_method = next(
-        (node for node in ast.walk(fc_tree)
-         if isinstance(node, ast.FunctionDef) and node.name == "reduce_frames"),
-        None,
-    )
-    assert reduce_method is not None
-    arg_names = [a.arg for a in reduce_method.args.args]
-    assert "progress_callback" in arg_names, (
-        "FrameCollection.reduce_frames 에 progress_callback 인자가 없습니다."
-    )
+    for fc_method in ('reduce_frames', 'reverse_frames', 'apply_yoyo_effect', 'remove_duplicates'):
+        method = next(
+            (node for node in ast.walk(fc_tree)
+             if isinstance(node, ast.FunctionDef) and node.name == fc_method),
+            None,
+        )
+        assert method is not None, f"FrameCollection.{fc_method} 가 사라졌습니다."
+        arg_names = [a.arg for a in method.args.args]
+        assert "progress_callback" in arg_names, (
+            f"FrameCollection.{fc_method} 에 progress_callback 인자가 없습니다."
+        )
 
 
 def test_no_hardcoded_korean_in_editor_ui_implementation():

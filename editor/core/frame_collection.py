@@ -123,21 +123,36 @@ class FrameCollection:
         return duplicated
 
     # === 순서 조작 ===
-    def reverse_frames(self, start: int = 0, end: Optional[int] = None) -> None:
+    def reverse_frames(
+        self,
+        start: int = 0,
+        end: Optional[int] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> None:
         """프레임 순서 반전"""
         if end is None:
             end = len(self._frames)
-
+        total = max(1, end - start)
+        if progress_callback is not None:
+            progress_callback(0, total)
         self._frames[start:end] = reversed(self._frames[start:end])
+        if progress_callback is not None:
+            progress_callback(total, total)
 
-    def apply_yoyo_effect(self) -> None:
+    def apply_yoyo_effect(
+        self,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> None:
         """요요 효과 적용 (정방향 + 역방향)"""
         if len(self._frames) < 2:
             return
 
-        # 마지막 프레임 제외하고 역순 복제
-        for i in range(len(self._frames) - 2, 0, -1):
+        # 마지막 프레임 제외하고 역순 복제 — 큰 컬렉션 진행률 보고
+        n = len(self._frames) - 2  # 복제 횟수
+        for added, i in enumerate(range(len(self._frames) - 2, 0, -1), start=1):
             self.add_frame(self._frames[i].clone())
+            if progress_callback is not None and (added % 16 == 0 or added == n):
+                progress_callback(added, n)
 
     # === 프레임 감소 ===
     def reduce_frames(
@@ -209,7 +224,11 @@ class FrameCollection:
 
             return removed_count
 
-    def remove_duplicates(self, threshold: float = 0.95) -> int:
+    def remove_duplicates(
+        self,
+        threshold: float = 0.95,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
         """중복 프레임 제거 (최적화됨)
 
         인접한 프레임만 비교하여 O(n) 복잡도로 처리합니다.
@@ -217,6 +236,8 @@ class FrameCollection:
 
         Args:
             threshold: 유사도 임계값 (0.0~1.0, 기본값: 0.95)
+            progress_callback: 진행률 콜백 (current, total). 큰 컬렉션의
+                ProgressDialog 갱신용.
 
         Returns:
             제거된 프레임 수
@@ -226,6 +247,7 @@ class FrameCollection:
 
         to_remove = set()
         total_frames = len(self._frames)
+        comparisons = max(1, total_frames - 1)
 
         _logger.debug(f"중복 프레임 제거 시작: {total_frames}개 프레임, 임계값: {threshold}")
 
@@ -233,6 +255,8 @@ class FrameCollection:
         # 연속된 중복만 제거하므로 빠르고 효율적
         for i in range(len(self._frames) - 1):
             if i in to_remove:
+                if progress_callback is not None and (i % 16 == 0 or i == comparisons - 1):
+                    progress_callback(i + 1, comparisons)
                 continue
 
             # 진행률 로깅 (큰 컬렉션의 경우)
@@ -245,6 +269,8 @@ class FrameCollection:
             )
             if similarity >= threshold:
                 to_remove.add(i + 1)
+            if progress_callback is not None and (i % 16 == 0 or i == comparisons - 1):
+                progress_callback(i + 1, comparisons)
 
         # 역순으로 삭제 (인덱스 문제 방지)
         removed_count = len(to_remove)
