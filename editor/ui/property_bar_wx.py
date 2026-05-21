@@ -21,6 +21,13 @@ class PropertyBar(wx.Panel):
         self._toolbars = {}  # name -> toolbar
         self._active_name = None
 
+        # _on_size 가 sync_active_toolbar_height 를 동기 호출하면 SetMinSize +
+        # parent.Layout() 가 PropertyBar 자체에 EVT_SIZE 를 다시 발생시켜 무한
+        # 재귀 (RecursionError) 가 일어난다. base_toolbar_wx._on_size 와 같은
+        # 패턴으로 schedule_only 비동기 처리하고, 추가로 재진입 가드까지 둔다.
+        self._sync_pending = False
+        self._syncing = False
+
         self.Bind(wx.EVT_SIZE, self._on_size)
 
         self.Hide()
@@ -58,23 +65,48 @@ class PropertyBar(wx.Panel):
         self.GetParent().Layout()
 
     def _on_size(self, event):
-        self.sync_active_toolbar_height()
+        # 동기 호출 금지 — SetMinSize + parent.Layout() 가 PropertyBar 자체에
+        # EVT_SIZE 를 즉시 다시 발생시켜 무한 재귀 (RecursionError) 가 된다.
+        self._schedule_sync()
         event.Skip()
+
+    def _schedule_sync(self):
+        """Coalesce repeated EVT_SIZE bursts into a single deferred sync."""
+        if self._sync_pending:
+            return
+        self._sync_pending = True
+        wx.CallAfter(self._run_sync)
+
+    def _run_sync(self):
+        self._sync_pending = False
+        # 위젯이 이미 파괴된 뒤에 deferred 콜백이 도착할 수 있다.
+        if not self:
+            return
+        self.sync_active_toolbar_height()
 
     def sync_active_toolbar_height(self):
         """Resize the property bar to the active toolbar's wrapped height."""
-        toolbar = self._toolbars.get(self._active_name)
-        if not toolbar or not toolbar.IsShown():
+        # 다른 경로 (show_toolbar 등) 로 직접 호출되어도 동기 재진입을 차단.
+        if self._syncing:
             return
+        self._syncing = True
+        try:
+            toolbar = self._toolbars.get(self._active_name)
+            if not toolbar or not toolbar.IsShown():
+                return
 
-        height = toolbar.sync_layout_height(notify_parent=False)
-        if self.GetMinSize().GetHeight() != height:
+            height = toolbar.sync_layout_height(notify_parent=False)
+            if self.GetMinSize().GetHeight() == height:
+                # 변화 없음 — parent.Layout() 도 생략하여 불필요한 reflow 차단.
+                return
+
             self.SetMinSize((-1, height))
-
-        self.Layout()
-        parent = self.GetParent()
-        if parent:
-            parent.Layout()
+            self.Layout()
+            parent = self.GetParent()
+            if parent:
+                parent.Layout()
+        finally:
+            self._syncing = False
 
     @property
     def active_toolbar_name(self):

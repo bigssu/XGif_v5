@@ -1067,6 +1067,56 @@ def test_slider_does_not_overwrite_user_selection():
     assert "current_index" in func_src
 
 
+def test_property_bar_on_size_defers_height_sync_to_avoid_recursion():
+    """
+    Regression lock: `PropertyBar._on_size` 는 `sync_active_toolbar_height` 를
+    동기 직접 호출하지 말아야 한다. 동기 호출 시 안에서 `SetMinSize` +
+    `parent.Layout()` 가 PropertyBar 자체에 EVT_SIZE 를 즉시 다시 발생시켜
+    `_on_size → sync_active_toolbar_height → ...` 무한 재귀 (RecursionError) 가
+    터진다.
+
+    이는 사용자 보고 "에디터 띄우자마자 RecursionError" (2026-05-21) 의 직접
+    응답. 회귀 시 1) `_on_size` 가 `_schedule_sync` (또는 `wx.CallAfter`) 로
+    deferred 처리하고, 2) `sync_active_toolbar_height` 가 `_syncing` 재진입
+    가드를 갖는지 양쪽을 모두 검증한다.
+    """
+    src = _read("editor/ui/property_bar_wx.py")
+    tree = ast.parse(src)
+
+    on_size = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_on_size"),
+        None,
+    )
+    assert on_size is not None, "_on_size 메서드가 사라졌습니다."
+    on_size_src = ast.unparse(on_size) if hasattr(ast, "unparse") else ""
+    assert "sync_active_toolbar_height()" not in on_size_src, (
+        "_on_size 가 sync_active_toolbar_height() 를 동기 호출합니다 — "
+        "SetMinSize + parent.Layout() 가 EVT_SIZE 재진입을 유발하여 "
+        "RecursionError 가 터집니다. wx.CallAfter 로 deferred 처리하세요."
+    )
+    assert (
+        "_schedule_sync" in on_size_src
+        or "wx.CallAfter" in on_size_src
+    ), (
+        "_on_size 가 sync 를 deferred 로 schedule 하지 않습니다 — "
+        "_schedule_sync() 또는 wx.CallAfter 패턴을 사용하세요."
+    )
+
+    sync_fn = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef)
+         and node.name == "sync_active_toolbar_height"),
+        None,
+    )
+    assert sync_fn is not None, "sync_active_toolbar_height 메서드가 사라졌습니다."
+    sync_src = ast.unparse(sync_fn) if hasattr(ast, "unparse") else ""
+    assert "_syncing" in sync_src, (
+        "sync_active_toolbar_height 가 _syncing 재진입 가드를 사용하지 않습니다 — "
+        "다른 경로 (show_toolbar 등) 로 동기 재진입 시 무한 재귀 위험."
+    )
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in
