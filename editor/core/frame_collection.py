@@ -203,17 +203,19 @@ class FrameCollection:
 
             # 정렬된 인덱스로 변환
             sorted_indices = sorted(target_indices)
-            original_count = len(sorted_indices)
 
             # 선택한 프레임 중에서만 줄이기 적용
             to_keep = [sorted_indices[i] for i in range(0, len(sorted_indices), keep_every_n)]
             to_remove = [idx for idx in sorted_indices if idx not in to_keep]
+            total = max(1, len(to_remove))
 
-            # 역순으로 삭제 (인덱스 문제 방지)
+            # 역순으로 삭제 (인덱스 문제 방지) + progress callback
             removed_count = 0
-            for idx in sorted(to_remove, reverse=True):
+            for step, idx in enumerate(sorted(to_remove, reverse=True), start=1):
                 if self.delete_frame(idx) is not None:
                     removed_count += 1
+                if progress_callback is not None and (step % 16 == 0 or step == total):
+                    progress_callback(step, total)
 
             # 현재 인덱스 조정
             self._current_index = min(self._current_index, max(0, len(self._frames) - 1))

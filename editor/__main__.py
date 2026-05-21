@@ -34,14 +34,17 @@ def main():
     from editor.ui.editor_main_window_wx import MainWindow
 
     window = MainWindow()
+    window.Show()
 
-    # 명령줄 인자로 파일 경로가 전달된 경우 열기
+    # 명령줄 인자로 파일 경로가 전달된 경우 열기 — 윈도우 표시 후 wx.CallAfter 로
+    # 비동기 로드해야 GIF 로딩 ProgressDialog 가 윈도우 위에 정상 표시된다.
+    # 이전엔 Show() 이전에 open_file 을 호출하여 큰 GIF 의 ProgressDialog 가
+    # 사용자에게 안 보이는 회귀 ("정지 상태로 보임") 가 있었다.
     if len(sys.argv) > 1:
         file_path = sys.argv[1]
         if os.path.exists(file_path):
-            window.open_file(file_path)
+            wx.CallAfter(window.open_file, file_path)
 
-    window.Show()
     exit_code = app.MainLoop()
     try:
         logging.shutdown()

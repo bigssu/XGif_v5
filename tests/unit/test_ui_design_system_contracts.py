@@ -973,6 +973,68 @@ def test_long_running_frame_ops_use_progress_helper():
         )
 
 
+def test_reduce_toolbar_uses_progress_helper():
+    """
+    Regression lock: `ReduceToolbar._on_apply` 가 메인 윈도우의 표준 helper
+    (`_run_undoable_with_progress`) 를 위임해야 한다.
+
+    이전엔 `execute_lambda` 동기 호출이 700→350 reduce 케이스에서 6~8초 UI
+    블록을 유발했다 (사용자 보고: "줄이는 동안 화면이 정지 상태"). helper 위임으로
+    background thread + ProgressDialog 자동 표시.
+    """
+    src = _read("editor/ui/inline_toolbars/reduce_toolbar_wx.py")
+    tree = ast.parse(src)
+    apply_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_on_apply"),
+        None,
+    )
+    assert apply_func is not None
+    func_src = ast.unparse(apply_func) if hasattr(ast, "unparse") else ""
+    assert "_run_undoable_with_progress" in func_src, (
+        "ReduceToolbar._on_apply 가 _run_undoable_with_progress 를 위임하지 "
+        "않습니다 — UI 블록 회귀 위험."
+    )
+    # 이전의 execute_lambda 동기 패턴이 제거됐는지
+    assert "execute_lambda" not in func_src, (
+        "_on_apply 에 execute_lambda 동기 호출이 남아 있습니다 — "
+        "background thread 로 마이그레이션이 완전하지 않습니다."
+    )
+
+
+def test_editor_main_shows_window_before_load():
+    """
+    Regression lock: `editor/__main__.py` 가 윈도우를 먼저 Show 한 후 wx.CallAfter
+    로 GIF 를 로드해야 한다.
+
+    이전엔 `window.open_file(path)` 가 `window.Show()` 이전 호출 → 큰 GIF 의
+    GIF 로드 ProgressDialog 가 보이지 않는 윈도우 위에서 생성되어 사용자에게
+    "에디터가 안 뜨고 정지 상태" 로 보이는 회귀가 있었다.
+    """
+    src = _read("editor/__main__.py")
+    tree = ast.parse(src)
+    main_func = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "main"),
+        None,
+    )
+    assert main_func is not None
+    func_src = ast.unparse(main_func) if hasattr(ast, "unparse") else ""
+    show_idx = func_src.find("window.Show()")
+    open_idx = func_src.find("window.open_file")
+    callafter_idx = func_src.find("wx.CallAfter(window.open_file")
+    assert show_idx >= 0, "window.Show() 가 main() 에 없습니다."
+    if open_idx >= 0:
+        assert show_idx < open_idx, (
+            "window.Show() 가 open_file 호출 이전에 실행되어야 합니다 — "
+            "ProgressDialog 가 표시되지 않습니다."
+        )
+    assert callafter_idx >= 0, (
+        "open_file 호출이 wx.CallAfter 로 감싸지지 않았습니다 — "
+        "Show() 직후 동기 호출은 ProgressDialog 가 안 보일 수 있습니다."
+    )
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in

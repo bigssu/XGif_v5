@@ -55,7 +55,7 @@ class ReduceToolbar(InlineToolbarBase):
         self.add_control(self._reduce_combo)
 
     def _on_apply(self, event):
-        """적용 버튼 클릭"""
+        """적용 버튼 클릭 — 메인 윈도우의 표준 ProgressDialog helper 위임."""
         if not self.frames or getattr(self.frames, 'is_empty', False):
             return
 
@@ -88,75 +88,51 @@ class ReduceToolbar(InlineToolbarBase):
             )
             return
 
-        # Undo 등록
-        old_frames = None
-        if hasattr(self.frames, 'clone'):
-            old_frames = self.frames.clone()
-        memory_usage = old_frames.get_memory_usage() if old_frames and hasattr(old_frames, 'get_memory_usage') else 0
+        before_count = getattr(self.frames, 'frame_count', 0)
+        removed_box = {'count': 0}
 
-        def undo():
-            try:
-                if old_frames:
-                    self.frames._frames = old_frames._frames
-                    self.frames._current_index = old_frames._current_index
-                    self.frames._selected_indices = old_frames._selected_indices.copy()
-                    if hasattr(self._main_window, '_refresh_all'):
-                        self._main_window._refresh_all()
-            except Exception as e:
-                wx.MessageBox(
-                    f"{translations.tr('msg_frame_duplicate_undo_error') if translations else '실행 취소 실패'}:\n{str(e)}",
-                    translations.tr("msg_error") if translations else "오류",
-                    wx.OK | wx.ICON_ERROR
-                )
-                raise
+        def _work(progress):
+            removed = self.frames.reduce_frames(
+                keep_every_n, target_indices,
+                progress_callback=lambda c, t: progress(
+                    c, t,
+                    translations.tr("prog_general_msg_detail", current=c, total=t)
+                    if translations else f"{c}/{t}",
+                ),
+            )
+            removed_box['count'] = removed if removed is not None else 0
 
-        try:
-            # Undo 등록
-            removed_count = [0]  # 클로저를 위한 리스트 사용
-
-            def execute_with_result():
-                if hasattr(self.frames, 'reduce_frames'):
-                    removed = self.frames.reduce_frames(keep_every_n, target_indices)
-                    removed_count[0] = removed
-                    if hasattr(self._main_window, '_refresh_all'):
-                        self._main_window._refresh_all()
-
-            if hasattr(self._main_window, 'undo_manager'):
-                self._main_window.undo_manager.execute_lambda(
-                    f"프레임 줄이기 ({keep_every_n}개마다 1개 유지)",
-                    execute_with_result, undo, memory_usage
-                )
-            else:
-                execute_with_result()
-
-            # 제거된 프레임 수 가져오기
-            removed = removed_count[0]
-            if hasattr(self._main_window, '_is_modified'):
-                self._main_window._is_modified = True
+        # 메인 윈도우의 표준 helper 위임 — 이전엔 execute_lambda 동기 호출이 700→350
+        # 케이스에서 6~8초 UI 블록을 유발했다. helper 는 background thread +
+        # ProgressDialog 표시 + 100MB+ undo 가드 + push_executed history 등록까지
+        # 모두 처리.
+        runner = getattr(self._main_window, '_run_undoable_with_progress', None)
+        if runner is None:
+            # 폴백 — 메인이 helper 미보유 환경 (예: 단위 테스트)
+            self.frames.reduce_frames(keep_every_n, target_indices)
+            removed_box['count'] = before_count - getattr(self.frames, 'frame_count', before_count)
             if hasattr(self._main_window, '_refresh_all'):
                 self._main_window._refresh_all()
-
-            msg1 = translations.tr('msg_frames_reduced', removed=removed) if translations else f'{removed}개 프레임이 제거되었습니다.'
-            msg2 = translations.tr('msg_frames_remaining', count=getattr(self.frames, 'frame_count', 0)) if translations else f'남은 프레임: {getattr(self.frames, "frame_count", 0)}개'
-            wx.MessageBox(
-                f"{msg1}\n{msg2}",
-                translations.tr("msg_complete") if translations else "완료",
-                wx.OK | wx.ICON_INFORMATION
+        else:
+            runner(
+                title_key="prog_reduce_title",
+                description=f"프레임 줄이기 ({keep_every_n}개마다 1개 유지)",
+                work_fn=_work,
+                no_undo_msg_key="msg_reduce_no_undo",
+                error_key="msg_frame_reduce_error",
             )
 
-            # 적용 완료 후 이벤트 발생
-            super()._on_apply(event)
-        except MemoryError:
-            wx.MessageBox(
-                translations.tr("msg_memory_error") if translations else "메모리가 부족하여 작업을 수행할 수 없습니다.",
-                translations.tr("msg_warning") if translations else "경고",
-                wx.OK | wx.ICON_WARNING
-            )
-        except Exception as e:
-            err_title = translations.tr("msg_error") if translations else "오류"
-            err_msg = translations.tr('msg_frame_reduce_error2') if translations else '프레임 줄이기 중 오류가 발생했습니다'
-            wx.MessageBox(
-                f"{err_msg}:\n{str(e)}",
-                err_title,
-                wx.OK | wx.ICON_ERROR
-            )
+        if hasattr(self._main_window, '_is_modified'):
+            self._main_window._is_modified = True
+
+        removed = removed_box['count']
+        msg1 = translations.tr('msg_frames_reduced', removed=removed) if translations else f'{removed}개 프레임이 제거되었습니다.'
+        msg2 = translations.tr('msg_frames_remaining', count=getattr(self.frames, 'frame_count', 0)) if translations else f'남은 프레임: {getattr(self.frames, "frame_count", 0)}개'
+        wx.MessageBox(
+            f"{msg1}\n{msg2}",
+            translations.tr("msg_complete") if translations else "완료",
+            wx.OK | wx.ICON_INFORMATION,
+        )
+
+        # 적용 완료 후 이벤트 발생 (툴바 닫힘)
+        super()._on_apply(event)
