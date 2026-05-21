@@ -820,6 +820,83 @@ def test_safe_canvas_update_invalidates_paint_lru_cache():
     )
 
 
+def test_canvas_has_unified_gizmo_dispatch():
+    """
+    Regression lock: 캔버스 mouse handler 가 5 mode (text/crop/sticker/mosaic/
+    speech_bubble) 의 인터랙션을 활성 Gizmo dispatch 로 통합한다.
+
+    이전 구조 (mode 당 별도 분기 5×) 는 한 mode 의 회귀 (예: 모자이크 PyQt6
+    시그널 잔재, 텍스트 기즈모 paint LRU 회귀) 가 다른 mode 에 전파되지 않는
+    5× 패치 위험을 만들었다. Gizmo 추상화 + 단일 dispatch 로 root cause 가 단일
+    출처에서만 수정되도록 강제.
+    """
+    src = _read("editor/ui/canvas_widget_wx.py")
+    tree = ast.parse(src)
+
+    # 5 Gizmo 인스턴스 — __init__ 안에 self._gizmos dict 정의
+    assert "self._gizmos: Dict[str, Gizmo]" in src or "self._gizmos: dict" in src.lower(), (
+        "CanvasWidget 가 self._gizmos 를 보유하지 않습니다."
+    )
+    for mode in ('text', 'crop', 'sticker', 'mosaic', 'speech_bubble'):
+        assert f"'{mode}'" in src, f"Gizmo 인스턴스 '{mode}' 가 누락되었습니다."
+
+    # _active_gizmo 와 _dispatch_gizmo_release 메서드
+    for method_name in ('_active_gizmo', '_dispatch_gizmo_release'):
+        func = next(
+            (node for node in ast.walk(tree)
+             if isinstance(node, ast.FunctionDef) and node.name == method_name),
+            None,
+        )
+        assert func is not None, f"{method_name} 메서드가 사라졌습니다."
+
+    # mouse handler 가 활성 Gizmo dispatch 사용
+    for handler_name in ('_on_left_down', '_on_mouse_move', '_on_left_up', '_update_cursor_for_hover'):
+        handler = next(
+            (node for node in ast.walk(tree)
+             if isinstance(node, ast.FunctionDef) and node.name == handler_name),
+            None,
+        )
+        assert handler is not None, f"{handler_name} 핸들러가 사라졌습니다."
+        handler_src = ast.unparse(handler) if hasattr(ast, "unparse") else ""
+        assert "_active_gizmo" in handler_src, (
+            f"{handler_name} 가 활성 Gizmo dispatch 패턴 (_active_gizmo) 을 사용하지 않습니다."
+        )
+
+    # mode 별 별도 분기 (5×) 가 사라졌는지 — `self._text_dragging or self._text_resizing`
+    # 같은 ad-hoc 검사 패턴이 _on_left_up 에서 제거됐는지.
+    up_handler = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_on_left_up"),
+        None,
+    )
+    up_src = ast.unparse(up_handler) if hasattr(ast, "unparse") else ""
+    # 5 mode 별 분기가 통합되었으므로 _on_left_up 에서 mode-specific dragging/
+    # resizing flag 를 명시적으로 검사하는 패턴은 사라져야 함.
+    for mode_attr in ('_text_dragging', '_crop_dragging', '_sticker_dragging',
+                       '_mosaic_dragging', '_speech_bubble_dragging'):
+        assert mode_attr not in up_src, (
+            f"_on_left_up 에 {mode_attr} 분기가 남아 있습니다 — "
+            "Gizmo dispatch 통합이 완전하지 않습니다."
+        )
+
+
+def test_gizmo_class_supports_corner_only_and_all_handles():
+    """
+    Regression lock: Gizmo 클래스가 corner_only 옵션을 통해 sticker/mosaic/
+    speech_bubble (4 코너) 와 text/crop (8 핸들) 양쪽을 모두 지원해야 한다.
+    """
+    from editor.ui.canvas_gizmo import Gizmo, CORNER_HANDLES, ALL_HANDLES
+    from editor.ui.canvas_widget_wx import RectF
+
+    corner_gizmo = Gizmo('sticker', RectF, corner_only=True)
+    all_gizmo = Gizmo('text', RectF, corner_only=False)
+
+    assert corner_gizmo.allowed_handles() == CORNER_HANDLES
+    assert all_gizmo.allowed_handles() == ALL_HANDLES
+    assert len(CORNER_HANDLES) == 4
+    assert len(ALL_HANDLES) == 8
+
+
 def test_no_hardcoded_korean_in_editor_ui_implementation():
     """
     Regression lock: no bare user-facing Korean string literals may remain in

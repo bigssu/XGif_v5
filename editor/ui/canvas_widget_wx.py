@@ -7,9 +7,10 @@ PyQt6 QWidget을 wxPython wx.Panel로 마이그레이션
 import wx
 import math
 from collections import OrderedDict
-from typing import Optional, List, Tuple, TYPE_CHECKING
+from typing import Dict, Optional, List, Tuple, TYPE_CHECKING
 from PIL import Image
 from .style_constants_wx import Colors, Fonts
+from .canvas_gizmo import Gizmo
 from ..utils.image_utils import pil_to_wx_bitmap
 from ..utils.wx_paint_utils import draw_checkerboard, draw_handle, get_handle_rects, get_cursor_for_handle
 from ..utils.wx_events import (
@@ -98,54 +99,40 @@ class CanvasWidget(wx.Panel):
         self._auto_animation_mode = False
         self._auto_animation_frames = []
 
-        # 텍스트 편집 모드
-        self._text_edit_mode = False
-        self._text_rect = RectF()  # 이미지 좌표
-        self._text_dragging = False
-        self._text_resizing = False
-        self._resize_handle = None  # 'tl', 'tr', 'bl', 'br'
-        self._text_drag_start = wx.Point()
-        self._text_original_rect = RectF()
+        # 기즈모 영역 (text/crop/sticker/mosaic/speech_bubble) — 공통 추상화.
+        # 각 모드의 mouse 인터랙션 (드래그/리사이즈/핸들 hit-test) 은 Gizmo 가
+        # 담당. 이전엔 mode 당 7개 attr × 5 mode = 35 attr 가 산재하여 한
+        # mode 의 회귀가 4 mode 에 전파 안 돼 패치 5× 부담을 만들었다. 이제
+        # mode-specific attr (`_text_rect`, `_text_dragging`, ...) 들은 아래
+        # property alias 가 Gizmo 의 state 로 라우팅하여 backwards-compat 을
+        # 유지하면서 단일 진실 출처를 확립.
+        self._gizmos: Dict[str, Gizmo] = {
+            'text': Gizmo(
+                'text', RectF, allow_resize=True, corner_only=False,
+                on_release=self._dispatch_gizmo_release,
+            ),
+            'crop': Gizmo(
+                'crop', RectF, allow_resize=True, corner_only=False,
+                on_release=self._dispatch_gizmo_release,
+            ),
+            'sticker': Gizmo(
+                'sticker', RectF, allow_resize=True, corner_only=True,
+                on_release=self._dispatch_gizmo_release,
+            ),
+            'mosaic': Gizmo(
+                'mosaic', RectF, allow_resize=True, corner_only=True,
+                on_release=self._dispatch_gizmo_release,
+            ),
+            'speech_bubble': Gizmo(
+                'speech_bubble', RectF, allow_resize=True, corner_only=True,
+                on_release=self._dispatch_gizmo_release,
+            ),
+        }
+        # text/sticker 의 폰트·스티커 크기 추적 (Gizmo 외부 — 리사이즈 시 비례 계산)
         self._text_current_size = 32
         self._text_resize_start_size = 32
-
-        # 크롭 모드
-        self._crop_mode = False
-        self._crop_rect = RectF()  # 이미지 좌표
-        self._crop_dragging = False
-        self._crop_resizing = False
-        self._crop_handle = None
-        self._crop_drag_start = wx.Point()
-        self._crop_original_rect = RectF()
-
-        # 스티커 모드
-        self._sticker_mode = False
-        self._sticker_rect = RectF()  # 이미지 좌표
-        self._sticker_dragging = False
-        self._sticker_resizing = False
-        self._sticker_handle = None
-        self._sticker_drag_start = wx.Point()
-        self._sticker_original_rect = RectF()
         self._sticker_original_size = 80
         self._sticker_resize_start_size = 80
-
-        # 모자이크 모드
-        self._mosaic_mode = False
-        self._mosaic_rect = RectF()  # 이미지 좌표
-        self._mosaic_dragging = False
-        self._mosaic_resizing = False
-        self._mosaic_handle = None
-        self._mosaic_drag_start = wx.Point()
-        self._mosaic_original_rect = RectF()
-
-        # 말풍선 모드
-        self._speech_bubble_mode = False
-        self._speech_bubble_rect = RectF()  # 이미지 좌표
-        self._speech_bubble_dragging = False
-        self._speech_bubble_resizing = False
-        self._speech_bubble_handle = None
-        self._speech_bubble_drag_start = wx.Point()
-        self._speech_bubble_original_rect = RectF()
 
         # paint 결과 캐시 — LRU OrderedDict, 키: (id(pil_image), zoom, w, h),
         # 값: wx.Bitmap. 단일 캐시 항목은 zoom toggle / 인접 프레임 토글에서 매번
@@ -231,6 +218,252 @@ class CanvasWidget(wx.Panel):
     def clear_bitmap_cache(self) -> None:
         """paint LRU 캐시 비우기 — 메모리 압박 시 호출됨."""
         self._scaled_bitmap_cache.clear()
+
+    # ========================================================================
+    # Gizmo state property aliases (backwards-compat) — Gizmo 의 state 를 기존
+    # mode-specific attr 이름으로 노출. `self._text_rect.x = ...` 같은 in-place
+    # 변경은 Gizmo.rect 객체에 직접 반영되고, `self._text_rect = RectF(...)`
+    # reassign 은 setter 가 객체 attribute 를 in-place 복사하여 객체 동일성을
+    # 유지. 이로써 paint/start_X_mode/update_X_rect 등 기존 호출처가 깨지지
+    # 않으면서 단일 진실 출처 (Gizmo) 를 확립한다.
+    # ========================================================================
+
+    @staticmethod
+    def _copy_rect_into(target, value) -> None:
+        """RectF reassign 을 in-place mutation 으로 변환 (객체 동일성 유지)."""
+        target.x = value.x
+        target.y = value.y
+        target.width = value.width
+        target.height = value.height
+
+    # --- text ---
+    @property
+    def _text_edit_mode(self) -> bool: return self._gizmos['text'].active
+    @_text_edit_mode.setter
+    def _text_edit_mode(self, v: bool) -> None: self._gizmos['text'].active = v
+
+    @property
+    def _text_rect(self): return self._gizmos['text'].rect
+    @_text_rect.setter
+    def _text_rect(self, v) -> None: self._copy_rect_into(self._gizmos['text'].rect, v)
+
+    @property
+    def _text_dragging(self) -> bool: return self._gizmos['text'].dragging
+    @_text_dragging.setter
+    def _text_dragging(self, v: bool) -> None: self._gizmos['text'].dragging = v
+
+    @property
+    def _text_resizing(self) -> bool: return self._gizmos['text'].resizing
+    @_text_resizing.setter
+    def _text_resizing(self, v: bool) -> None: self._gizmos['text'].resizing = v
+
+    @property
+    def _resize_handle(self) -> Optional[str]: return self._gizmos['text'].handle
+    @_resize_handle.setter
+    def _resize_handle(self, v: Optional[str]) -> None: self._gizmos['text'].handle = v
+
+    @property
+    def _text_drag_start(self) -> wx.Point: return self._gizmos['text'].drag_start
+    @_text_drag_start.setter
+    def _text_drag_start(self, v: wx.Point) -> None: self._gizmos['text'].drag_start = v
+
+    @property
+    def _text_original_rect(self): return self._gizmos['text'].original_rect
+    @_text_original_rect.setter
+    def _text_original_rect(self, v) -> None: self._copy_rect_into(self._gizmos['text'].original_rect, v)
+
+    # --- crop ---
+    @property
+    def _crop_mode(self) -> bool: return self._gizmos['crop'].active
+    @_crop_mode.setter
+    def _crop_mode(self, v: bool) -> None: self._gizmos['crop'].active = v
+
+    @property
+    def _crop_rect(self): return self._gizmos['crop'].rect
+    @_crop_rect.setter
+    def _crop_rect(self, v) -> None: self._copy_rect_into(self._gizmos['crop'].rect, v)
+
+    @property
+    def _crop_dragging(self) -> bool: return self._gizmos['crop'].dragging
+    @_crop_dragging.setter
+    def _crop_dragging(self, v: bool) -> None: self._gizmos['crop'].dragging = v
+
+    @property
+    def _crop_resizing(self) -> bool: return self._gizmos['crop'].resizing
+    @_crop_resizing.setter
+    def _crop_resizing(self, v: bool) -> None: self._gizmos['crop'].resizing = v
+
+    @property
+    def _crop_handle(self) -> Optional[str]: return self._gizmos['crop'].handle
+    @_crop_handle.setter
+    def _crop_handle(self, v: Optional[str]) -> None: self._gizmos['crop'].handle = v
+
+    @property
+    def _crop_drag_start(self) -> wx.Point: return self._gizmos['crop'].drag_start
+    @_crop_drag_start.setter
+    def _crop_drag_start(self, v: wx.Point) -> None: self._gizmos['crop'].drag_start = v
+
+    @property
+    def _crop_original_rect(self): return self._gizmos['crop'].original_rect
+    @_crop_original_rect.setter
+    def _crop_original_rect(self, v) -> None: self._copy_rect_into(self._gizmos['crop'].original_rect, v)
+
+    # --- sticker ---
+    @property
+    def _sticker_mode(self) -> bool: return self._gizmos['sticker'].active
+    @_sticker_mode.setter
+    def _sticker_mode(self, v: bool) -> None: self._gizmos['sticker'].active = v
+
+    @property
+    def _sticker_rect(self): return self._gizmos['sticker'].rect
+    @_sticker_rect.setter
+    def _sticker_rect(self, v) -> None: self._copy_rect_into(self._gizmos['sticker'].rect, v)
+
+    @property
+    def _sticker_dragging(self) -> bool: return self._gizmos['sticker'].dragging
+    @_sticker_dragging.setter
+    def _sticker_dragging(self, v: bool) -> None: self._gizmos['sticker'].dragging = v
+
+    @property
+    def _sticker_resizing(self) -> bool: return self._gizmos['sticker'].resizing
+    @_sticker_resizing.setter
+    def _sticker_resizing(self, v: bool) -> None: self._gizmos['sticker'].resizing = v
+
+    @property
+    def _sticker_handle(self) -> Optional[str]: return self._gizmos['sticker'].handle
+    @_sticker_handle.setter
+    def _sticker_handle(self, v: Optional[str]) -> None: self._gizmos['sticker'].handle = v
+
+    @property
+    def _sticker_drag_start(self) -> wx.Point: return self._gizmos['sticker'].drag_start
+    @_sticker_drag_start.setter
+    def _sticker_drag_start(self, v: wx.Point) -> None: self._gizmos['sticker'].drag_start = v
+
+    @property
+    def _sticker_original_rect(self): return self._gizmos['sticker'].original_rect
+    @_sticker_original_rect.setter
+    def _sticker_original_rect(self, v) -> None: self._copy_rect_into(self._gizmos['sticker'].original_rect, v)
+
+    # --- mosaic ---
+    @property
+    def _mosaic_mode(self) -> bool: return self._gizmos['mosaic'].active
+    @_mosaic_mode.setter
+    def _mosaic_mode(self, v: bool) -> None: self._gizmos['mosaic'].active = v
+
+    @property
+    def _mosaic_rect(self): return self._gizmos['mosaic'].rect
+    @_mosaic_rect.setter
+    def _mosaic_rect(self, v) -> None: self._copy_rect_into(self._gizmos['mosaic'].rect, v)
+
+    @property
+    def _mosaic_dragging(self) -> bool: return self._gizmos['mosaic'].dragging
+    @_mosaic_dragging.setter
+    def _mosaic_dragging(self, v: bool) -> None: self._gizmos['mosaic'].dragging = v
+
+    @property
+    def _mosaic_resizing(self) -> bool: return self._gizmos['mosaic'].resizing
+    @_mosaic_resizing.setter
+    def _mosaic_resizing(self, v: bool) -> None: self._gizmos['mosaic'].resizing = v
+
+    @property
+    def _mosaic_handle(self) -> Optional[str]: return self._gizmos['mosaic'].handle
+    @_mosaic_handle.setter
+    def _mosaic_handle(self, v: Optional[str]) -> None: self._gizmos['mosaic'].handle = v
+
+    @property
+    def _mosaic_drag_start(self) -> wx.Point: return self._gizmos['mosaic'].drag_start
+    @_mosaic_drag_start.setter
+    def _mosaic_drag_start(self, v: wx.Point) -> None: self._gizmos['mosaic'].drag_start = v
+
+    @property
+    def _mosaic_original_rect(self): return self._gizmos['mosaic'].original_rect
+    @_mosaic_original_rect.setter
+    def _mosaic_original_rect(self, v) -> None: self._copy_rect_into(self._gizmos['mosaic'].original_rect, v)
+
+    # --- speech_bubble ---
+    @property
+    def _speech_bubble_mode(self) -> bool: return self._gizmos['speech_bubble'].active
+    @_speech_bubble_mode.setter
+    def _speech_bubble_mode(self, v: bool) -> None: self._gizmos['speech_bubble'].active = v
+
+    @property
+    def _speech_bubble_rect(self): return self._gizmos['speech_bubble'].rect
+    @_speech_bubble_rect.setter
+    def _speech_bubble_rect(self, v) -> None: self._copy_rect_into(self._gizmos['speech_bubble'].rect, v)
+
+    @property
+    def _speech_bubble_dragging(self) -> bool: return self._gizmos['speech_bubble'].dragging
+    @_speech_bubble_dragging.setter
+    def _speech_bubble_dragging(self, v: bool) -> None: self._gizmos['speech_bubble'].dragging = v
+
+    @property
+    def _speech_bubble_resizing(self) -> bool: return self._gizmos['speech_bubble'].resizing
+    @_speech_bubble_resizing.setter
+    def _speech_bubble_resizing(self, v: bool) -> None: self._gizmos['speech_bubble'].resizing = v
+
+    @property
+    def _speech_bubble_handle(self) -> Optional[str]: return self._gizmos['speech_bubble'].handle
+    @_speech_bubble_handle.setter
+    def _speech_bubble_handle(self, v: Optional[str]) -> None: self._gizmos['speech_bubble'].handle = v
+
+    @property
+    def _speech_bubble_drag_start(self) -> wx.Point: return self._gizmos['speech_bubble'].drag_start
+    @_speech_bubble_drag_start.setter
+    def _speech_bubble_drag_start(self, v: wx.Point) -> None: self._gizmos['speech_bubble'].drag_start = v
+
+    @property
+    def _speech_bubble_original_rect(self): return self._gizmos['speech_bubble'].original_rect
+    @_speech_bubble_original_rect.setter
+    def _speech_bubble_original_rect(self, v) -> None: self._copy_rect_into(self._gizmos['speech_bubble'].original_rect, v)
+
+    # ========================================================================
+    # Gizmo dispatch
+    # ========================================================================
+
+    def _active_gizmo(self) -> Optional[Gizmo]:
+        """현재 활성화된 Gizmo (있으면). 최대 1개만 활성으로 가정."""
+        for gizmo in self._gizmos.values():
+            if gizmo.active:
+                return gizmo
+        return None
+
+    def _dispatch_gizmo_release(self, gizmo: Gizmo) -> None:
+        """Gizmo 의 mouse up 시 호출되는 release 콜백 — mode 별 X_CHANGED 이벤트 발생.
+
+        text 의 resize 폰트 크기 비례 계산은 mouse_move 중에 일어나 별도 처리.
+        모자이크의 event 는 (x, y, GetRight, GetBottom) 을 (x, y, width, height)
+        필드에 담는 의미상 어긋남을 유지 (toolbar 가 그 시그니처로 받음).
+        """
+        self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
+        name = gizmo.name
+        rect = gizmo.rect
+
+        if name == 'text':
+            evt = TextMovedEvent(
+                "text_overlay", int(rect.x), int(rect.y),
+            )
+        elif name == 'crop':
+            evt = CropChangedEvent(
+                int(rect.x), int(rect.y), int(rect.width), int(rect.height),
+            )
+        elif name == 'sticker':
+            evt = StickerChangedEvent(
+                "sticker_overlay",
+                int(rect.x), int(rect.y),
+                int(rect.width), int(rect.height),
+            )
+        elif name == 'mosaic':
+            evt = MosaicRegionChangedEvent(
+                int(rect.x), int(rect.y),
+                int(rect.x + rect.width), int(rect.y + rect.height),
+            )
+        elif name == 'speech_bubble':
+            evt = SpeechBubbleChangedEvent(
+                int(rect.x), int(rect.y), int(rect.width), int(rect.height),
+            )
+        else:
+            return
+        wx.PostEvent(self, evt)
 
     # ========================================================================
     # 좌표 변환
@@ -719,7 +952,7 @@ class CanvasWidget(wx.Panel):
         event.Skip()
 
     def _on_left_down(self, event):
-        """왼쪽 버튼 클릭"""
+        """왼쪽 버튼 클릭 — 드로잉 또는 활성 Gizmo 의 핸들/드래그 시작."""
         pos = event.GetPosition()
 
         # 드로잉 모드 (이미지 좌표로 저장하여 줌/패닝 후에도 정확한 위치 유지)
@@ -730,137 +963,30 @@ class CanvasWidget(wx.Panel):
             self.Refresh()
             return
 
-        # 텍스트 편집 모드
-        if self._text_edit_mode:
-            # 핸들 클릭 체크 (리사이즈)
-            handle = self._get_text_handle_at(pos)
+        # 활성 Gizmo dispatch — 5 mode (text/crop/sticker/mosaic/speech_bubble) 의
+        # 핸들 hit-test 와 드래그 시작 로직이 모두 여기로 통합. 이전엔 mode 당
+        # 별도 분기 25줄씩, 5×25 = ~125줄이 산재하여 한 mode 의 회귀 (예: 모자이크
+        # PyQt6 시그널 잔재) 가 다른 mode 에 전파되지 않았다.
+        gizmo = self._active_gizmo()
+        if gizmo:
+            screen_rect = self._image_rect_to_screen(gizmo.rect)
+            handle = gizmo.hit_handle(screen_rect, pos, self.HANDLE_SIZE)
             if handle:
-                self._text_resizing = True
-                self._resize_handle = handle
-                self._text_drag_start = pos
-                self._text_original_rect = RectF(
-                    self._text_rect.x, self._text_rect.y,
-                    self._text_rect.width, self._text_rect.height
-                )
-                # 리사이즈 시작 시 현재 폰트 크기 저장 (원본 PyQt6 로직)
-                self._text_resize_start_size = self._text_current_size
+                gizmo.begin_resize(pos, handle)
+                # text resize 시 현재 폰트 크기 저장 — mouse_move 의 비례 계산용
+                if gizmo.name == 'text':
+                    self._text_resize_start_size = self._text_current_size
                 self.SetCursor(get_cursor_for_handle(handle))
                 return
-
-            # 사각형 내부 클릭 (드래그)
-            if self._is_point_in_text_rect(pos):
-                self._text_dragging = True
-                self._text_drag_start = pos
-                self._text_original_rect = RectF(
-                    self._text_rect.x, self._text_rect.y,
-                    self._text_rect.width, self._text_rect.height
-                )
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-        # 크롭 모드
-        if self._crop_mode:
-            # 핸들 클릭 체크
-            handle = self._get_crop_handle_at(pos)
-            if handle:
-                self._crop_resizing = True
-                self._crop_handle = handle
-                self._crop_drag_start = pos
-                self._crop_original_rect = RectF(
-                    self._crop_rect.x, self._crop_rect.y,
-                    self._crop_rect.width, self._crop_rect.height
-                )
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            # 사각형 내부 클릭
-            if self._is_point_in_crop_rect(pos):
-                self._crop_dragging = True
-                self._crop_drag_start = pos
-                self._crop_original_rect = RectF(
-                    self._crop_rect.x, self._crop_rect.y,
-                    self._crop_rect.width, self._crop_rect.height
-                )
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-
-        # 스티커 모드
-        if self._sticker_mode:
-            handle = self._get_sticker_handle_at(pos)
-            if handle:
-                self._sticker_resizing = True
-                self._sticker_handle = handle
-                self._sticker_drag_start = pos
-                self._sticker_original_rect = RectF(
-                    self._sticker_rect.x, self._sticker_rect.y,
-                    self._sticker_rect.width, self._sticker_rect.height
-                )
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            if self._is_point_in_sticker_rect(pos):
-                self._sticker_dragging = True
-                self._sticker_drag_start = pos
-                self._sticker_original_rect = RectF(
-                    self._sticker_rect.x, self._sticker_rect.y,
-                    self._sticker_rect.width, self._sticker_rect.height
-                )
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-        # 모자이크 모드
-        if self._mosaic_mode:
-            handle = self._get_mosaic_handle_at(pos)
-            if handle:
-                self._mosaic_resizing = True
-                self._mosaic_handle = handle
-                self._mosaic_drag_start = pos
-                self._mosaic_original_rect = RectF(
-                    self._mosaic_rect.x, self._mosaic_rect.y,
-                    self._mosaic_rect.width, self._mosaic_rect.height
-                )
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            if self._is_point_in_mosaic_rect(pos):
-                self._mosaic_dragging = True
-                self._mosaic_drag_start = pos
-                self._mosaic_original_rect = RectF(
-                    self._mosaic_rect.x, self._mosaic_rect.y,
-                    self._mosaic_rect.width, self._mosaic_rect.height
-                )
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-        # 말풍선 모드
-        if self._speech_bubble_mode:
-            handle = self._get_speech_bubble_handle_at(pos)
-            if handle:
-                self._speech_bubble_resizing = True
-                self._speech_bubble_handle = handle
-                self._speech_bubble_drag_start = pos
-                self._speech_bubble_original_rect = RectF(
-                    self._speech_bubble_rect.x, self._speech_bubble_rect.y,
-                    self._speech_bubble_rect.width, self._speech_bubble_rect.height
-                )
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            if self._is_point_in_speech_bubble_rect(pos):
-                self._speech_bubble_dragging = True
-                self._speech_bubble_drag_start = pos
-                self._speech_bubble_original_rect = RectF(
-                    self._speech_bubble_rect.x, self._speech_bubble_rect.y,
-                    self._speech_bubble_rect.width, self._speech_bubble_rect.height
-                )
+            if gizmo.is_point_inside(screen_rect, pos):
+                gizmo.begin_drag(pos)
                 self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
                 return
 
         event.Skip()
 
     def _on_left_up(self, event):
-        """왼쪽 버튼 릴리즈"""
+        """왼쪽 버튼 릴리즈 — 드로잉 완료 또는 활성 Gizmo 의 인터랙션 종료."""
         # 드로잉 완료
         if self._is_drawing:
             self._is_drawing = False
@@ -880,82 +1006,16 @@ class CanvasWidget(wx.Panel):
             evt = DrawingFinishedEvent()
             wx.PostEvent(self, evt)
 
-        # 텍스트 드래그/리사이즈 종료
-        if self._text_dragging or self._text_resizing:
-            self._text_dragging = False
-            self._text_resizing = False
-            self._resize_handle = None
-            self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
-
-            # 이벤트 발생
-            evt = TextMovedEvent("text_overlay",
-                               int(self._text_rect.x),
-                               int(self._text_rect.y))
-            wx.PostEvent(self, evt)
-
-        # 크롭 드래그/리사이즈 종료
-        if self._crop_dragging or self._crop_resizing:
-            self._crop_dragging = False
-            self._crop_resizing = False
-            self._crop_handle = None
-            self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
-
-            # 이벤트 발생
-            evt = CropChangedEvent(
-                int(self._crop_rect.x), int(self._crop_rect.y),
-                int(self._crop_rect.width), int(self._crop_rect.height)
-            )
-            wx.PostEvent(self, evt)
-
-        # 스티커 드래그/리사이즈 종료
-        if self._sticker_dragging or self._sticker_resizing:
-            self._sticker_dragging = False
-            self._sticker_resizing = False
-            self._sticker_handle = None
-            self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
-
-            # 이벤트 발생 (sticker_id, x, y, width, height)
-            evt = StickerChangedEvent(
-                "sticker_overlay",
-                int(self._sticker_rect.x),
-                int(self._sticker_rect.y),
-                int(self._sticker_rect.width),
-                int(self._sticker_rect.height)
-            )
-            wx.PostEvent(self, evt)
-
-        # 모자이크 드래그/리사이즈 종료
-        if self._mosaic_dragging or self._mosaic_resizing:
-            self._mosaic_dragging = False
-            self._mosaic_resizing = False
-            self._mosaic_handle = None
-            self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
-
-            # 이벤트 발생
-            evt = MosaicRegionChangedEvent(
-                int(self._mosaic_rect.x), int(self._mosaic_rect.y),
-                int(self._mosaic_rect.GetRight()), int(self._mosaic_rect.GetBottom())
-            )
-            wx.PostEvent(self, evt)
-
-        # 말풍선 드래그/리사이즈 종료
-        if self._speech_bubble_dragging or self._speech_bubble_resizing:
-            self._speech_bubble_dragging = False
-            self._speech_bubble_resizing = False
-            self._speech_bubble_handle = None
-            self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
-
-            # 이벤트 발생
-            evt = SpeechBubbleChangedEvent(
-                int(self._speech_bubble_rect.x), int(self._speech_bubble_rect.y),
-                int(self._speech_bubble_rect.width), int(self._speech_bubble_rect.height)
-            )
-            wx.PostEvent(self, evt)
+        # 활성 Gizmo 인터랙션 종료 — end_interaction 이 on_release 콜백을 호출하고
+        # 콜백 (`_dispatch_gizmo_release`) 이 mode 에 맞는 X_CHANGED 이벤트를 발생.
+        gizmo = self._active_gizmo()
+        if gizmo:
+            gizmo.end_interaction()
 
         event.Skip()
 
     def _on_mouse_move(self, event):
-        """마우스 이동"""
+        """마우스 이동 — 팬/드로잉/활성 Gizmo 의 드래그·리사이즈/호버 커서."""
         pos = event.GetPosition()
 
         # 팬 처리
@@ -978,123 +1038,30 @@ class CanvasWidget(wx.Panel):
             self.Refresh()
             return
 
-        # 텍스트 드래그
-        if self._text_dragging and event.LeftIsDown():
-            delta = pos - self._text_drag_start
-            img_delta_x = delta.x / self._zoom
-            img_delta_y = delta.y / self._zoom
-
-            self._text_rect.x = self._text_original_rect.x + img_delta_x
-            self._text_rect.y = self._text_original_rect.y + img_delta_y
-
-            self.Refresh()
-            return
-
-        # 텍스트 리사이즈
-        if self._text_resizing and event.LeftIsDown():
-            self._apply_resize(
-                pos, self._text_drag_start, self._resize_handle,
-                self._text_original_rect, self._text_rect
-            )
-
-            # 크기 변화에 따른 폰트 크기 계산 (원본 PyQt6 로직)
-            base_width = self._text_original_rect.width
-            if base_width <= 0:
-                base_width = self._text_rect.width if self._text_rect.width > 0 else 1.0
-            scale = self._text_rect.width / base_width
-            new_font_size = max(8, int(self._text_resize_start_size * scale))
-            self._text_current_size = new_font_size
-
-            # 텍스트 리사이즈 이벤트 발생 (폰트 크기 전달)
-            evt = TextResizedEvent("text_overlay", new_font_size)
-            wx.PostEvent(self, evt)
-
-            self.Refresh()
-            return
-
-        # 크롭 드래그
-        if self._crop_dragging and event.LeftIsDown():
-            delta = pos - self._crop_drag_start
-            img_delta_x = delta.x / self._zoom
-            img_delta_y = delta.y / self._zoom
-
-            self._crop_rect.x = self._crop_original_rect.x + img_delta_x
-            self._crop_rect.y = self._crop_original_rect.y + img_delta_y
-
-            self.Refresh()
-            return
-
-        # 크롭 리사이즈
-        if self._crop_resizing and event.LeftIsDown():
-            self._apply_resize(
-                pos, self._crop_drag_start, self._crop_handle,
-                self._crop_original_rect, self._crop_rect
-            )
-            self.Refresh()
-            return
-
-        # 스티커 드래그
-        if self._sticker_dragging and event.LeftIsDown():
-            delta = pos - self._sticker_drag_start
-            img_delta_x = delta.x / self._zoom
-            img_delta_y = delta.y / self._zoom
-
-            self._sticker_rect.x = self._sticker_original_rect.x + img_delta_x
-            self._sticker_rect.y = self._sticker_original_rect.y + img_delta_y
-
-            self.Refresh()
-            return
-
-        # 스티커 리사이즈
-        if self._sticker_resizing and event.LeftIsDown():
-            self._apply_resize(
-                pos, self._sticker_drag_start, self._sticker_handle,
-                self._sticker_original_rect, self._sticker_rect
-            )
-            self.Refresh()
-            return
-
-        # 모자이크 드래그
-        if self._mosaic_dragging and event.LeftIsDown():
-            delta = pos - self._mosaic_drag_start
-            img_delta_x = delta.x / self._zoom
-            img_delta_y = delta.y / self._zoom
-
-            self._mosaic_rect.x = self._mosaic_original_rect.x + img_delta_x
-            self._mosaic_rect.y = self._mosaic_original_rect.y + img_delta_y
-
-            self.Refresh()
-            return
-
-        # 모자이크 리사이즈
-        if self._mosaic_resizing and event.LeftIsDown():
-            self._apply_resize(
-                pos, self._mosaic_drag_start, self._mosaic_handle,
-                self._mosaic_original_rect, self._mosaic_rect
-            )
-            self.Refresh()
-            return
-
-        # 말풍선 드래그
-        if self._speech_bubble_dragging and event.LeftIsDown():
-            delta = pos - self._speech_bubble_drag_start
-            img_delta_x = delta.x / self._zoom
-            img_delta_y = delta.y / self._zoom
-
-            self._speech_bubble_rect.x = self._speech_bubble_original_rect.x + img_delta_x
-            self._speech_bubble_rect.y = self._speech_bubble_original_rect.y + img_delta_y
-
-            self.Refresh()
-            return
-
-        # 말풍선 리사이즈
-        if self._speech_bubble_resizing and event.LeftIsDown():
-            self._apply_resize(
-                pos, self._speech_bubble_drag_start, self._speech_bubble_handle,
-                self._speech_bubble_original_rect, self._speech_bubble_rect
-            )
-            self.Refresh()
-            return
+        # 활성 Gizmo 의 드래그/리사이즈 — 5 mode 통합. 이전엔 mode 당 ~20줄
+        # 블록이 5번 (~120줄) 산재했고, 한 mode 의 회귀가 다른 mode 에 전파
+        # 안 됐다. 이제 Gizmo.apply_drag/apply_resize 가 단일 출처.
+        gizmo = self._active_gizmo()
+        if gizmo and event.LeftIsDown():
+            if gizmo.dragging:
+                gizmo.apply_drag(pos, self._zoom)
+                self.Refresh()
+                return
+            if gizmo.resizing:
+                gizmo.apply_resize(pos, self._zoom)
+                # text 모드는 리사이즈 시 폰트 크기 비례 계산 + TextResizedEvent
+                # 발생 — 다른 mode 와 다른 유일한 부가 동작.
+                if gizmo.name == 'text':
+                    base_width = gizmo.original_rect.width
+                    if base_width <= 0:
+                        base_width = gizmo.rect.width if gizmo.rect.width > 0 else 1.0
+                    scale = gizmo.rect.width / base_width
+                    new_font_size = max(8, int(self._text_resize_start_size * scale))
+                    self._text_current_size = new_font_size
+                    evt = TextResizedEvent("text_overlay", new_font_size)
+                    wx.PostEvent(self, evt)
+                self.Refresh()
+                return
 
         # 커서 변경 (호버 상태)
         self._update_cursor_for_hover(pos)
@@ -1143,59 +1110,15 @@ class CanvasWidget(wx.Panel):
             target_rect.height = 10
 
     def _update_cursor_for_hover(self, pos: wx.Point):
-        """호버 상태에서 커서 업데이트"""
-        # 텍스트 모드
-        if self._text_edit_mode:
-            handle = self._get_text_handle_at(pos)
+        """호버 상태에서 커서 업데이트 — 활성 Gizmo dispatch + 기본 커서."""
+        gizmo = self._active_gizmo()
+        if gizmo:
+            screen_rect = self._image_rect_to_screen(gizmo.rect)
+            handle = gizmo.hit_handle(screen_rect, pos, self.HANDLE_SIZE)
             if handle:
                 self.SetCursor(get_cursor_for_handle(handle))
                 return
-
-            if self._is_point_in_text_rect(pos):
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-        # 크롭 모드
-        if self._crop_mode:
-            handle = self._get_crop_handle_at(pos)
-            if handle:
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            if self._is_point_in_crop_rect(pos):
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-        # 스티커 모드
-        if self._sticker_mode:
-            handle = self._get_sticker_handle_at(pos)
-            if handle:
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            if self._is_point_in_sticker_rect(pos):
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-        # 모자이크 모드
-        if self._mosaic_mode:
-            handle = self._get_mosaic_handle_at(pos)
-            if handle:
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            if self._is_point_in_mosaic_rect(pos):
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
-                return
-
-        # 말풍선 모드
-        if self._speech_bubble_mode:
-            handle = self._get_speech_bubble_handle_at(pos)
-            if handle:
-                self.SetCursor(get_cursor_for_handle(handle))
-                return
-
-            if self._is_point_in_speech_bubble_rect(pos):
+            if gizmo.is_point_inside(screen_rect, pos):
                 self.SetCursor(wx.Cursor(wx.CURSOR_SIZING))
                 return
 
