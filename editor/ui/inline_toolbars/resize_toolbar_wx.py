@@ -69,7 +69,7 @@ class ResizeToolbar(InlineToolbarBase):
         # 프리셋
         self._preset_combo = wx.ComboBox(self._controls_widget, style=wx.CB_READONLY,
                                         choices=["50%", "75%", "100%", "150%", "200%"])
-        self._preset_combo.SetSelection(2)  # 기본값 100%
+        self._preset_combo.SetSelection(1)  # 기본값 75% — 대부분의 GIF 가 압축 후 작은 크기를 선호함
         self._preset_combo.SetMinSize((80, -1))
         preset_tooltip = translations.tr("resize_preset") if translations else "크기 프리셋"
         self._preset_combo.SetToolTip(preset_tooltip)
@@ -161,12 +161,26 @@ class ResizeToolbar(InlineToolbarBase):
             self._apply_preset(scale)
 
     def _apply_preset(self, scale: float):
-        """프리셋 적용"""
+        """프리셋 적용 — 단일 선택이므로 디바운스 불필요, 즉시 미리보기.
+
+        이전엔 50ms `_preview_timer` 로 지연 → `_update_preview` 안에서 lazy
+        snapshot 비용까지 합쳐져 사용자 체감 "풀다운 50% 선택 후에도 화면이
+        안 줄어드는" 회귀를 유발 (사용자 보고 2026-05-21). spin 변경 (width/
+        height) 은 사용자가 빠르게 클릭하는 케이스라 150ms 디바운스가 필요하지만,
+        preset 은 한 번의 명확한 선택이므로 즉시 처리해야 한다.
+
+        ComboBox 이벤트 핸들러 내 동기 호출은 dropdown 위치 회귀를 일으킬 수
+        있어 `wx.CallAfter` 로 다음 idle 에서 미리보기 갱신 (50ms timer 보다
+        빠르고 안전).
+        """
         self._updating = True
         self._width_spin.SetValue(int(self._original_width * scale))
         self._height_spin.SetValue(int(self._original_height * scale))
         self._updating = False
-        self._preview_timer.Start(50, wx.TIMER_ONE_SHOT)
+        # 이전 pending timer 가 있으면 취소 — 중복 갱신 방지
+        if self._preview_timer.IsRunning():
+            self._preview_timer.Stop()
+        wx.CallAfter(self._update_preview)
 
     def _update_preview(self):
         """실시간 프리뷰 업데이트"""

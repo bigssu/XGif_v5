@@ -1124,6 +1124,82 @@ def test_frame_list_has_navigation_highlight_distinct_from_selection():
     )
 
 
+def test_resize_toolbar_preset_default_is_75_percent():
+    """
+    Regression lock: ResizeToolbar 의 preset combo 디폴트 선택은 75%.
+
+    이전 default 가 100% 였으나, GIF 편집의 일반적인 워크플로우는 원본을 축소
+    하는 케이스가 압도적이라 75% 가 더 적합 (사용자 요청 2026-05-21).
+    """
+    src = _read("editor/ui/inline_toolbars/resize_toolbar_wx.py")
+    # choices=["50%", "75%", "100%", "150%", "200%"] → 인덱스 1 == 75%
+    assert 'choices=["50%", "75%", "100%", "150%", "200%"]' in src, (
+        "preset choices 가 변경됐습니다 — default selection 매핑을 재확인하세요."
+    )
+    assert "SetSelection(1)" in src, (
+        "preset 디폴트가 75% (인덱스 1) 가 아닙니다."
+    )
+
+
+def test_resize_toolbar_preset_applies_immediately_without_timer_delay():
+    """
+    Regression lock: `_apply_preset` 는 50ms `_preview_timer` 우회하고 즉시
+    `_update_preview` 를 호출해야 한다.
+
+    사용자 보고 "풀다운 50% 선택했지만 다시 풀다운을 클릭하기 전까지 화면 크기
+    가 줄어들지 않음" (2026-05-21) — 50ms timer 지연 + lazy snapshot 비용 +
+    canvas.Update() 누락의 복합 회귀였다. preset 은 단일 선택이라 디바운스가
+    불필요하고, ComboBox 이벤트 핸들러 내 동기 호출은 dropdown 위치 회귀
+    위험이 있어 `wx.CallAfter` 로 다음 idle 에 처리한다.
+    """
+    src = _read("editor/ui/inline_toolbars/resize_toolbar_wx.py")
+    tree = ast.parse(src)
+
+    apply_preset = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_apply_preset"),
+        None,
+    )
+    assert apply_preset is not None, "_apply_preset 메서드가 사라졌습니다."
+    fn_src = ast.unparse(apply_preset) if hasattr(ast, "unparse") else ""
+    # 50ms timer 지연 패턴 부재
+    assert "_preview_timer.Start(50" not in fn_src, (
+        "_apply_preset 가 50ms 디바운스를 사용합니다 — preset 은 단일 선택이라 "
+        "즉시 갱신해야 합니다 ('풀다운 선택 후 화면 변화 없음' 회귀)."
+    )
+    # wx.CallAfter 로 즉시 미리보기 호출
+    assert "wx.CallAfter" in fn_src and "_update_preview" in fn_src, (
+        "_apply_preset 가 wx.CallAfter(_update_preview) 로 즉시 갱신하지 않습니다."
+    )
+
+
+def test_safe_canvas_update_calls_update_for_immediate_paint():
+    """
+    Regression lock: `InlineToolbarBase._safe_canvas_update` 는 `canvas.Refresh()`
+    뿐만 아니라 `canvas.Update()` 도 호출해야 한다.
+
+    Refresh() 는 invalidate 만 → 다음 paint event 까지 실제 paint 지연. mouse
+    가 잠시 안 움직이면 paint 가 안 일어나 사용자가 "화면 변화 없음" 으로
+    인지하는 회귀 (resize preset 보고 2026-05-21). Update() 가 invalidated
+    region 을 즉시 paint 하여 응답성 보장.
+    """
+    src = _read("editor/ui/inline_toolbars/base_toolbar_wx.py")
+    tree = ast.parse(src)
+    fn = next(
+        (node for node in ast.walk(tree)
+         if isinstance(node, ast.FunctionDef) and node.name == "_safe_canvas_update"),
+        None,
+    )
+    assert fn is not None, "_safe_canvas_update 메서드가 사라졌습니다."
+    fn_src = ast.unparse(fn) if hasattr(ast, "unparse") else ""
+    assert "canvas.Refresh" in fn_src, "_safe_canvas_update 가 Refresh() 를 호출하지 않습니다."
+    assert "canvas.Update" in fn_src, (
+        "_safe_canvas_update 가 canvas.Update() 를 호출하지 않습니다 — "
+        "Refresh 만으로는 mouse idle 동안 paint 가 지연되어 'preset 변경 후 "
+        "화면 변화 없음' 회귀가 재발합니다."
+    )
+
+
 def test_resize_toolbar_uses_lazy_snapshot_to_avoid_activation_freeze():
     """
     Regression lock: `ResizeToolbar._on_activated` 는 N × `Image.copy()` 가 발생하는

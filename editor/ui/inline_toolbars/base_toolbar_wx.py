@@ -395,6 +395,11 @@ class InlineToolbarBase(wx.Panel):
                 if hasattr(canvas, 'clear_bitmap_cache'):
                     canvas.clear_bitmap_cache()
                 canvas.Refresh()
+                # Refresh() 는 invalidate 만 — 다음 paint event 까지 실제 paint 가
+                # 지연된다. mouse 가 한동안 안 움직이면 paint 가 안 일어나 사용자가
+                # "변화 없음" 으로 인지 (resize preset 보고 2026-05-21). Update() 가
+                # invalidated region 을 즉시 paint 하여 응답성 보장.
+                canvas.Update()
         except Exception:
             pass
 
