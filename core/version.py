@@ -1,7 +1,7 @@
 """XGif 버전 정보 — 단일 진실 소스 (Single Source of Truth)"""
 
 APP_NAME = "XGif"
-APP_VERSION = "2.1.5"
-EDITOR_VERSION = "2.1.5"
+APP_VERSION = "2.1.6"
+EDITOR_VERSION = "2.1.6"
 APP_DEVELOPER = "CoreVFX 서승욱"
-APP_LAST_MODIFIED = "2026-05-18"
+APP_LAST_MODIFIED = "2026-05-22"
