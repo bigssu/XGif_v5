@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from PIL import Image
 import glob
 import os
+import math
+import threading
+import time
 
 from .frame import Frame
 from .frame_collection import FrameCollection
@@ -19,6 +22,7 @@ class LoadResult:
     frames: Optional[FrameCollection] = None
     success: bool = False
     error_message: str = ""
+    cancelled: bool = False
 
     @classmethod
     def error(cls, message: str) -> 'LoadResult':
@@ -49,7 +53,9 @@ class GifDecoder:
     def load(cls, file_path: str,
              video_fps: int = 10,
              video_max_frames: int = 500,
-             progress_callback: Optional[Callable[[int, int], None]] = None
+             progress_callback: Optional[Callable[[int, int], None]] = None,
+             cancel_event: Optional[threading.Event] = None,
+             timeout: float = 3600.0
              ) -> LoadResult:
         """GIF, 이미지 또는 비디오 파일 로드
 
@@ -58,6 +64,8 @@ class GifDecoder:
             video_fps: 비디오 파일의 경우 추출할 FPS (기본 10)
             video_max_frames: 비디오 파일의 경우 최대 프레임 수 (기본 500)
             progress_callback: 진행률 콜백 (current, total)
+            cancel_event: GIF 프레임 사이 또는 비디오 읽기 대기 중 취소 신호.
+            timeout: 로드 제한시간(초); Pillow 처리는 프레임 사이에 확인합니다.
 
         Returns:
             LoadResult: 로드 결과
@@ -69,18 +77,44 @@ class GifDecoder:
 
         ext = path.suffix.lower()
 
-        if ext == '.gif':
-            return cls._load_gif(path, progress_callback=progress_callback)
-        elif ext in cls.VIDEO_EXTENSIONS:
-            return cls._load_video(path, video_fps, video_max_frames, progress_callback)
-        elif ext in cls.SUPPORTED_EXTENSIONS:
-            return cls._load_image(path)
-        else:
-            return LoadResult.error(f"지원하지 않는 파일 형식입니다: {ext}")
+        if not math.isfinite(timeout) or timeout <= 0:
+            return LoadResult.error("제한시간은 양의 유한한 값이어야 합니다")
+        deadline = time.monotonic() + timeout
+
+        def check():
+            if cancel_event is not None and cancel_event.is_set():
+                raise InterruptedError("작업이 취소되었습니다")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("이미지 로드 제한시간을 초과했습니다")
+
+        def progress(current, total):
+            check()
+            if progress_callback is not None:
+                progress_callback(current, total)
+            check()
+
+        try:
+            check()
+            if ext == '.gif':
+                result = cls._load_gif(path, progress_callback=progress)
+            elif ext in cls.VIDEO_EXTENSIONS:
+                return cls._load_video(path, video_fps, video_max_frames, progress_callback,
+                                       cancel_event, timeout)
+            elif ext in cls.SUPPORTED_EXTENSIONS:
+                result = cls._load_image(path)
+            else:
+                return LoadResult.error(f"지원하지 않는 파일 형식입니다: {ext}")
+            check()
+            return result
+        except InterruptedError as e:
+            return LoadResult(cancelled=True, error_message=str(e))
+        except TimeoutError as e:
+            return LoadResult.error(str(e))
 
     @classmethod
     def _load_video(cls, path: Path, target_fps: int, max_frames: int,
-                    progress_callback: Optional[Callable[[int, int], None]]) -> LoadResult:
+                    progress_callback: Optional[Callable[[int, int], None]],
+                    cancel_event=None, timeout: float = 3600.0) -> LoadResult:
         """비디오 파일 로드 (VideoDecoder 사용)"""
         try:
             from .video_decoder import VideoDecoder
@@ -89,10 +123,14 @@ class GifDecoder:
                 str(path),
                 target_fps=target_fps,
                 max_frames=max_frames,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+                timeout=timeout,
             )
 
-            if result.success:
+            if result.cancelled:
+                return LoadResult(cancelled=True, error_message=result.error_message)
+            elif result.success:
                 return LoadResult.ok(result.frames)
             else:
                 return LoadResult.error(result.error_message)
@@ -178,17 +216,19 @@ class GifDecoder:
                                 continue
 
                             frame_index += 1
-                            # 비동기 워커 진행률 보고. InterruptedError 는 워커 취소 신호
-                            # 이므로 외부의 일반 Exception catch 를 통과하도록 그대로
-                            # 재전파한다 (VideoLoadWorker.run 이 emit_cancelled 처리).
+                            # 취소/제한시간 예외는 부분 성공으로 처리하지 않습니다.
                             if progress_callback is not None:
                                 progress_callback(frame_index, total_frames)
                     except EOFError:
                         pass  # 모든 프레임 처리 완료
+                    except (InterruptedError, TimeoutError):
+                        raise
                     except Exception as e:
                         # 프레임 읽기 중 오류 발생
                         if collection.is_empty:
                             return LoadResult.error(f"프레임 읽기 실패: {str(e)}")
+            except (InterruptedError, TimeoutError):
+                raise
             except Exception as e:
                 return LoadResult.error(f"GIF 파일 열기 실패: {str(e)}")
 
@@ -199,8 +239,7 @@ class GifDecoder:
 
         except MemoryError:
             return LoadResult.error("메모리 부족으로 파일을 로드할 수 없습니다")
-        except InterruptedError:
-            # 사용자 취소 — 워커가 처리하도록 그대로 전파.
+        except (InterruptedError, TimeoutError):
             raise
         except Exception as e:
             return LoadResult.error(f"GIF 로드 실패: {str(e)}")

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from core import audio_recorder
 
@@ -105,7 +106,7 @@ def test_start_result_reports_requested_mic_failure_when_system_only(monkeypatch
         recorder.cleanup()
 
 
-def test_start_result_marks_default_input_as_mic_fallback(monkeypatch):
+def test_start_result_uses_explicit_mic_lane_without_loopback(monkeypatch):
     class FakeStream:
         def __init__(self, *args, device=None, **kwargs):
             self.device = device
@@ -143,9 +144,94 @@ def test_start_result_marks_default_input_as_mic_fallback(monkeypatch):
     result = recorder.start()
     try:
         assert bool(result) is True
-        assert result.system_started is True
+        assert result.system_started is False
         assert result.mic_started is True
-        assert result.mic_fallback_to_default_input is True
+        assert result.mic_fallback_to_default_input is False
         assert result.requested_mic_missing is False
+        recorder.pause()
+        recorder.stop()
+        assert recorder.start()
+        recorder._mic_audio_callback(np.ones((1, 1), dtype=np.float32), None, None, None)
+        assert len(recorder.mic_audio_data) == 1
     finally:
         recorder.cleanup()
+
+
+def test_pause_discards_both_inputs_without_consuming_buffer(monkeypatch):
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", False)
+    recorder = audio_recorder.AudioRecorder(max_buffer_mb=16 / (1024 * 1024))
+    recorder.recording = True
+    recorder.record_mic = True
+    chunk = np.ones((1, 1), dtype=np.float32)
+    callbacks = (recorder._system_audio_callback, recorder._mic_audio_callback)
+    for callback in callbacks:
+        callback(chunk, None, None, None)
+    recorder.pause()
+    recorder.pause()
+    for callback in callbacks:
+        callback(chunk * 2, None, None, None)
+    assert recorder.is_recording()
+    assert recorder._audio_buffer_total_bytes == 8
+    assert not recorder.buffer_limit_reached
+    recorder.resume()
+    recorder.resume()
+    for callback in callbacks:
+        callback(chunk * 3, None, None, None)
+    for chunks in (recorder.system_audio_data, recorder.mic_audio_data):
+        np.testing.assert_array_equal(np.concatenate(chunks).ravel(), [1, 3])
+    assert recorder._audio_buffer_total_bytes == 16
+    recorder.pause()
+    recorder.cleanup()
+    assert not recorder._paused
+
+
+@pytest.mark.parametrize("loopback_device", [None, 0])
+def test_system_only_does_not_open_default_microphone(monkeypatch, loopback_device):
+    from types import SimpleNamespace
+    calls = []
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", False)
+    recorder = audio_recorder.AudioRecorder()
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", True)
+    recorder._loopback_device = loopback_device
+    def open_stream(**kwargs):
+        calls.append(kwargs)
+        raise OSError("device unavailable")
+    monkeypatch.setattr(audio_recorder, "sd", SimpleNamespace(
+        query_devices=lambda *args, **kwargs: {"max_input_channels": 1},
+        InputStream=open_stream,
+    ))
+    result = recorder.start()
+    assert not result
+    assert all(call.get("device") is not None for call in calls)
+
+
+def test_ffmpeg_merge_uses_the_output_sample_rate(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", False)
+    recorder = audio_recorder.AudioRecorder()
+    recorder.system_sample_rate = 44100
+    recorder.mic_sample_rate = 48000
+    recorder.system_audio_data = [np.zeros((2, 1))]
+    recorder.mic_audio_data = [np.zeros((2, 1))]
+    commands = []
+    def run(cmd):
+        commands.append(cmd)
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(audio_recorder, "run_subprocess_silent", run)
+    monkeypatch.setattr(audio_recorder.sf, "write", lambda *args: None)
+    monkeypatch.setattr(audio_recorder.sf, "read", lambda *args: (np.zeros((2, 1)), 48000))
+    assert recorder._merge_audio_with_ffmpeg() is not None
+    assert commands[0][commands[0].index("-ar") + 1] == "48000"
+
+
+def test_failed_ffmpeg_merge_does_not_return_audio_at_wrong_sample_rate(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", False)
+    recorder = audio_recorder.AudioRecorder()
+    recorder.system_sample_rate = 44100
+    recorder.mic_sample_rate = 48000
+    recorder.system_audio_data = [np.zeros((2, 1))]
+    recorder.mic_audio_data = [np.zeros((2, 1))]
+    monkeypatch.setattr(audio_recorder, "run_subprocess_silent", lambda cmd: SimpleNamespace(returncode=1))
+    monkeypatch.setattr(audio_recorder.sf, "write", lambda *args: None)
+    assert recorder._merge_audio_with_ffmpeg() is None

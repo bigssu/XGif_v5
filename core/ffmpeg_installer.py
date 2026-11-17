@@ -61,8 +61,7 @@ def get_ffmpeg_path() -> str:
 
 def is_ffmpeg_installed() -> bool:
     """로컬 FFmpeg 설치 여부 확인"""
-    ffmpeg_path = get_ffmpeg_path()
-    return os.path.exists(ffmpeg_path)
+    return all((get_ffmpeg_dir() / name).is_file() for name in ('ffmpeg.exe', 'ffprobe.exe'))
 
 
 def check_system_ffmpeg() -> str:
@@ -111,6 +110,7 @@ class FFmpegDownloader(threading.Thread):
         self._status_callback = status_callback
         self._finished_callback = finished_callback
         self._cancelled = False
+        self.finished = threading.Event()
 
     def cancel(self):
         """다운로드 취소"""
@@ -134,6 +134,8 @@ class FFmpegDownloader(threading.Thread):
             self._download_and_install()
         except Exception as e:
             self._safe_callback(self._finished_callback, False, f"설치 실패: {str(e)}")
+        finally:
+            self.finished.set()
 
     def _download_and_install(self):
         """FFmpeg 다운로드 및 설치"""
@@ -150,7 +152,7 @@ class FFmpegDownloader(threading.Thread):
             # 다운로드 (진행률 콜백 포함)
             success = self._download_file(FFMPEG_DOWNLOAD_URL, zip_path)
 
-            if not success:
+            if not success and not self._cancelled:
                 # 대체 URL 시도
                 self._safe_callback(self._status_callback, "대체 서버에서 다운로드 시도 중...")
                 success = self._download_file(FFMPEG_DOWNLOAD_URL_ALT, zip_path)
@@ -186,6 +188,7 @@ class FFmpegDownloader(threading.Thread):
 
     def _download_file(self, url: str, dest_path: str) -> bool:
         """파일 다운로드 (진행률 표시, 전체 타임아웃 300초)"""
+        temp_path = None
         try:
             import time as _dl_time
             # URL 열기
@@ -199,7 +202,9 @@ class FFmpegDownloader(threading.Thread):
                 chunk_size = 1024 * 1024  # 1MB
                 last_progress_time = download_start
 
-                with open(dest_path, 'wb') as f:
+                with tempfile.NamedTemporaryFile(mode='wb', dir=os.path.dirname(os.path.abspath(dest_path)),
+                                                 prefix='.download-', suffix='.part', delete=False) as f:
+                    temp_path = f.name
                     while True:
                         if self._cancelled:
                             return False
@@ -211,6 +216,10 @@ class FFmpegDownloader(threading.Thread):
                             return False
 
                         chunk = response.read(chunk_size)
+                        now = _dl_time.monotonic()
+                        if now - download_start > max_download_seconds:
+                            logger.error("다운로드 전체 타임아웃 초과 (300초)")
+                            return False
                         if not chunk:
                             break
 
@@ -226,11 +235,20 @@ class FFmpegDownloader(threading.Thread):
                         if total_size > 0 and self._progress_callback:
                             self._safe_callback(self._progress_callback, downloaded, total_size)
 
+            if self._cancelled:
+                return False
+            if total_size > 0 and downloaded != total_size:
+                raise OSError(f"Download size mismatch: expected {total_size}, received {downloaded}")
+            os.replace(temp_path, dest_path)
             return True
 
         except (urllib.error.URLError, IOError, OSError) as e:
             logger.error(f"다운로드 에러: {e}")
             return False
+        finally:
+            if temp_path is not None:
+                with contextlib.suppress(OSError):
+                    os.remove(temp_path)
 
     @staticmethod
     def _verify_zip_integrity(zip_path: str) -> bool:
@@ -249,11 +267,10 @@ class FFmpegDownloader(threading.Thread):
                     logger.warning("Corrupt entry in FFmpeg ZIP: %s", bad)
                     return False
 
-                # ffmpeg.exe가 포함되어 있는지 확인
-                has_ffmpeg = any(n.endswith('bin/ffmpeg.exe') for n in zf.namelist())
-                if not has_ffmpeg:
-                    logger.warning("ffmpeg.exe not found in ZIP")
-                    return False
+                for executable in ('ffmpeg.exe', 'ffprobe.exe'):
+                    if not any(n.endswith('bin/' + executable) for n in zf.namelist()):
+                        logger.warning("%s not found in ZIP", executable)
+                        return False
 
             return True
         except (zipfile.BadZipFile, OSError) as e:
@@ -261,46 +278,63 @@ class FFmpegDownloader(threading.Thread):
             return False
 
     def _extract_ffmpeg(self, zip_path: str, dest_dir: Path):
-        """ZIP에서 ffmpeg.exe/ffprobe.exe 추출 (진행률 콜백 포함)"""
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            # 추출 대상 찾기
-            targets = {}  # name_in_zip -> dest_filename
-            for name in zf.namelist():
-                if name.endswith('bin/ffmpeg.exe'):
-                    targets[name] = 'ffmpeg.exe'
-                elif name.endswith('bin/ffprobe.exe'):
-                    targets[name] = 'ffprobe.exe'
+        """Stage both tools before replacing them, restoring backups on failure."""
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix='.ffmpeg-', dir=dest_dir))
+        backup = staging / 'backup'
+        backup.mkdir()
+        promoted = []
+        preserve_backup = False
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                targets = {}
+                for executable in ('ffmpeg.exe', 'ffprobe.exe'):
+                    entries = [info for info in zf.infolist() if info.filename.endswith('bin/' + executable)]
+                    if len(entries) != 1 or entries[0].file_size <= 0:
+                        raise ValueError(f"ZIP must contain one nonempty {executable}")
+                    targets[executable] = entries[0]
 
-            if not any(v == 'ffmpeg.exe' for v in targets.values()):
-                raise Exception("ZIP 파일에서 ffmpeg.exe를 찾을 수 없음")
+                total_bytes = sum(info.file_size for info in targets.values())
+                extracted_bytes = 0
+                for executable, info in targets.items():
+                    self._safe_callback(self._status_callback, f"압축 해제 중... {executable}")
+                    with zf.open(info) as src, (staging / executable).open('wb') as dst:
+                        while True:
+                            if self._cancelled:
+                                raise OSError("설치 취소됨")
+                            chunk = src.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            dst.write(chunk)
+                            extracted_bytes += len(chunk)
+                            self._safe_callback(self._progress_callback, extracted_bytes, total_bytes)
+                    if (staging / executable).stat().st_size != info.file_size:
+                        raise OSError(f"Extracted size mismatch: {executable}")
 
-            # 총 크기 계산 (진행률용)
-            total_bytes = sum(zf.getinfo(n).file_size for n in targets)
-            extracted_bytes = 0
-
-            for name_in_zip, dest_name in targets.items():
-                entry_size = zf.getinfo(name_in_zip).file_size
-                dest_path = dest_dir / dest_name
-                self._safe_callback(
-                    self._status_callback,
-                    f"압축 해제 중... {dest_name}"
-                )
-
-                with zf.open(name_in_zip) as src, open(dest_path, 'wb') as dst:
-                    chunk_size = 1024 * 1024  # 1MB
-                    while True:
-                        chunk = src.read(chunk_size)
-                        if not chunk:
-                            break
-                        dst.write(chunk)
-                        extracted_bytes += len(chunk)
-                        if total_bytes > 0 and self._progress_callback:
-                            self._safe_callback(
-                                self._progress_callback,
-                                extracted_bytes, total_bytes,
-                            )
-
-                logger.info("추출 완료: %s (%d bytes)", dest_name, entry_size)
+            for executable in targets:
+                existing = dest_dir / executable
+                if existing.exists():
+                    shutil.copy2(existing, backup / executable)
+            if self._cancelled:
+                raise OSError("설치 취소됨")
+            try:
+                for executable in targets:
+                    os.replace(staging / executable, dest_dir / executable)
+                    promoted.append(executable)
+            except OSError:
+                for executable in reversed(promoted):
+                    try:
+                        if (backup / executable).exists():
+                            os.replace(backup / executable, dest_dir / executable)
+                        else:
+                            (dest_dir / executable).unlink()
+                    except OSError:
+                        preserve_backup = True
+                        logger.exception("Rollback failed; backup retained at %s", backup)
+                raise
+        finally:
+            if not preserve_backup:
+                shutil.rmtree(staging, ignore_errors=True)
 
 
 class FFmpegManager:

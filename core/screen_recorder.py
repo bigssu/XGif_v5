@@ -120,6 +120,8 @@ class ScreenRecorder:
         self.last_error: Optional[str] = None
 
         # 실제 FPS 추적 (녹화 시작/종료 시간)
+        self._pause_start_time: Optional[float] = None
+        self._paused_duration = 0.0
         self._recording_start_time: Optional[float] = None
         self._recording_end_time: Optional[float] = None
         self.actual_fps: Optional[float] = None
@@ -448,6 +450,8 @@ class ScreenRecorder:
         self.is_paused = False
 
         # 녹화 시작 시간 기록
+        self._pause_start_time = None
+        self._paused_duration = 0.0
         self._recording_start_time = time.perf_counter()
         self._recording_end_time = None
         self.actual_fps = None
@@ -562,6 +566,7 @@ class ScreenRecorder:
     def pause_recording(self):
         """녹화 일시정지"""
         if self.is_recording and not self.is_paused:
+            self._pause_start_time = time.perf_counter()
             self.is_paused = True
             if self._thread_pause_event:
                 self._thread_pause_event.set()
@@ -569,6 +574,9 @@ class ScreenRecorder:
     def resume_recording(self):
         """녹화 재개"""
         if self.is_recording and self.is_paused:
+            if self._pause_start_time is not None:
+                self._paused_duration += time.perf_counter() - self._pause_start_time
+                self._pause_start_time = None
             self.is_paused = False
             if self._thread_pause_event:
                 self._thread_pause_event.clear()
@@ -596,16 +604,9 @@ class ScreenRecorder:
 
         # 녹화 종료 시간 기록 및 실제 FPS 계산
         self._recording_end_time = time.perf_counter()
-        if self._recording_start_time and len(self.frames) > 0:
-            elapsed = self._recording_end_time - self._recording_start_time
-            if elapsed > 0:
-                self.actual_fps = len(self.frames) / elapsed
-                logger.info(f"Recording stats: {len(self.frames)} frames in {elapsed:.2f}s = {self.actual_fps:.2f} FPS (target: {self.fps} FPS)")
-            else:
-                self.actual_fps = self.fps
-        else:
-            self.actual_fps = self.fps
-
+        if self._pause_start_time is not None:
+            self._paused_duration += self._recording_end_time - self._pause_start_time
+            self._pause_start_time = None
         self.is_recording = False
         self.is_paused = False
 
@@ -635,6 +636,16 @@ class ScreenRecorder:
             if collector_thread.is_alive():
                 logger.warning("Collector thread did not terminate in time")
                 threads_alive = True
+
+        if self._recording_start_time is not None and len(self.frames) > 0:
+            elapsed = self._recording_end_time - self._recording_start_time - self._paused_duration
+            if elapsed > 0:
+                self.actual_fps = len(self.frames) / elapsed
+                logger.info(f"Recording stats: {len(self.frames)} frames in {elapsed:.2f}s = {self.actual_fps:.2f} FPS (target: {self.fps} FPS)")
+            else:
+                self.actual_fps = self.fps
+        else:
+            self.actual_fps = self.fps
 
         # 스레드 통계 스냅샷 (join 후, null 처리 전)
         dropped = getattr(capture_thread, 'dropped_frames', 0) if capture_thread else 0

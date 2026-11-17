@@ -3,6 +3,8 @@ import os
 import re
 import sys
 import logging
+import contextlib
+import tempfile
 
 from cli import EXIT_SUCCESS, EXIT_USER_ERROR, EXIT_DEPENDENCY, EXIT_RUNTIME_ERROR
 
@@ -21,7 +23,9 @@ def run_convert(args) -> int:
     output_path = args.conv_output
     if not output_path:
         base, ext = os.path.splitext(input_path)
-        if ext.lower() == ".gif":
+        if args.format:
+            output_path = base + "." + args.format
+        elif ext.lower() == ".gif":
             output_path = base + ".mp4"
         else:
             output_path = base + ".gif"
@@ -65,7 +69,7 @@ def run_convert(args) -> int:
     # 변환 실행
     import subprocess
 
-    cmd = [ffmpeg_exe, "-y", "-i", input_path]
+    cmd = [ffmpeg_exe, "-hide_banner", "-loglevel", "error", "-y", "-i", input_path]
 
     # 리사이즈 필터 (나중에 다른 필터와 결합)
     resize_filter = None
@@ -76,6 +80,7 @@ def run_convert(args) -> int:
     if args.fps:
         cmd.extend(["-r", str(args.fps)])
 
+    retry_cpu = False
     if output_format == "mp4":
         # MP4 인코딩 설정
         from core.gif_encoder import GifEncoder
@@ -87,16 +92,10 @@ def run_convert(args) -> int:
         encoder = enc._get_best_encoder(args.codec or "h264")
 
         crf = {"high": "18", "medium": "23", "low": "28"}.get(args.quality, "23")
-        cmd.extend(["-c:v", encoder])
-
-        if encoder in ("h264_nvenc", "hevc_nvenc"):
-            cmd.extend(["-preset", "p4", "-cq", crf])
-        elif encoder in ("h264_qsv", "hevc_qsv"):
-            cmd.extend(["-preset", "medium", "-global_quality", crf])
-        elif encoder in ("h264_amf", "hevc_amf"):
-            cmd.extend(["-quality", "balanced", "-rc", "cqp", "-qp_i", crf, "-qp_p", crf])
-        else:
-            cmd.extend(["-preset", "medium", "-crf", crf])
+        encoder_start = len(cmd)
+        cmd.extend(enc._video_encoder_options(encoder, crf))
+        encoder_end = len(cmd)
+        retry_cpu = args.encoder in (None, 'auto') and encoder not in ('libx264', 'libx265')
 
         cmd.extend(["-pix_fmt", "yuv420p"])
 
@@ -116,32 +115,59 @@ def run_convert(args) -> int:
             cmd.extend(["-vf", palette_filter])
         cmd.extend(["-loop", "0"])
 
-    cmd.append(output_path)
-
     print(f"  변환: {input_path} -> {output_path} ({output_format.upper()})")
 
-    ffmpeg_env = FFmpegManager.get_ffmpeg_env()
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        env=ffmpeg_env,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        timeout=600,
-    )
-
-    if result.returncode == 0 and os.path.exists(output_path):
-        file_size = os.path.getsize(output_path)
-        if file_size < 1024:
-            size_str = f"{file_size} B"
-        elif file_size < 1024 * 1024:
-            size_str = f"{file_size / 1024:.1f} KB"
-        else:
-            size_str = f"{file_size / (1024 * 1024):.1f} MB"
-        print(f"  완료: {output_path} ({size_str})")
-        return EXIT_SUCCESS
-    else:
-        error_msg = result.stderr[:500] if result.stderr else "알 수 없는 오류"
-        print("xgif: 에러: 변환 실패", file=sys.stderr)
-        logger.error(f"FFmpeg error: {error_msg}")
+    staged = None
+    try:
+        fd, staged = tempfile.mkstemp(
+            prefix='.xgif-convert-', suffix='.' + output_format,
+            dir=os.path.dirname(os.path.abspath(output_path)),
+        )
+        os.close(fd)
+        cmd.append(staged)
+        hardware_failure = None
+        for attempt in range(2):
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                env=FFmpegManager.get_ffmpeg_env(),
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                timeout=600,
+            )
+            if (result.returncode == 0 or not retry_cpu or attempt == 1
+                    or not enc._is_hardware_encoder_failure(encoder, result.stderr)):
+                break
+            cpu_encoder = 'libx265' if args.codec == 'h265' else 'libx264'
+            hardware_failure = f"{encoder} (exit {result.returncode}): {result.stderr[-1500:]}"
+            logger.warning("%s failed (exit %s); retrying with %s. FFmpeg stderr:\n%s",
+                           encoder, result.returncode, cpu_encoder, result.stderr)
+            cmd[encoder_start:encoder_end] = enc._video_encoder_options(cpu_encoder, crf)
+        if result.returncode != 0:
+            details = f"FFmpeg (exit {result.returncode}): {result.stderr[-1500:] or '알 수 없는 오류'}"
+            if hardware_failure:
+                details = hardware_failure + "\nCPU retry: " + details
+            raise RuntimeError(details)
+        file_size = os.path.getsize(staged)
+        if file_size == 0:
+            raise RuntimeError("인코딩 결과 파일이 비어 있습니다.")
+        os.replace(staged, output_path)
+    except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+        print(f"xgif: 에러: 변환 실패 -- {exc}", file=sys.stderr)
+        logger.error("FFmpeg conversion failed: %s", exc)
         return EXIT_RUNTIME_ERROR
+    finally:
+        if staged is not None:
+            with contextlib.suppress(OSError):
+                os.remove(staged)
+
+    if file_size < 1024:
+        size_str = f"{file_size} B"
+    elif file_size < 1024 * 1024:
+        size_str = f"{file_size / 1024:.1f} KB"
+    else:
+        size_str = f"{file_size / (1024 * 1024):.1f} MB"
+    print(f"  완료: {output_path} ({size_str})")
+    return EXIT_SUCCESS

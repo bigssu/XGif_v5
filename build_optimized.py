@@ -248,6 +248,7 @@ def run_nuitka_build():
         "--standalone",
         "--enable-plugin=wx",
         "--follow-imports",
+        "--include-module=dxcam.processor._numpy_kernels",
         "--windows-disable-console",
         f"--output-dir={os.path.join(PROJECT_DIR, 'dist_optimized')}",
         "--output-filename=XGif.exe",
@@ -259,6 +260,10 @@ def run_nuitka_build():
 
     print("Starting Nuitka build process... (This may take a while)")
     subprocess.run(nuitka_cmd, check=True)
+    cli_cmd = [arg.replace('--output-filename=XGif.exe', '--output-filename=XGif-cli.exe')
+               for arg in nuitka_cmd if arg != '--windows-disable-console']
+    cli_cmd.insert(-1, '--windows-console-mode=force')
+    subprocess.run(cli_cmd, check=True)
 
 
 def _parse_windows_version_tuple(app_version):
@@ -363,7 +368,7 @@ def _scan_cupy_hidden_imports(venv_dir):
     return modules
 
 
-def _generate_spec_file(icon_ico, version_file, onefile=False, use_upx=False):
+def _generate_spec_file(icon_ico, version_file, onefile=False, use_upx=False, spec_path=None):
     """PyInstaller spec 파일 생성 (바이너리 필터링 포함)"""
     resources_data = os.path.join(PROJECT_ROOT, "resources")
     requirements_txt = os.path.join(PROJECT_ROOT, "requirements.txt")
@@ -421,6 +426,8 @@ a = Analysis(
 {vcrt_lines}    ],
     datas=[(r'{resources_data}', 'resources'), (r'{requirements_txt}', '.'){requirements_gpu_data}] + copy_metadata('imageio'),
     hiddenimports=[
+        # dxcam loads its compiled color-conversion kernel through import_module.
+        'dxcam.processor._numpy_kernels',
         'comtypes',
         'pynput.keyboard',
         'pynput.mouse',
@@ -475,21 +482,20 @@ a.binaries = [
 pyz = PYZ(a.pure)
 """
 
-    if onefile:
+    for variable, name, console in [('exe', 'XGif', False), ('cli_exe', 'XGif-cli', True)]:
+        binary_args = "a.binaries, a.datas, []," if onefile else "[], exclude_binaries=True,"
         spec_content += f"""
-exe = EXE(
+{variable} = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name='XGif',
+    {binary_args}
+    name={name!r},
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx={use_upx!r},
     upx_exclude={upx_exclude_text},
-    console=False,
+    console={console!r},
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -499,31 +505,11 @@ exe = EXE(
     {version_line}
 )
 """
-    else:
+    if not onefile:
         spec_content += f"""
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='XGif',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx={use_upx!r},
-    upx_exclude={upx_exclude_text},
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    {icon_line}
-    {version_line}
-)
-
 coll = COLLECT(
     exe,
+    cli_exe,
     a.binaries,
     a.datas,
     strip=False,
@@ -533,7 +519,8 @@ coll = COLLECT(
 )
 """
 
-    spec_path = os.path.join(PROJECT_DIR, "XGif.spec")
+    if spec_path is None:
+        spec_path = os.path.join(PROJECT_DIR, "XGif.spec")
     with open(spec_path, "w", encoding="utf-8") as f:
         f.write(spec_content)
     return spec_path
@@ -616,6 +603,10 @@ def run_installer(exe_path):
         print(f"[ERROR] Installer source EXE not found: {exe_path}")
         sys.exit(1)
 
+    cli_exe_path = os.path.join(os.path.dirname(exe_path), "XGif-cli.exe")
+    if not os.path.isfile(cli_exe_path):
+        raise FileNotFoundError(f"Installer CLI companion not found: {cli_exe_path}")
+
     iscc = _find_iscc()
     if not iscc:
         print("[ERROR] ISCC.exe (Inno Setup Compiler) not found.")
@@ -635,11 +626,13 @@ def run_installer(exe_path):
     env = os.environ.copy()
     env["XGIF_APP_VERSION"] = APP_VERSION
     env["XGIF_APP_EXE_SOURCE"] = exe_path
+    env["XGIF_APP_CLI_EXE_SOURCE"] = cli_exe_path
     subprocess.run(
         [
             iscc,
             f"/DMyAppVersion={APP_VERSION}",
             f"/DMyAppExeSource={exe_path}",
+            f"/DMyAppCliExeSource={cli_exe_path}",
             iss_path,
         ],
         check=True,
@@ -1067,7 +1060,7 @@ if __name__ == "__main__":
                 os.remove(diag_bat)
 
         if args.sign:
-            run_sign(args.sign_pfx, args.sign_password, [exe_path])
+            run_sign(args.sign_pfx, args.sign_password, [exe_path, os.path.join(dist_dir, "XGif-cli.exe")])
 
         if args.installer:
             installer_exe = run_installer(exe_path)

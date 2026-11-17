@@ -4,11 +4,11 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 
 ## 현재 기준
 
-- 릴리스 버전: `2.1.5`
-- 문서 검증 기준일: `2026-05-18`
-- 검증 환경: Python 3.11 fresh `.venv`
+- 출시 후보 버전: `2.2.0`
+- 문서 검증 기준일: `2026-11-17`
+- 검증 환경: Windows, Python 3.11.9 프로젝트 `.venv`
 - 주요 의존성 floor: `wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.20.0`
-- 테스트 상태: `pytest tests/ -v` → `251 passed`
+- 테스트·패키지 검증: [출시 후보 검증 기록](docs/RELEASE_HARDENING_2026-11-17.md)
 - 빌드 참고: `build_optimized.py`가 `XGif.spec`를 빌드 시점에 동적 생성
 - 사내 배포 기준: 코드 서명 없이 PyInstaller/선택적 Inno Setup 산출물을 사용
 
@@ -74,6 +74,11 @@ py -3.11 -m venv .venv
 ```
 
 빌드 결과물은 `dist/` 폴더에 생성됩니다. 사내 배포는 서명 플래그 없이 진행합니다.
+
+GUI는 `XGif.exe`, 터미널·자동화는 `XGif-cli.exe`를 사용합니다. CLI 실행 파일은
+도움말·진행 상태·오류와 종료 코드를 콘솔에 전달합니다. 예: `XGif-cli.exe --help`,
+`XGif-cli.exe convert input.gif output.mp4`. MP4 변환과 비디오 불러오기에는
+외부 FFmpeg/FFprobe가 필요하며, 실행 파일에 포함되지 않습니다.
 
 설치본은 CuPy를 EXE 안에 묶지 않고 `%LOCALAPPDATA%\XGif\env` 외부 환경에서 로드합니다. NVIDIA GPU가 있지만 CuPy가 없으면 첫 실행 GPU 감지 또는 GPU 버튼 클릭 시 설치 가이드가 열리며, 시스템 Python 3.11 이상이 있으면 `직접 설치` 버튼으로 해당 외부 환경에 자동 설치할 수 있습니다.
 

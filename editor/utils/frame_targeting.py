@@ -40,8 +40,7 @@ def snapshot_original_images(frames) -> list[Optional[Image.Image]]:
     originals: list[Optional[Image.Image]] = []
     try:
         for frame in frames:
-            image = getattr(frame, "image", None) if frame else None
-            originals.append(image.copy() if image else None)
+            originals.append(frame.copy_image() if frame else None)
     except Exception:
         return []
     return originals
@@ -103,6 +102,8 @@ def apply_frame_processor(
     """Apply a per-frame processor using normalized target semantics."""
     state = resolve_target_state(frames)
     for index, frame, original in _iter_original_frames(frames, originals):
+        if preview_current and index != state.current_index:
+            continue
         should_apply = should_apply_to_frame(target_mode, index, state)
         show_processed = should_apply or (preview_current and index == state.current_index)
 
@@ -129,3 +130,5 @@ def _iter_original_frames(frames, originals: Iterable[Optional[Image.Image]]):
 
 def _set_frame_image(frame, image: Image.Image) -> None:
     frame._image = image
+    frame._image_size = image.size
+    frame._invalidate_cache()

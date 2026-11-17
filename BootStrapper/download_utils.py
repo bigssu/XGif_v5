@@ -7,6 +7,7 @@ import os
 import socket
 import ssl
 import time
+import tempfile
 import urllib.request
 import urllib.error
 from logging_setup import log_and_ui, get_logger
@@ -90,45 +91,44 @@ def download_file(
     *max_retries* times). Returns True on success.
     """
     logger = get_logger()
-    dest_dir = os.path.dirname(dest_path)
+    dest_dir = os.path.dirname(os.path.abspath(dest_path))
     os.makedirs(dest_dir, exist_ok=True)
 
     for attempt in range(1, max_retries + 1):
+        tmp_path = None
         try:
             log_and_ui(f"다운로드 시작: {os.path.basename(dest_path)}  (시도 {attempt}/{max_retries})")
             logger.debug("URL: %s", url)
 
             req = urllib.request.Request(url, headers={"User-Agent": "EnvSetupApp/1.0"})
             ctx = _get_ssl_context()
-            resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                total = resp.headers.get("Content-Length")
+                total = int(total) if total else None
+                downloaded = 0
+                with tempfile.NamedTemporaryFile(mode="wb", dir=dest_dir, prefix=".download-",
+                                                 suffix=".part", delete=False) as f:
+                    tmp_path = f.name
+                    while True:
+                        chunk = resp.read(CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_cb:
+                            progress_cb(downloaded, total)
 
-            total = resp.headers.get("Content-Length")
-            total = int(total) if total else None
-
-            downloaded = 0
-            tmp_path = dest_path + ".part"
-            with open(tmp_path, "wb") as f:
-                while True:
-                    chunk = resp.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_cb:
-                        progress_cb(downloaded, total)
+            if total is not None and downloaded != total:
+                raise OSError(f"Download size mismatch: expected {total}, received {downloaded}")
 
             # SHA-256 검증: 부분 다운로드를 .part 상태에서 검증, 불일치 시 폐기
             if expected_sha256 and not verify_sha256(tmp_path, expected_sha256):
                 logger.warning("SHA-256 mismatch for %s (expected %s)", url, expected_sha256)
                 log_and_ui(f"다운로드 무결성 검증 실패: {os.path.basename(dest_path)}")
-                with contextlib.suppress(OSError):
-                    os.remove(tmp_path)
                 raise OSError(f"SHA-256 mismatch (expected {expected_sha256[:12]}...)")
 
             # Atomic rename
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
-            os.rename(tmp_path, dest_path)
+            os.replace(tmp_path, dest_path)
 
             size_mb = downloaded / (1024 * 1024)
             log_and_ui(f"다운로드 완료: {os.path.basename(dest_path)} ({size_mb:.1f} MB)")
@@ -137,15 +137,14 @@ def download_file(
         except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError) as e:
             logger.warning("Download attempt %d failed: %s", attempt, e)
             log_and_ui(f"다운로드 실패 (시도 {attempt}): {e}")
-            # Clean up partial
-            for p in (dest_path + ".part", dest_path):
-                if os.path.exists(p):
-                    with contextlib.suppress(OSError):
-                        os.remove(p)
             if attempt < max_retries:
                 wait = 2 ** attempt
                 log_and_ui(f"{wait}초 후 재시도합니다…")
                 time.sleep(wait)
+        finally:
+            if tmp_path is not None:
+                with contextlib.suppress(OSError):
+                    os.remove(tmp_path)
 
     log_and_ui("다운로드 실패: 최대 재시도 횟수 초과")
     return False

@@ -14,6 +14,7 @@ from ...utils.wx_events import (
     ToolbarAppliedEvent, ToolbarCancelledEvent, ToolbarPreviewUpdatedEvent
 )
 from ...utils.frame_targeting import (
+    _set_frame_image,
     apply_frame_processor,
     build_target_choices,
     restore_current_original_image,
@@ -464,7 +465,7 @@ class InlineToolbarBase(wx.Panel):
         for index, frame in enumerate(self.frames):
             if index < len(images) and images[index] is not None:
                 with suppress(Exception):
-                    frame._image = images[index]
+                    _set_frame_image(frame, images[index])
 
     def _mark_editor_modified(self):
         """Mark the editor dirty and refresh shared UI state."""

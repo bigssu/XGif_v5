@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from enum import Enum
 from PIL import Image
 import io
+import os
 import shutil
+import tempfile
 
 from .frame import Frame
 from .frame_collection import FrameCollection
@@ -105,29 +107,47 @@ class GifEncoder:
 
         path = Path(file_path)
         ext = path.suffix.lower()
+        if ext not in {'.gif', '.webp', '.apng', '.png', '.jpg', '.jpeg', '.bmp'}:
+            return SaveResult.error(f"지원하지 않는 형식입니다: {ext}")
 
+        destination = path
+        staged_path = None
         try:
+            # Encode beside the destination so a failed save never truncates the original.
+            with tempfile.NamedTemporaryFile(dir=path.parent, suffix=path.suffix, delete=False) as staged:
+                staged_path = Path(staged.name)
+            path = staged_path
             if ext == '.gif':
-                return cls._save_gif(collection, path, settings)
+                result = cls._save_gif(collection, path, settings)
             elif ext == '.webp':
-                return cls._save_webp(collection, path, settings)
+                result = cls._save_webp(collection, path, settings)
             elif ext == '.apng' or (ext == '.png' and collection.frame_count > 1):
                 # 다중 프레임이면 APNG로 저장
                 if collection.frame_count > 1:
-                    return cls._save_apng(collection, path, settings)
+                    result = cls._save_apng(collection, path, settings)
                 else:
-                    return cls._save_png(collection.current_frame, path)
+                    result = cls._save_png(collection.current_frame, path)
             elif ext == '.png':
-                return cls._save_png(collection.current_frame, path)
+                result = cls._save_png(collection.current_frame, path)
             elif ext in {'.jpg', '.jpeg'}:
-                return cls._save_jpeg(collection.current_frame, path, settings.quality)
-            elif ext == '.bmp':
-                return cls._save_bmp(collection.current_frame, path)
+                result = cls._save_jpeg(collection.current_frame, path, settings.quality)
             else:
-                return SaveResult.error(f"지원하지 않는 형식입니다: {ext}")
+                result = cls._save_bmp(collection.current_frame, path)
+
+            if result.success:
+                file_size = path.stat().st_size
+                os.replace(path, destination)
+                return SaveResult.ok(file_size)
+            return result
 
         except Exception as e:
             return SaveResult.error(f"저장 실패: {str(e)}")
+        finally:
+            if staged_path is not None:
+                try:
+                    staged_path.unlink(missing_ok=True)
+                except OSError as e:
+                    _logger.warning(f"임시 저장 파일 정리 실패: {e}")
 
     @classmethod
     def _rgba_to_rgb(cls, img: Image.Image) -> Image.Image:
@@ -227,7 +247,7 @@ class GifEncoder:
             durations = []
 
             for frame in collection:
-                img_p = cls._quantize_image(frame.image, settings)
+                img_p = cls._quantize_image(frame.copy_image(), settings)
                 images.append(img_p)
                 durations.append(frame.delay_ms)
 
@@ -365,7 +385,7 @@ class GifEncoder:
 
             for frame in collection:
                 # WebP는 RGBA를 직접 지원 (양자화 불필요)
-                img = frame.image.copy()
+                img = frame.copy_image()
                 if img.mode != 'RGBA':
                     img = img.convert('RGBA')
                 images.append(img)
@@ -405,7 +425,7 @@ class GifEncoder:
             durations = []
 
             for frame in collection:
-                img = frame.image.copy()
+                img = frame.copy_image()
                 if img.mode != 'RGBA':
                     img = img.convert('RGBA')
                 images.append(img)
@@ -419,7 +439,7 @@ class GifEncoder:
                 append_images=images[1:] if len(images) > 1 else [],
                 duration=durations,
                 loop=settings.loop_count,
-                default_image=True,  # 첫 프레임을 기본 이미지로
+                default_image=False,
             )
 
             file_size = path.stat().st_size
@@ -436,7 +456,7 @@ class GifEncoder:
         저장 시와 정확히 동일한 과정을 거쳐 프리뷰와 저장 결과가 일치하도록 합니다.
         """
         # 원본 이미지 복사
-        original_img = frame.image.copy()
+        original_img = frame.copy_image()
         if original_img.mode != 'RGBA':
             original_img = original_img.convert('RGBA')
 
@@ -495,7 +515,7 @@ class GifEncoder:
             for idx in sample_indices:
                 frame = collection.get_frame(idx)
                 if frame:
-                    img_p = cls._quantize_image(frame.image, settings)
+                    img_p = cls._quantize_image(frame.copy_image(), settings)
                     images.append(img_p)
                     durations.append(frame.delay_ms)
 
@@ -534,7 +554,7 @@ class GifEncoder:
             return SaveResult.error("저장할 프레임이 없습니다")
 
         try:
-            frame.image.save(str(path), 'PNG')
+            frame.copy_image().save(str(path), 'PNG')
             file_size = path.stat().st_size
             return SaveResult.ok(file_size)
         except Exception as e:
@@ -549,7 +569,7 @@ class GifEncoder:
 
         try:
             # JPEG는 알파 채널을 지원하지 않음
-            rgb_image = frame.image.convert('RGB')
+            rgb_image = frame.copy_image().convert('RGB')
             rgb_image.save(str(path), 'JPEG', quality=quality)
             file_size = path.stat().st_size
             return SaveResult.ok(file_size)
@@ -563,7 +583,7 @@ class GifEncoder:
             return SaveResult.error("저장할 프레임이 없습니다")
 
         try:
-            rgb_image = frame.image.convert('RGB')
+            rgb_image = frame.copy_image().convert('RGB')
             rgb_image.save(str(path), 'BMP')
             file_size = path.stat().st_size
             return SaveResult.ok(file_size)
@@ -590,9 +610,9 @@ class GifEncoder:
                 file_path = dir_path / filename
 
                 if format.lower() in {'jpg', 'jpeg'}:
-                    frame.image.convert('RGB').save(str(file_path))
+                    frame.copy_image().convert('RGB').save(str(file_path))
                 else:
-                    frame.image.save(str(file_path))
+                    frame.copy_image().save(str(file_path))
 
                 total_size += file_path.stat().st_size
 

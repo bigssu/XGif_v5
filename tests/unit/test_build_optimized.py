@@ -1,3 +1,5 @@
+import pytest
+
 from pathlib import Path
 
 import build_optimized
@@ -8,6 +10,8 @@ def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch)
 
     exe_path = tmp_path / "XGif.exe"
     exe_path.write_bytes(b"fake exe")
+    cli_path = tmp_path / "XGif-cli.exe"
+    cli_path.write_bytes(b"fake cli")
     calls = []
 
     def fake_run(cmd, check, cwd, env):
@@ -21,6 +25,8 @@ def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch)
     assert calls
     assert f"/DMyAppVersion={APP_VERSION}" in calls[0]["cmd"]
     assert f"/DMyAppExeSource={exe_path.resolve()}" in calls[0]["cmd"]
+    assert f"/DMyAppCliExeSource={cli_path.resolve()}" in calls[0]["cmd"]
+    assert calls[0]["env"]["XGIF_APP_CLI_EXE_SOURCE"] == str(cli_path.resolve())
     assert calls[0]["env"]["XGIF_APP_VERSION"] == APP_VERSION
     assert calls[0]["env"]["XGIF_APP_EXE_SOURCE"] == str(exe_path.resolve())
     assert calls[0]["cmd"][-1].endswith("installer\\xgif_setup.iss")
@@ -56,6 +62,9 @@ def test_nuitka_build_output_name_matches_release_contract(monkeypatch):
 
     assert calls
     assert "--output-filename=XGif.exe" in calls[0]
+    assert "--output-filename=XGif-cli.exe" in calls[1]
+    assert "--windows-console-mode=force" in calls[1]
+    assert "--windows-disable-console" not in calls[1]
 
 
 def test_build_keeps_debug_launcher_opt_in_only():
@@ -119,3 +128,65 @@ def test_generated_pyinstaller_spec_keeps_size_guards(tmp_path, monkeypatch):
     assert "'numpy._core._multiarray_tests'" in spec
     assert "upx=True" in spec
     assert "upx_exclude=['vcruntime*.dll', 'msvcp*.dll', 'wx*.dll']" in spec
+
+
+@pytest.mark.parametrize('onefile', [False, True])
+def test_spec_builds_gui_and_console_companion_with_isolated_spec(tmp_path, onefile):
+    from types import SimpleNamespace
+
+    output = tmp_path / 'isolated.spec'
+    path = build_optimized._generate_spec_file(None, None, onefile=onefile, spec_path=output)
+    assert Path(path) == output
+    executables = []
+    collected = []
+
+    def exe(*args, **kwargs):
+        executables.append(kwargs)
+        return kwargs['name']
+
+    namespace = dict(
+        Analysis=lambda *args, **kwargs: SimpleNamespace(binaries=[], datas=[], pure=[], scripts=[]),
+        PYZ=lambda pure: pure,
+        EXE=exe,
+        COLLECT=lambda *args, **kwargs: collected.extend(args),
+    )
+    exec(compile(output.read_text(encoding='utf-8'), str(output), 'exec'), namespace)
+    assert [(exe['name'], exe['console']) for exe in executables] == [('XGif', False), ('XGif-cli', True)]
+    if onefile:
+        assert not collected
+    else:
+        assert collected[:2] == ['XGif', 'XGif-cli']
+        assert all(exe['exclude_binaries'] for exe in executables)
+
+
+def test_installer_includes_cli_companion():
+    script = Path('installer/xgif_setup.iss').read_text(encoding='utf-8')
+    assert 'Source: "{#MyAppCliExeSource}"' in script
+    assert 'DestName: "XGif-cli.exe"' in script
+
+
+def test_installer_refuses_missing_cli_companion(tmp_path):
+    exe = tmp_path / 'XGif.exe'
+    exe.write_bytes(b'gui')
+    with pytest.raises(FileNotFoundError, match='CLI companion'):
+        build_optimized.run_installer(str(exe))
+
+
+@pytest.mark.parametrize('onefile', [False, True])
+def test_packagers_include_dynamically_loaded_dxcam_numpy_kernel(tmp_path, monkeypatch, onefile):
+    import ast
+
+    spec = build_optimized._generate_spec_file(None, None, onefile=onefile, spec_path=tmp_path / 'XGif.spec')
+    module = ast.parse(Path(spec).read_text(encoding='utf-8'))
+    analysis = next(node for node in ast.walk(module) if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name) and node.func.id == 'Analysis')
+    options = {keyword.arg: keyword.value for keyword in analysis.keywords}
+    kernel = 'dxcam.processor._numpy_kernels'
+    assert kernel in ast.literal_eval(options['hiddenimports'])
+    assert 'cv2' in ast.literal_eval(options['excludes'])
+    calls = []
+    monkeypatch.setattr(build_optimized, '_get_python_exe', lambda venv: 'python.exe')
+    monkeypatch.setattr(build_optimized.subprocess, 'run', lambda cmd, check: calls.append(cmd))
+    build_optimized.run_nuitka_build()
+    assert len(calls) == 2
+    assert all(f'--include-module={kernel}' in cmd for cmd in calls)

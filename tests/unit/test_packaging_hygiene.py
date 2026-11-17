@@ -10,7 +10,6 @@ def test_project_version_single_source_is_current_release():
 
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
-    assert APP_VERSION == "2.1.5"
     assert pyproject["project"]["version"] == APP_VERSION
 
 

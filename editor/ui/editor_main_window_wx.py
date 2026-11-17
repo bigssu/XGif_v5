@@ -178,6 +178,8 @@ class MainWindow(wx.Frame):
         self._undo_manager = UndoManager(max_history=20, max_memory_mb=200)
         self._current_file_path: Optional[str] = None
         self._is_modified = False
+        self._save_in_progress = False
+        self._pending_save_action = None
 
         # 설정 (wxPython의 wx.Config 사용)
         self._settings = wx.Config("XGifEditor")
@@ -718,10 +720,11 @@ class MainWindow(wx.Frame):
 
     def new_project(self) -> None:
         """새 프로젝트"""
-        if not self._confirm_save():
+        if not self._confirm_save(self.new_project):
             return
 
         self._frames.clear()
+        self._undo_manager.clear()
         self._current_file_path = None
         self._is_modified = False
         self._update_title()
@@ -730,7 +733,7 @@ class MainWindow(wx.Frame):
 
     def open_file(self, file_path: str = None):
         """파일 열기 (GIF, 비디오 지원)"""
-        if not self._confirm_save():
+        if not self._confirm_save(lambda: self.open_file(file_path)):
             return
 
         if file_path is None:
@@ -767,6 +770,54 @@ class MainWindow(wx.Frame):
         # (이름은 비디오용이나 실제론 generic — load_func 와 progress_callback 만 사용).
         self._open_gif_async(file_path)
 
+    def _start_load_worker(self, kind, worker):
+        previous = getattr(self, f'_{kind}_worker', None)
+        if previous is not None:
+            previous.cancel()
+        setattr(self, f'_{kind}_worker', worker)
+
+        def deliver(event, *args):
+            if (getattr(self, '_closing', False)
+                    or getattr(self, f'_{kind}_worker', None) is not worker):
+                return
+            progress = getattr(self, f'_{kind}_progress', None)
+            if progress is not None and progress.WasCancelled():
+                worker.cancel()
+            if worker.is_cancelled or (event == 'finished' and getattr(args[0], 'cancelled', False)):
+                event, args = 'cancelled', ()
+            getattr(self, f'_on_{kind}_load_{event}')(*args)
+
+        for event in ('progress', 'finished', 'error', 'cancelled'):
+            worker.signals.connect(event, lambda *args, event=event: deliver(event, *args))
+        if getattr(self, '_load_cancel_timer', None) is None:
+            self._load_cancel_timer = wx.Timer(self)
+            self.Bind(wx.EVT_TIMER, self._poll_load_cancel, self._load_cancel_timer)
+        self._load_cancel_timer.Start(100)
+        try:
+            get_worker_manager().start(worker)
+        except Exception as error:
+            deliver('error', str(error), '')
+
+    def _poll_load_cancel(self, event):
+        for kind in ('gif', 'video', 'probe'):
+            progress = getattr(self, f'_{kind}_progress', None)
+            worker = getattr(self, f'_{kind}_worker', None)
+            if progress is not None and worker is not None and progress.WasCancelled():
+                worker.cancel()
+                self._finish_load(kind)
+
+    def _finish_load(self, kind):
+        progress = getattr(self, f'_{kind}_progress', None)
+        if progress is not None:
+            progress.Destroy()
+            setattr(self, f'_{kind}_progress', None)
+        setattr(self, f'_{kind}_worker', None)
+        if not any(getattr(self, f'_{name}_worker', None) is not None
+                   for name in ('gif', 'video', 'probe')):
+            timer = getattr(self, '_load_cancel_timer', None)
+            if timer is not None:
+                timer.Stop()
+
     def _open_gif_async(self, file_path: str) -> None:
         """GIF 파일을 백그라운드 워커로 로드하면서 ProgressDialog 를 표시."""
         # 진행률 다이얼로그 (취소 가능)
@@ -781,12 +832,7 @@ class MainWindow(wx.Frame):
 
         # 비동기 워커 — VideoLoadWorker 는 generic 한 progress_callback 주입 래퍼.
         worker = VideoLoadWorker(GifDecoder.load, file_path)
-        worker.signals.connect('progress', self._on_gif_load_progress)
-        worker.signals.connect('finished', self._on_gif_load_finished)
-        worker.signals.connect('error', self._on_gif_load_error)
-        worker.signals.connect('cancelled', self._on_gif_load_cancelled)
-        self._gif_worker = worker
-        get_worker_manager().start(worker)
+        self._start_load_worker('gif', worker)
 
     def _on_gif_load_progress(self, current: int, total: int) -> None:
         """GIF 디코드 진행률 갱신. PD_CAN_ABORT 의 Cancel 버튼은 다이얼로그의 반환값
@@ -808,10 +854,7 @@ class MainWindow(wx.Frame):
 
     def _on_gif_load_finished(self, result) -> None:
         """GIF 로드 완료 — 컬렉션 세팅 + UI 갱신 + 인덱스 컬러 제안."""
-        if hasattr(self, '_gif_progress') and self._gif_progress:
-            with contextlib.suppress(Exception):
-                self._gif_progress.Destroy()
-            self._gif_progress = None
+        self._finish_load('gif')
 
         if not result.success:
             wx.MessageBox(
@@ -841,14 +884,12 @@ class MainWindow(wx.Frame):
         self._update_info_bar()
         self._refresh_all()
         # 큰 RGBA/RGB GIF 디코드 결과면 인덱스 컬러 변환 제안.
-        wx.CallAfter(self._offer_index_color_optimization)
+        wx.CallAfter(lambda: self._offer_index_color_optimization()
+                     if not getattr(self, '_closing', False) else None)
 
     def _on_gif_load_error(self, error_msg: str, traceback_str: str) -> None:
         """GIF 로드 에러 — 진행 다이얼로그 닫고 사용자에게 보고."""
-        if hasattr(self, '_gif_progress') and self._gif_progress:
-            with contextlib.suppress(Exception):
-                self._gif_progress.Destroy()
-            self._gif_progress = None
+        self._finish_load('gif')
         wx.MessageBox(
             self._translations.tr("msg_open_failed_body", e=error_msg),
             self._translations.tr("msg_error"),
@@ -857,13 +898,12 @@ class MainWindow(wx.Frame):
 
     def _on_gif_load_cancelled(self) -> None:
         """GIF 로드 취소 — 다이얼로그 닫기만."""
-        if hasattr(self, '_gif_progress') and self._gif_progress:
-            with contextlib.suppress(Exception):
-                self._gif_progress.Destroy()
-            self._gif_progress = None
+        self._finish_load('gif')
 
     def save_file(self):
         """저장"""
+        if self._save_in_progress:
+            return
         self._stop_preview_before_save()
         if self._current_file_path:
             self._save_to_path(self._current_file_path)
@@ -872,6 +912,8 @@ class MainWindow(wx.Frame):
 
     def save_file_as(self):
         """다른 이름으로 저장 (고급 설정 다이얼로그)"""
+        if self._save_in_progress:
+            return
         self._stop_preview_before_save()
         dlg = SaveDialog(self)
         if dlg.ShowModal() == wx.ID_OK:
@@ -888,33 +930,40 @@ class MainWindow(wx.Frame):
     def _stop_preview_before_save(self):
         if self._is_playing:
             self.pause()
+        active = self._active_inline_toolbar
+        pending_preview = active is not None and (
+            active._preview_timer.IsRunning() or getattr(active, '_preview_pending', False)
+        )
+        for toolbar in self._property_bar._toolbars.values():
+            toolbar._preview_timer.Stop()
+        if pending_preview:
+            active._update_preview()
 
     def _save_to_path_with_settings(self, file_path: str, settings: EncoderSettings, close_after_save: bool = False):
         """지정된 경로에 설정과 함께 저장 (비동기 처리)"""
-        # 진행률 다이얼로그
-        self._save_progress = wx.ProgressDialog(
-            self._translations.tr("prog_saving_title"),
-            self._translations.tr("prog_saving_msg"),
-            maximum=100,
-            parent=self,
-            style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE
-        )
-
-        self._save_file_path = file_path
-        self._save_close_after = close_after_save
-
-        # 비동기 워커 생성
-        def save_task():
-            return GifEncoder.save(self._frames, file_path, settings)
-
-        worker = FunctionWorker(save_task)
-        worker.signals.connect('finished', self._on_save_finished)
-        worker.signals.connect('error', self._on_save_error)
-
-        self._save_worker = worker
-
-        # 워커 시작
-        get_worker_manager().start(worker)
+        if self._save_in_progress:
+            return
+        self._save_in_progress = True
+        try:
+            # Capture identity now; expensive image copying runs in the worker.
+            frames = self._frames
+            self._save_progress = wx.ProgressDialog(
+                self._translations.tr("prog_saving_title"),
+                self._translations.tr("prog_saving_msg"),
+                maximum=100,
+                parent=self,
+                style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE
+            )
+            self._save_file_path = file_path
+            self._save_close_after = close_after_save
+            worker = FunctionWorker(lambda: GifEncoder.save(frames.clone(), file_path, settings))
+            worker.signals.connect('finished', self._on_save_finished)
+            worker.signals.connect('error', self._on_save_error)
+            worker.signals.connect('cancelled', self._on_save_cancelled)
+            self._save_worker = worker
+            get_worker_manager().start(worker)
+        except Exception as exc:
+            self._on_save_error_ui(str(exc), "")
 
     def _save_to_path(self, file_path: str, close_after_save: bool = False):
         """지정된 경로에 저장 (기본 설정, 비동기 처리)"""
@@ -927,9 +976,7 @@ class MainWindow(wx.Frame):
 
     def _on_save_finished_ui(self, result):
         """저장 완료 UI 업데이트 (메인 스레드)"""
-        if hasattr(self, '_save_progress') and self._save_progress:
-            self._save_progress.Destroy()
-            self._save_progress = None
+        pending_action = self._finish_save()
 
         if not result.success:
             wx.MessageBox(
@@ -960,7 +1007,9 @@ class MainWindow(wx.Frame):
         self._open_file_location(file_path)
 
         # 저장 후 앱 종료
-        if close_after_save:
+        if pending_action is not None:
+            pending_action()
+        elif close_after_save:
             self.Close()
 
     def _on_save_error(self, error_msg: str, traceback: str):
@@ -969,14 +1018,25 @@ class MainWindow(wx.Frame):
 
     def _on_save_error_ui(self, error_msg: str, traceback: str):
         """저장 에러 UI 업데이트 (메인 스레드)"""
-        if hasattr(self, '_save_progress') and self._save_progress:
-            self._save_progress.Destroy()
-            self._save_progress = None
+        self._finish_save()
         wx.MessageBox(
             self._translations.tr("msg_save_failed_body", e=error_msg),
             self._translations.tr("msg_error"),
             wx.OK | wx.ICON_ERROR
         )
+
+    def _finish_save(self):
+        self._save_in_progress = False
+        self._save_worker = None
+        pending_action = self._pending_save_action
+        self._pending_save_action = None
+        if getattr(self, '_save_progress', None):
+            self._save_progress.Destroy()
+            self._save_progress = None
+        return pending_action
+
+    def _on_save_cancelled(self):
+        self._finish_save()
 
     def _open_file_location(self, file_path: str):
         """파일 탐색기에서 파일 위치 열기"""
@@ -999,8 +1059,10 @@ class MainWindow(wx.Frame):
             # 오류가 발생해도 무시 (저장은 이미 완료됨)
             self._logger.warning(f"파일 위치 열기 실패: {e}", exc_info=True)
 
-    def _confirm_save(self) -> bool:
-        """변경사항 저장 확인"""
+    def _confirm_save(self, on_saved=None) -> bool:
+        """변경사항 저장 확인; 비동기 저장 성공 후 요청한 동작을 재개."""
+        if self._save_in_progress:
+            return False
         if not self._is_modified:
             return True
 
@@ -1014,8 +1076,13 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
         if result == wx.ID_YES:
-            self.save_file()
-            return True
+            self._pending_save_action = on_saved
+            try:
+                self.save_file()
+            finally:
+                if not self._save_in_progress:
+                    self._pending_save_action = None
+            return False
         return result == wx.ID_NO
 
     # ==================== UI 업데이트 ====================
@@ -1203,11 +1270,7 @@ class MainWindow(wx.Frame):
         self._is_playing = True
         self._update_play_button_icon(True)  # 재생 중 -> 일시정지 아이콘
 
-        # 첫 5 프레임 preload — 자동 unload 후 재생 시작 시점에 decompress 비용
-        # ((PNG → PIL) × N) 을 한꺼번에 치러 첫 몇 프레임의 dropped/지연 방지.
-        with contextlib.suppress(Exception):
-            current = self._frames.current_index
-            self._frames.preload_range(current, current + 4)
+        self._preload_playback_window()
 
         frame = self._frames.current_frame
         delay = 100  # 기본값
@@ -1228,6 +1291,18 @@ class MainWindow(wx.Frame):
             self._frames.go_to_first()
             self._refresh_all()
 
+    def _preload_playback_window(self):
+        count = self._frames.frame_count
+        if not count:
+            return
+        keep = {(self._frames.current_index + offset) % count
+                for offset in range(min(5, count))}
+        for index, frame in enumerate(self._frames):
+            if index not in keep and frame.is_lazy and frame.is_loaded:
+                frame.unload_image()
+        for index in keep:
+            self._frames.preload_range(index, index)
+
     def _on_play_timer(self, event):
         """재생 타이머"""
         if not self._is_playing or self._frames.is_empty:
@@ -1240,11 +1315,7 @@ class MainWindow(wx.Frame):
         # current_index 직접 변경 (select_frame은 selected_indices만 변경함)
         self._frames.current_index = next_idx
 
-        # 다음 2 프레임 미리 decompress — 재생이 자동 unload 와 만나 dropped frame
-        # 을 유발하는 것을 방지. preload_range 는 _ensure_image_loaded 만 트리거
-        # 하므로 추가 메모리는 최대 2 프레임 분.
-        with contextlib.suppress(Exception):
-            self._frames.preload_range(next_idx + 1, next_idx + 2)
+        self._preload_playback_window()
 
         self._update_slider()
         self._canvas.Refresh()
@@ -1337,7 +1408,7 @@ class MainWindow(wx.Frame):
 
             def undo():
                 try:
-                    self._frames = old_frames
+                    self._frames = old_frames.clone()
                     self._refresh_all()
                 except Exception as e:
                     wx.MessageBox(
@@ -1407,7 +1478,7 @@ class MainWindow(wx.Frame):
 
     def open_image_sequence(self):
         """이미지 시퀀스 폴더 열기"""
-        if not self._confirm_save():
+        if not self._confirm_save(self.open_image_sequence):
             return
 
         # 폴더 선택 다이얼로그
@@ -1492,8 +1563,18 @@ class MainWindow(wx.Frame):
             )
             return
 
-        # 비디오 정보 확인
-        video_info = VideoDecoder.get_video_info(file_path)
+        self._probe_progress = wx.ProgressDialog(
+            self._translations.tr("prog_video_conv_title"),
+            self._translations.tr("prog_video_conv_msg"), maximum=100, parent=self,
+            style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE | wx.PD_CAN_ABORT)
+        self._video_file_path = file_path
+        worker = FunctionWorker(lambda: VideoDecoder.get_video_info(
+            file_path, cancel_event=worker._cancel_event))
+        self._start_load_worker('probe', worker)
+
+    def _on_probe_load_finished(self, video_info):
+        self._finish_load('probe')
+        file_path = self._video_file_path
         if not video_info:
             wx.MessageBox(
                 self._translations.tr("msg_video_info_unavailable"),
@@ -1539,38 +1620,33 @@ class MainWindow(wx.Frame):
             video_max_frames=500
         )
 
-        # 시그널 연결 (wxPython 스타일)
-        worker.signals.connect('progress', self._on_video_load_progress)
-        worker.signals.connect('finished', self._on_video_load_finished)
-        worker.signals.connect('error', self._on_video_load_error)
-        worker.signals.connect('cancelled', self._on_video_load_cancelled)
+        self._start_load_worker('video', worker)
 
-        # 취소 버튼 연결
-        self._video_worker = worker
+    def _on_probe_load_error(self, error_msg, traceback):
+        self._on_probe_load_finished(None)
 
-        # 워커 시작
-        get_worker_manager().start(worker)
+    def _on_probe_load_cancelled(self):
+        self._finish_load('probe')
 
     def _on_video_load_progress(self, current: int, total: int):
         """비디오 로드 진행률 업데이트 (이미 wx.CallAfter 경유로 메인 스레드)"""
         try:
             if hasattr(self, '_video_progress') and self._video_progress:
                 percent = int((current / total) * 100) if total > 0 else 0
-                self._video_progress.Update(
+                cont, _ = self._video_progress.Update(
                     percent,
                     self._translations.tr("prog_extract_frames_msg", current=current, total=total))
+                if not cont and self._video_worker is not None:
+                    self._video_worker.cancel()
         except (RuntimeError, wx.PyDeadObjectError):
             pass
 
     def _on_video_load_finished(self, result):
         """비디오 로드 완료"""
-        if hasattr(self, '_video_progress') and self._video_progress:
-            wx.CallAfter(self._video_progress.Destroy)
-            self._video_progress = None
+        self._finish_load('video')
 
         if not result.success:
-            wx.CallAfter(
-                wx.MessageBox,
+            wx.MessageBox(
                 self._translations.tr("msg_video_load_failed", e=result.error_message),
                 self._translations.tr("msg_error"),
                 wx.OK | wx.ICON_ERROR
@@ -1589,12 +1665,11 @@ class MainWindow(wx.Frame):
         self._current_file_path = None  # 비디오 파일은 원본으로 저장 불가
         self._is_modified = True  # 변환된 상태이므로 저장 필요
 
-        wx.CallAfter(self._refresh_all)
-        wx.CallAfter(self._update_title)
-        wx.CallAfter(self._update_info_bar)
+        self._refresh_all()
+        self._update_title()
+        self._update_info_bar()
 
-        wx.CallAfter(
-            wx.MessageBox,
+        wx.MessageBox(
             self._translations.tr("msg_video_converted_body", count=self._frames.frame_count),
             self._translations.tr("msg_video_converted_title"),
             wx.OK | wx.ICON_INFORMATION
@@ -1602,12 +1677,9 @@ class MainWindow(wx.Frame):
 
     def _on_video_load_error(self, error_msg: str, traceback: str):
         """비디오 로드 에러"""
-        if hasattr(self, '_video_progress') and self._video_progress:
-            wx.CallAfter(self._video_progress.Destroy)
-            self._video_progress = None
+        self._finish_load('video')
 
-        wx.CallAfter(
-            wx.MessageBox,
+        wx.MessageBox(
             self._translations.tr("msg_video_load_failed", e=error_msg),
             self._translations.tr("msg_error"),
             wx.OK | wx.ICON_ERROR
@@ -1615,9 +1687,7 @@ class MainWindow(wx.Frame):
 
     def _on_video_load_cancelled(self):
         """비디오 로드 취소"""
-        if hasattr(self, '_video_progress') and self._video_progress:
-            wx.CallAfter(self._video_progress.Destroy)
-            self._video_progress = None
+        self._finish_load('video')
 
     def _flip_frames(self, direction: str):
         """프레임 뒤집기 (가로/세로) — ProgressDialog 표시."""
@@ -1783,7 +1853,7 @@ class MainWindow(wx.Frame):
 
         def undo():
             try:
-                self._frames = old_frames
+                self._frames = old_frames.clone()
                 self._refresh_all()
             except Exception as e:
                 wx.MessageBox(
@@ -2454,10 +2524,11 @@ class MainWindow(wx.Frame):
 
     def closeEvent(self, event):
         """종료"""
-        if not self._confirm_save():
+        if not self._confirm_save(self.Close):
             event.Veto()
             return
 
+        self._closing = True
         self._play_timer.Stop()
         self._gpu_update_timer.Stop()
         self._cleanup_workers()
@@ -2473,6 +2544,8 @@ class MainWindow(wx.Frame):
     def _cleanup_workers(self):
         """Worker 시그널 해제 및 참조 정리 (메모리 누수 방지)"""
         worker_attrs = [
+            '_gif_worker',
+            '_probe_worker',
             '_video_worker',
             '_split_worker',
             '_merge_worker',
@@ -2510,6 +2583,9 @@ class MainWindow(wx.Frame):
                     finally:
                         # 참조 제거
                         setattr(self, attr, None)
+
+        for kind in ('gif', 'video', 'probe'):
+            self._finish_load(kind)
 
     def OnKeyDown(self, event):
         """키보드 이벤트 처리"""
@@ -3138,7 +3214,7 @@ class MainWindow(wx.Frame):
 
             def undo():
                 try:
-                    self._frames = old_frames
+                    self._frames = old_frames.clone()
                     self._refresh_all()
                 except Exception as e:
                     wx.MessageBox(
@@ -3216,7 +3292,7 @@ class MainWindow(wx.Frame):
 
             def undo():
                 try:
-                    self._frames = old_frames
+                    self._frames = old_frames.clone()
                     self._refresh_all()
                 except Exception as e:
                     wx.MessageBox(

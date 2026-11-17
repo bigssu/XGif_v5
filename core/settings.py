@@ -7,6 +7,8 @@ INI 포맷 유지 (configparser 기반), %APPDATA%\\XGif\\config.ini 저장.
 """
 
 import configparser
+import contextlib
+import tempfile
 import logging
 import os
 from dataclasses import dataclass, fields
@@ -105,13 +107,14 @@ class AppSettings:
     def save(self, path: Optional[str] = None) -> None:
         """INI 파일로 저장."""
         path = path or get_config_path()
-        config_dir = os.path.dirname(path)
+        config_dir = os.path.dirname(path) or "."
         os.makedirs(config_dir, exist_ok=True)
 
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(interpolation=None)
         # 기존 파일이 있으면 읽어서 알 수 없는 키 보존
         if os.path.exists(path):
-            config.read(path, encoding="utf-8")
+            with open(path, encoding="utf-8") as fp:
+                config.read_file(fp)
 
         if not config.has_section("General"):
             config.add_section("General")
@@ -119,8 +122,20 @@ class AppSettings:
         for f in fields(self):
             config.set("General", f.name, str(getattr(self, f.name)))
 
-        with open(path, "w", encoding="utf-8") as fp:
-            config.write(fp)
+        staged_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=config_dir, prefix=".config-", suffix=".tmp", delete=False,
+            ) as fp:
+                staged_path = fp.name
+                config.write(fp)
+                fp.flush()
+                os.fsync(fp.fileno())
+            os.replace(staged_path, path)
+        finally:
+            if staged_path is not None:
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(staged_path)
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppSettings":
@@ -131,8 +146,13 @@ class AppSettings:
         if not os.path.exists(path):
             return settings
 
-        config = configparser.ConfigParser()
-        config.read(path, encoding="utf-8")
+        config = configparser.ConfigParser(interpolation=None)
+        try:
+            with open(path, encoding="utf-8") as fp:
+                config.read_file(fp)
+        except (OSError, UnicodeError, configparser.Error) as exc:
+            logger.warning("Settings could not be loaded; using defaults: %s", exc)
+            return settings
 
         if config.has_section("General"):
             for f in fields(settings):
@@ -165,7 +185,7 @@ class AppSettings:
     def write(self, fp) -> None:
         """configparser.write() 호환 — save()로 위임."""
         # fp는 이미 열린 파일 객체이므로, 직접 configparser 포맷 작성
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(interpolation=None)
         config.add_section("General")
         for f in fields(self):
             config.set("General", f.name, str(getattr(self, f.name)))

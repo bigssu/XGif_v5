@@ -9,7 +9,7 @@ from PIL import Image
 import traceback
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor, Future, wait
 import contextlib
 
 
@@ -41,35 +41,41 @@ class WorkerSignals:
         elif event_name == 'cancelled':
             self.cancelled_callbacks.append(callback)
 
+    @staticmethod
+    def _dispatch(callbacks, callback, *args):
+        # A queued UI callback may outlive the window that disconnected it.
+        if callback in callbacks:
+            callback(*args)
+
     def emit_started(self):
         """시작 이벤트 발생"""
         for callback in self.started_callbacks:
-            wx.CallAfter(callback)
+            wx.CallAfter(self._dispatch, self.started_callbacks, callback)
 
     def emit_finished(self, result):
         """완료 이벤트 발생"""
         for callback in self.finished_callbacks:
-            wx.CallAfter(callback, result)
+            wx.CallAfter(self._dispatch, self.finished_callbacks, callback, result)
 
     def emit_error(self, msg: str, tb: str):
         """에러 이벤트 발생"""
         for callback in self.error_callbacks:
-            wx.CallAfter(callback, msg, tb)
+            wx.CallAfter(self._dispatch, self.error_callbacks, callback, msg, tb)
 
     def emit_progress(self, current: int, total: int):
         """진행률 이벤트 발생"""
         for callback in self.progress_callbacks:
-            wx.CallAfter(callback, current, total)
+            wx.CallAfter(self._dispatch, self.progress_callbacks, callback, current, total)
 
     def emit_progress_message(self, msg: str):
         """진행 메시지 이벤트 발생"""
         for callback in self.progress_message_callbacks:
-            wx.CallAfter(callback, msg)
+            wx.CallAfter(self._dispatch, self.progress_message_callbacks, callback, msg)
 
     def emit_cancelled(self):
         """취소 이벤트 발생"""
         for callback in self.cancelled_callbacks:
-            wx.CallAfter(callback)
+            wx.CallAfter(self._dispatch, self.cancelled_callbacks, callback)
 
 
 class BaseWorker:
@@ -113,6 +119,9 @@ class FunctionWorker(BaseWorker):
         self.kwargs = kwargs
 
     def run(self):
+        if self.is_cancelled:
+            self.signals.emit_cancelled()
+            return
         self.signals.emit_started()
 
         try:
@@ -238,15 +247,19 @@ class VideoLoadWorker(BaseWorker):
         self.signals.emit_progress(current, total)
 
     def run(self):
+        if self.is_cancelled:
+            self.signals.emit_cancelled()
+            return
         self.signals.emit_started()
         self.signals.emit_progress_message(f"비디오 로드 중: {self.file_path}")
 
         try:
             # 진행률 콜백 주입
             self.kwargs['progress_callback'] = self._progress_callback
+            self.kwargs['cancel_event'] = self._cancel_event
             result = self.load_func(self.file_path, **self.kwargs)
 
-            if self.is_cancelled:
+            if self.is_cancelled or getattr(result, 'cancelled', False):
                 self.signals.emit_cancelled()
             else:
                 self.signals.emit_finished(result)
@@ -333,13 +346,13 @@ class WorkerManager:
 
     def wait_for_done(self, timeout_ms: int = -1) -> bool:
         """모든 작업 완료 대기"""
-        try:
-            with self._workers_lock:
-                self._executor.shutdown(wait=True, cancel_futures=False)
-                self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+        with self._workers_lock:
+            futures = [worker._future for worker in self._active_workers
+                       if worker._future is not None]
+        if not futures:
             return True
-        except Exception:
-            return False
+        _, pending = wait(futures, timeout=None if timeout_ms < 0 else timeout_ms / 1000)
+        return not pending
 
     def clear(self) -> None:
         """대기 중인 모든 작업 제거"""

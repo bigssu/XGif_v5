@@ -1,6 +1,9 @@
 """AppSettings 직렬화/검증 테스트."""
 
 import os
+import configparser
+import io
+import pytest
 from core.settings import AppSettings
 
 
@@ -117,3 +120,44 @@ class TestAppSettingsConfigParserCompat:
         # Verify file was written
         assert os.path.exists(tmp_ini)
         assert os.path.getsize(tmp_ini) > 0
+
+
+@pytest.mark.parametrize("value", ["C:/100%/recordings", "%(missing)s"])
+def test_literal_percent_roundtrip(tmp_path, value):
+    path = tmp_path / "config.ini"
+    settings = AppSettings(last_save_dir=value)
+    settings.save(path)
+    assert AppSettings.load(path).last_save_dir == value
+    stream = io.StringIO()
+    settings.write(stream)
+    assert value in stream.getvalue()
+
+
+@pytest.mark.parametrize("content", [b"broken ini", b"[General]\nlanguage=\xff", b"[General]\nlanguage=en\nlanguage=ko"])
+def test_corrupt_settings_load_defaults_and_save_preserves_original(tmp_path, content):
+    path = tmp_path / "config.ini"
+    path.write_bytes(content)
+    assert AppSettings.load(path) == AppSettings()
+    with pytest.raises((configparser.Error, UnicodeError)):
+        AppSettings(language="en").save(path)
+    assert path.read_bytes() == content
+
+
+@pytest.mark.parametrize("failure", ["write", "replace"])
+def test_failed_settings_save_preserves_original_and_removes_stage(tmp_path, monkeypatch, failure):
+    import core.settings as module
+    path = tmp_path / "config.ini"
+    original = b"[General]\nlanguage=ko\ncustom=retained\n"
+    path.write_bytes(original)
+    def fail(*args, **kwargs):
+        if failure == "write":
+            args[1].write("partial")
+        raise OSError("disk failure")
+    if failure == "write":
+        monkeypatch.setattr(configparser.ConfigParser, "write", fail)
+    else:
+        monkeypatch.setattr(module.os, "replace", fail)
+    with pytest.raises(OSError, match="disk failure"):
+        AppSettings(language="en").save(path)
+    assert path.read_bytes() == original
+    assert list(tmp_path.iterdir()) == [path]

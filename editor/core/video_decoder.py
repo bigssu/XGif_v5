@@ -3,15 +3,67 @@ VideoDecoder - 비디오 파일 디코딩 (MP4, AVI, WebM 등)
 GIF 변환을 위한 비디오 프레임 추출
 """
 from __future__ import annotations
-import importlib.util
+import json
+import math
+import os
+import shutil
+import subprocess
+import tempfile
+import threading
+import time
+from contextlib import contextmanager, suppress
+from fractions import Fraction
 from typing import Optional, Tuple, Callable
 from pathlib import Path
 from dataclasses import dataclass
 from PIL import Image
-import numpy as np
 
 from .frame import Frame
 from .frame_collection import FrameCollection
+
+
+def _check_interrupted(cancel_event, deadline):
+    if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError("작업이 취소되었습니다")
+    if time.monotonic() >= deadline:
+        raise TimeoutError("비디오 로드 제한시간을 초과했습니다")
+
+
+@contextmanager
+def _watch_process(process, cancel_event, deadline):
+    """Kill a stalled child to unblock pipe reads; always reap it and join the watchdog."""
+    finished = threading.Event()
+    interruption = []
+
+    def watch():
+        while not finished.wait(0.05):
+            try:
+                _check_interrupted(cancel_event, deadline)
+            except (InterruptedError, TimeoutError) as error:
+                interruption.append(error)
+                if process.poll() is None:
+                    # The child may have exited between poll and kill.
+                    with suppress(OSError):
+                        process.kill()
+                return
+
+    watcher = threading.Thread(target=watch, name='video-decoder-watchdog')
+    watcher.start()
+    try:
+        _check_interrupted(cancel_event, deadline)
+        yield
+    finally:
+        finished.set()
+        try:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+        finally:
+            watcher.join()
+            process.stdout.close()
+        if interruption:
+            raise interruption[0]
+        _check_interrupted(cancel_event, deadline)
 
 
 @dataclass
@@ -31,6 +83,7 @@ class VideoLoadResult:
     frames: Optional[FrameCollection] = None
     success: bool = False
     error_message: str = ""
+    cancelled: bool = False
 
     @classmethod
     def error(cls, message: str) -> 'VideoLoadResult':
@@ -45,31 +98,32 @@ class VideoDecoder:
     """비디오 파일 디코딩 클래스
 
     MP4, AVI, WebM, MOV 등의 비디오 파일을 GIF 프레임으로 변환합니다.
-    imageio-ffmpeg 또는 PyAV를 사용합니다.
+    설치된 FFmpeg와 FFprobe를 사용합니다.
     """
 
     SUPPORTED_EXTENSIONS = {'.mp4', '.avi', '.webm', '.mov', '.mkv', '.wmv', '.flv', '.m4v'}
 
     @classmethod
-    def is_available(cls) -> bool:
-        """비디오 디코딩 가능 여부 확인 (시스템 FFmpeg 또는 imageio-ffmpeg)"""
-        # imageio가 시스템 FFmpeg를 사용하도록 환경변수 설정
-        cls._setup_ffmpeg_env()
-        return importlib.util.find_spec("imageio.v3") is not None
+    def _ffmpeg_tools(cls):
+        from core.ffmpeg_installer import FFmpegManager
+
+        ffmpeg = FFmpegManager.get_ffmpeg_executable()
+        if not ffmpeg:
+            raise FileNotFoundError("FFmpeg가 설치되어 있지 않습니다")
+        sibling = Path(ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')
+        ffprobe = str(sibling) if sibling.is_file() else shutil.which('ffprobe')
+        if not ffprobe:
+            raise FileNotFoundError("FFprobe가 설치되어 있지 않습니다")
+        return ffmpeg, ffprobe
 
     @classmethod
-    def _setup_ffmpeg_env(cls):
-        """imageio가 시스템 FFmpeg를 찾을 수 있도록 환경변수 설정"""
-        import os
-        if os.environ.get('IMAGEIO_FFMPEG_EXE'):
-            return  # 이미 설정됨
+    def is_available(cls) -> bool:
+        """설치된 FFmpeg와 FFprobe 사용 가능 여부."""
         try:
-            from core.ffmpeg_installer import FFmpegManager
-            ffmpeg_path = FFmpegManager.get_ffmpeg_executable()
-            if ffmpeg_path:
-                os.environ['IMAGEIO_FFMPEG_EXE'] = str(ffmpeg_path)
-        except Exception:
-            pass
+            cls._ffmpeg_tools()
+            return True
+        except OSError:
+            return False
 
     @classmethod
     def load(cls, file_path: str,
@@ -78,7 +132,9 @@ class VideoDecoder:
              start_time: float = 0.0,
              end_time: Optional[float] = None,
              resize: Optional[Tuple[int, int]] = None,
-             progress_callback: Optional[Callable[[int, int], None]] = None
+             progress_callback: Optional[Callable[[int, int], None]] = None,
+             cancel_event: Optional[threading.Event] = None,
+             timeout: float = 3600.0
              ) -> VideoLoadResult:
         """비디오 파일을 프레임 컬렉션으로 로드
 
@@ -90,6 +146,8 @@ class VideoDecoder:
             end_time: 종료 시간 (초, None이면 끝까지)
             resize: 리사이즈 크기 (width, height), None이면 원본
             progress_callback: 진행률 콜백 (current, total)
+            cancel_event: 설정 시 읽기 대기 중에도 디코더를 중단합니다.
+            timeout: 메타데이터 조회부터 디코딩 종료까지의 제한시간(초).
 
         Returns:
             VideoLoadResult: 로드 결과
@@ -103,13 +161,17 @@ class VideoDecoder:
         if ext not in cls.SUPPORTED_EXTENSIONS:
             return VideoLoadResult.error(f"지원하지 않는 비디오 형식입니다: {ext}")
 
-        # imageio로 로드 시도
         try:
-            cls._setup_ffmpeg_env()
-            return cls._load_with_imageio(
+            if not math.isfinite(timeout) or timeout <= 0:
+                return VideoLoadResult.error("제한시간은 양의 유한한 값이어야 합니다")
+            deadline = time.monotonic() + timeout
+            _check_interrupted(cancel_event, deadline)
+            return cls._load_with_ffmpeg(
                 path, target_fps, max_frames,
-                start_time, end_time, resize, progress_callback
+                start_time, end_time, resize, progress_callback, cancel_event, deadline
             )
+        except InterruptedError as e:
+            return VideoLoadResult(cancelled=True, error_message=str(e))
         except ImportError:
             return VideoLoadResult.error(
                 "비디오 디코딩을 위해 FFmpeg가 필요합니다.\n"
@@ -119,106 +181,117 @@ class VideoDecoder:
             return VideoLoadResult.error(f"비디오 로드 실패: {str(e)}")
 
     @classmethod
-    def _load_with_imageio(cls, path: Path, target_fps: int, max_frames: int,
-                           start_time: float, end_time: Optional[float],
-                           resize: Optional[Tuple[int, int]],
-                           progress_callback: Optional[Callable[[int, int], None]]
-                           ) -> VideoLoadResult:
-        """imageio를 사용하여 비디오 로드"""
-        import imageio.v3 as iio
+    def _load_with_ffmpeg(cls, path: Path, target_fps: int, max_frames: int,
+                          start_time: float, end_time: Optional[float],
+                          resize: Optional[Tuple[int, int]],
+                          progress_callback: Optional[Callable[[int, int], None]],
+                          cancel_event, deadline
+                          ) -> VideoLoadResult:
+        ffmpeg, _ = cls._ffmpeg_tools()
+        info = cls.get_video_info(str(path), cancel_event=cancel_event,
+                                  timeout=max(0.001, deadline - time.monotonic()))
+        _check_interrupted(cancel_event, deadline)
+        if info is None:
+            return VideoLoadResult.error("비디오 메타데이터를 읽을 수 없습니다")
+        if (not math.isfinite(target_fps) or target_fps <= 0
+                or not isinstance(max_frames, int) or max_frames <= 0
+                or not math.isfinite(start_time) or start_time < 0
+                or (end_time is not None and not math.isfinite(end_time))):
+            return VideoLoadResult.error("잘못된 비디오 추출 범위 또는 프레임 수입니다")
+        stop = min(info.duration, end_time) if end_time is not None else info.duration
+        duration = stop - start_time
+        if duration <= 0:
+            return VideoLoadResult.error("비디오 추출 범위가 비어 있습니다")
+        width, height = resize if resize is not None else (info.width, info.height)
+        if any(not isinstance(value, int) or value <= 0 for value in (width, height)):
+            return VideoLoadResult.error("잘못된 이미지 크기입니다")
 
+        # Uniform output timestamps bound memory and keep the whole selected clip's duration.
+        duration_ms = round(duration * 1000)
+        count = min(max_frames, max(1, math.ceil(duration * min(target_fps, info.fps))),
+                    max(1, duration_ms // 10))
+        filters = f'fps={count / duration:.12g}:start_time=0'
+        if resize is not None:
+            filters += f',scale={width}:{height}:flags=lanczos'
+        command = [ffmpeg, '-v', 'error', '-nostdin', '-ss', str(start_time), '-i', str(path),
+                   '-t', str(duration), '-map', '0:v:0', '-an', '-sn', '-dn',
+                   '-vf', filters, '-frames:v', str(count), '-pix_fmt', 'rgb24',
+                   '-f', 'rawvideo', 'pipe:1']
         collection = FrameCollection()
-
-        # 비디오 메타데이터 읽기
-        meta = iio.immeta(str(path), plugin="pyav")
-        video_fps = meta.get('fps', 30)
-        duration = meta.get('duration', 0)
-
-        # 종료 시간 설정
-        if end_time is None or end_time > duration:
-            end_time = duration
-
-        # 프레임 간격 계산 (target_fps에 맞게 샘플링)
-        target_fps = max(1, target_fps)  # 0 방지
-        frame_interval = max(1, int(video_fps / target_fps))
-
-        # GIF 프레임 딜레이 (밀리초)
-        delay_ms = int(1000 / target_fps)
-
-        # 프레임 읽기 (스트리밍 방식 — 전체를 메모리에 로드하지 않음)
-        start_frame = int(start_time * video_fps)
-        end_frame = int(end_time * video_fps)
-
-        # 샘플링할 프레임 인덱스 계산
-        total_estimated = int(duration * video_fps) if duration > 0 else end_frame
-        sample_indices = set(range(start_frame, min(end_frame, total_estimated), frame_interval))
-
-        # 최대 프레임 수 제한
-        if len(sample_indices) > max_frames:
-            sorted_indices = sorted(sample_indices)
-            step = len(sorted_indices) // max_frames
-            sample_indices = set(sorted_indices[::step][:max_frames])
-
-        # 프레임 스트리밍 (한 번에 하나씩 읽기)
-        collected = 0
-        total_to_collect = len(sample_indices)
-        for frame_idx, frame_data in enumerate(iio.imiter(str(path), plugin="pyav")):
-            if frame_idx > end_frame:
-                break
-
-            if frame_idx not in sample_indices:
-                continue
-
-            # RGB → RGBA
-            if frame_data.ndim == 3 and frame_data.shape[2] == 3:
-                alpha = np.full((*frame_data.shape[:2], 1), 255, dtype=np.uint8)
-                frame_data = np.concatenate([frame_data, alpha], axis=2)
-
-            img = Image.fromarray(frame_data, 'RGBA')
-
-            # 리사이즈
-            if resize:
-                img = img.resize(resize, Image.Resampling.LANCZOS)
-
-            frame = Frame(img, delay_ms)
-            collection.add_frame(frame)
-            collected += 1
-
-            # 진행률 콜백
-            if progress_callback:
-                progress_callback(collected, total_to_collect)
-
-        if collection.is_empty:
-            return VideoLoadResult.error("비디오에서 프레임을 추출할 수 없습니다")
-
+        with tempfile.TemporaryFile() as errors:
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            with _watch_process(process, cancel_event, deadline):
+                frame_size = width * height * 3
+                for index in range(count):
+                    _check_interrupted(cancel_event, deadline)
+                    data = process.stdout.read(frame_size)
+                    if len(data) != frame_size:
+                        raise ValueError("비디오 프레임 데이터가 불완전합니다")
+                    image = Image.frombytes('RGB', (width, height), data)
+                    delay = round((index + 1) * duration_ms / count) - round(index * duration_ms / count)
+                    collection.add_frame(Frame(image, delay))
+                    if progress_callback:
+                        progress_callback(index + 1, count)
+                if process.wait() != 0:
+                    errors.seek(0)
+                    raise ValueError(errors.read(4096).decode('utf-8', errors='replace'))
         return VideoLoadResult.ok(collection)
 
     @classmethod
-    def get_video_info(cls, file_path: str) -> Optional[VideoInfo]:
-        """비디오 파일 정보만 읽기"""
+    def _probe(cls, file_path, cancel_event, deadline):
+        _, ffprobe = cls._ffmpeg_tools()
+        command = [ffprobe, '-v', 'error', '-select_streams', 'v:0',
+                   '-show_entries', 'stream=width,height,avg_frame_rate,r_frame_rate,duration,nb_frames,codec_name:stream_side_data=rotation:stream_tags=rotate:format=duration',
+                   '-of', 'json', str(file_path)]
+        with tempfile.TemporaryFile() as errors:
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            with _watch_process(process, cancel_event, deadline):
+                output = process.stdout.read()
+                if process.wait() != 0:
+                    raise ValueError("비디오 메타데이터를 읽을 수 없습니다")
+                return output.decode('utf-8')
+
+    @classmethod
+    def get_video_info(cls, file_path: str, cancel_event: Optional[threading.Event] = None,
+                       timeout: float = 30.0) -> Optional[VideoInfo]:
+        """FFprobe JSON 메타데이터를 읽고 사용할 수 없는 값은 거부합니다."""
         try:
-            import imageio.v3 as iio
-
-            path = Path(file_path)
-            if not path.exists():
+            if not Path(file_path).is_file():
                 return None
-
-            meta = iio.immeta(str(path), plugin="pyav")
-
-            info = VideoInfo()
-            info.width = meta.get('size', [0, 0])[0]
-            info.height = meta.get('size', [0, 0])[1]
-            info.fps = meta.get('fps', 0)
-            info.duration = meta.get('duration', 0)
-            info.codec = meta.get('codec', '')
-
-            # 프레임 수 계산
-            if info.fps > 0 and info.duration > 0:
-                info.frame_count = int(info.fps * info.duration)
-
-            return info
-
-        except Exception:
+            if not math.isfinite(timeout) or timeout <= 0:
+                raise ValueError("제한시간은 양의 유한한 값이어야 합니다")
+            deadline = time.monotonic() + timeout
+            _check_interrupted(cancel_event, deadline)
+            meta = json.loads(cls._probe(file_path, cancel_event, deadline))
+            stream = meta['streams'][0]
+            if not isinstance(stream, dict):
+                return None
+            rate = stream.get('avg_frame_rate')
+            if rate in (None, '0/0', '0/1', 'N/A'):
+                rate = stream.get('r_frame_rate', '0')
+            fps = float(Fraction(rate))
+            duration_value = stream.get('duration')
+            if duration_value in (None, 'N/A'):
+                duration_value = meta.get('format', {}).get('duration')
+            count_value = stream.get('nb_frames')
+            count = int(count_value) if count_value not in (None, 'N/A') else 0
+            duration = float(duration_value) if duration_value is not None else count / fps
+            width, height = int(stream['width']), int(stream['height'])
+            rotation = next((entry['rotation'] for entry in stream.get('side_data_list', [])
+                             if 'rotation' in entry), stream.get('tags', {}).get('rotate', 0))
+            # FFmpeg autorotates before emitting raw pixels, so use display dimensions.
+            if math.isclose(float(rotation) % 180, 90, abs_tol=0.01):
+                width, height = height, width
+            if (width <= 0 or height <= 0 or not math.isfinite(fps) or fps <= 0
+                    or not math.isfinite(duration) or duration <= 0):
+                return None
+            return VideoInfo(width, height, fps, duration, count or round(duration * fps),
+                             stream.get('codec_name', ''))
+        except (InterruptedError, TimeoutError):
+            raise
+        except (OSError, ValueError, TypeError, KeyError, IndexError, ZeroDivisionError, subprocess.SubprocessError):
             return None
 
     @classmethod

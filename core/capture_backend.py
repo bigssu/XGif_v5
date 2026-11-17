@@ -261,38 +261,18 @@ class DXCamBackend(CaptureBackend):
     def is_running(self) -> bool:
         return self._running
 
-    # P1-4: DXCam은 첫 dxcam.create()가 ~500ms 걸리므로 워밍업 이득이 큼.
-    # 100x100 영역으로 짧게 start→grab→stop 해서 공유 카메라를 선행 초기화한다.
-    # P1-B (2026-04-21 리뷰): stop() 이 실패하면 force_release() 로 폴백하여
-    # DXGI duplicator 가 lock 된 채 남는 것을 막는다.
     def warm_up(self) -> bool:
+        """Initialize DXGI without consuming the first frame or starting capture."""
         if not HAS_DXCAM:
             return False
-
-        started = False
-        test_frame = None
         try:
-            started = self.start((0, 0, 100, 100), target_fps=30)
-            if not started:
-                return False
-            time.sleep(0.1)
-            test_frame = self.grab()
+            with DXCamBackend._camera_lock:
+                if DXCamBackend._shared_camera is None:
+                    DXCamBackend._shared_camera = _create_dxcam_camera()
+                return DXCamBackend._shared_camera is not None
         except Exception as exc:
-            logger.warning(f"[DXCamBackend] warm_up failed: {exc}")
-        finally:
-            if started:
-                try:
-                    self.stop()
-                except Exception as stop_exc:
-                    logger.warning(
-                        f"[DXCamBackend] warm_up stop() failed, invoking force_release: {stop_exc}"
-                    )
-                    try:
-                        self.force_release()
-                    except Exception as fr_exc:
-                        logger.error(f"[DXCamBackend] warm_up force_release error: {fr_exc}")
-
-        return test_frame is not None
+            logger.warning("[DXCamBackend] warm_up failed: %s", exc)
+            return False
 
     # P0-4 + P1-A (2026-04-21 리뷰): stop() 이 실패했을 때 DXGI duplicator 를
     # GC 가능 상태로 강제 해제. 인스턴스 _camera 와 클래스 레벨 _shared_camera

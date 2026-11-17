@@ -14,6 +14,12 @@
 #if MyAppExeSource == ""
   #error "MyAppExeSource is required. Run build_optimized.py --installer or set XGIF_APP_EXE_SOURCE."
 #endif
+#ifndef MyAppCliExeSource
+  #define MyAppCliExeSource GetEnv("XGIF_APP_CLI_EXE_SOURCE")
+#endif
+#if MyAppCliExeSource == ""
+  #error "MyAppCliExeSource is required. Run build_optimized.py --installer."
+#endif
 #define MyAppPublisher "XGif"
 #define MyAppExeName "XGif.exe"
 #define MyAppURL "https://github.com/bigssu/XGif_v5"
@@ -56,6 +62,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#MyAppExeSource}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
+
+Source: "{#MyAppCliExeSource}"; DestDir: "{app}"; DestName: "XGif-cli.exe"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

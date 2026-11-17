@@ -322,7 +322,19 @@ def _install_ffmpeg() -> int:
         finished_callback=on_finished,
     )
     downloader.start()
-    downloader.join(timeout=300)
+    interrupted = False
+    while True:
+        try:
+            if downloader.finished.wait(timeout=0.2):
+                break
+        except KeyboardInterrupt:
+            interrupted = True
+            downloader.cancel()
+            print("\n  설치 취소 요청됨. 작업 정리가 끝날 때까지 기다립니다.")
+    downloader.join()
+
+    if interrupted:
+        return 130
 
     print()
     if done["success"]:

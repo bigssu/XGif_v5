@@ -12,6 +12,7 @@ import asyncio
 import uuid
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import List, Optional, Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -376,6 +377,36 @@ class GifEncoder:
         else:
             return available.get('best_h264', 'libx264')
 
+    @staticmethod
+    def _is_hardware_encoder_failure(encoder, stderr):
+        if not encoder.endswith(('_nvenc', '_qsv', '_amf')):
+            return False
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode('utf-8', errors='replace')
+        message = stderr.lower()
+        return any(marker in message for marker in (
+            'initializeencoder failed', 'openencodesessionex failed',
+            'no nvenc capable devices found', 'cannot load nvcuda', 'cannot load nvencodeapi',
+            'driver does not support the required nvenc api version',
+            'error initializing an internal mfx session', 'error initializing an mfx session',
+            'error creating a mfx session',
+            'amf failed to initialise', 'amf failed to initialize',
+            'amf_context->init() failed', 'amf_encoder->init() failed',
+            'error while opening encoder',
+        ))
+
+    @staticmethod
+    def _video_encoder_options(encoder, crf, cpu_preset='medium'):
+        if encoder in ('h264_nvenc', 'hevc_nvenc'):
+            quality = ['-preset', 'p4', '-cq', crf]
+        elif encoder in ('h264_qsv', 'hevc_qsv'):
+            quality = ['-preset', 'medium', '-global_quality', crf]
+        elif encoder in ('h264_amf', 'hevc_amf'):
+            quality = ['-quality', 'balanced', '-rc', 'cqp', '-qp_i', crf, '-qp_p', crf]
+        else:
+            quality = ['-preset', cpu_preset, '-crf', crf]
+        return ['-c:v', encoder] + quality
+
     def get_encoder_display_name(self, encoder: str) -> str:
         """인코더 표시 이름 반환"""
         display_names = {
@@ -472,61 +503,63 @@ class GifEncoder:
             raise
 
     def _write_frames_to_pipe(self, process, frames: List[np.ndarray], total_steps: int = 0):
-        """FFmpeg 프로세스의 stdin으로 프레임 데이터 스트리밍
-
-        Args:
-            process: FFmpeg 서브프로세스
-            frames: 프레임 리스트
-            total_steps: 진행률 계산용 총 단계 수 (0이면 progress 미emit)
-        """
+        """Stream uint8 BGR/BGRA capture frames as bgr24, one frame at a time."""
+        shape = frames[0].shape[:2]
         try:
-            if process is None or process.stdin is None:
-                logger.error("Invalid process or stdin")
-                return
-
-            frames_written = 0
-            total_frames = len(frames)
             for i, frame in enumerate(frames):
-                # 프레임 유효성 검증
-                if frame is None or not isinstance(frame, np.ndarray):
-                    logger.warning(f"Skipping invalid frame at index {i}")
-                    continue
-
-                # 프레임 크기 검증
-                if frame.size == 0:
-                    logger.warning(f"Skipping empty frame at index {i}")
-                    continue
-
-                # BGR to RGB 변환 (rawvideo는 RGB24 선호)
-                # DXCam/GDI는 BGR24이므로 'bgr24' pix_fmt 설정 시 변환 불필요
-                try:
-                    frame_bytes = frame.tobytes()
-                    process.stdin.write(frame_bytes)
-                    frames_written += 1
-
-                    # 진행률 emit (MP4 인코딩 시 UI 업데이트용)
-                    if total_steps > 0 and (frames_written % 10 == 0 or frames_written == total_frames):
-                        self._emit_progress(frames_written, total_steps)
-
-                    # 진행 상황 로깅 (100프레임마다)
-                    if (i + 1) % 100 == 0:
-                        logger.debug(f"[Pipe] Written {i+1}/{total_frames} frames")
-
-                except (BrokenPipeError, OSError) as e:
-                    logger.error(f"Pipe broken at frame {i}/{total_frames}: {e}")
-                    break
-
-            # stdin EOF 전송 — FFmpeg가 인코딩 완료를 감지하도록
+                if (not isinstance(frame, np.ndarray) or frame.dtype != np.uint8
+                        or frame.ndim != 3 or frame.shape[2] not in (3, 4)
+                        or frame.shape[:2] != shape or frame.size == 0):
+                    raise ValueError(f"Invalid BGR/BGRA frame at index {i}")
+                process.stdin.write(frame[:, :, :3].tobytes())
+                if total_steps > 0 and ((i + 1) % 10 == 0 or i + 1 == len(frames)):
+                    self._emit_progress(i + 1, total_steps)
+        finally:
             with contextlib.suppress(BrokenPipeError, OSError):
                 process.stdin.close()
-            logger.info(f"[Pipe] Total frames written: {frames_written}/{total_frames}")
-        except (IOError, OSError, ValueError) as e:
-            logger.error(f"[GifEncoder] Pipe write error: {e}")
+
+    def _run_streamed_ffmpeg(self, cmd, frames, total_steps=0, timeout=600):
+        """Bound both stdin writes and process completion by the same deadline."""
+        deadline = time.monotonic() + timeout
+        # A file cannot fill a stderr pipe while the child is waiting for stdin.
+        with tempfile.TemporaryFile() as stderr:
+            process = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=stderr,
+                env=self._ffmpeg_env,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+            )
+            write_errors = []
+
+            def write_frames():
+                try:
+                    self._write_frames_to_pipe(process, frames, total_steps)
+                except (BrokenPipeError, OSError) as exc:
+                    write_errors.append(exc)
+                except Exception as exc:
+                    write_errors.append(exc)
+                    if process.poll() is None:
+                        process.kill()
+
+            writer = threading.Thread(target=write_frames, name='ffmpeg-frame-writer')
             try:
-                if process and process.stdin:
+                writer.start()
+                writer.join(max(0, deadline - time.monotonic()))
+                if writer.is_alive():
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                process.wait(timeout=max(0, deadline - time.monotonic()))
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+                if writer.ident is not None:
+                    writer.join()
+                with contextlib.suppress(BrokenPipeError, OSError):
                     process.stdin.close()
-            except (BrokenPipeError, OSError):
-                pass
+            stderr.seek(0)
+            error_output = stderr.read()
+            if write_errors and (process.returncode == 0 or not isinstance(write_errors[0], OSError)):
+                raise write_errors[0]
+            return subprocess.CompletedProcess(cmd, process.returncode, stderr=error_output)
 
     def _check_disk_space(self, output_path: str, frames: List[np.ndarray]) -> bool:
         """인코딩 전 디스크 공간 확인. 부족하면 False 반환."""
@@ -546,6 +579,36 @@ class GifEncoder:
         return True
 
     def encode(self, frames: List[np.ndarray], fps: int, output_path: str) -> bool:
+        return self._encode_atomic(self._encode_gif, frames, fps, output_path)
+
+    def encode_mp4(self, frames: List[np.ndarray], fps: int, output_path: str, audio_path: Optional[str] = None) -> bool:
+        return self._encode_atomic(self._encode_mp4, frames, fps, output_path, audio_path)
+
+    def _encode_atomic(self, encode, frames, fps, output_path, *args):
+        staged = None
+        try:
+            if not output_path or not isinstance(output_path, str):
+                self._emit_error("유효하지 않은 출력 경로입니다.")
+                return False
+            destination = Path(output_path).absolute()
+            fd, staged = tempfile.mkstemp(prefix='.xgif-', suffix=destination.suffix, dir=destination.parent)
+            os.close(fd)
+            if not encode(frames, fps, staged, *args):
+                return False
+            if os.path.getsize(staged) == 0:
+                raise ValueError("인코딩 결과 파일이 비어 있습니다.")
+            os.replace(staged, destination)
+            self._emit_finished(output_path)
+            return True
+        except Exception as exc:
+            self._emit_error(f"인코딩 파일 저장 실패: {exc}")
+            return False
+        finally:
+            if staged is not None:
+                with contextlib.suppress(OSError):
+                    os.remove(staged)
+
+    def _encode_gif(self, frames: List[np.ndarray], fps: int, output_path: str) -> bool:
         """프레임 리스트를 GIF로 인코딩 (Pipe 방식 우선)"""
         # 입력 검증
         if not frames:
@@ -642,30 +705,13 @@ class GifEncoder:
                 palette_path
             ]
 
-            process = subprocess.Popen(
-                cmd_palette, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            # 프레임 스트리밍 (Pass 1) - 예외 시 프로세스 kill 보장
             try:
-                self._write_frames_to_pipe(process, frames)
-                _, stderr = process.communicate(timeout=600)
+                process = self._run_streamed_ffmpeg(cmd_palette, frames)
+                stderr = process.stderr
             except subprocess.TimeoutExpired:
                 logger.error("Palette generation timeout")
-                process.kill()
-                with contextlib.suppress(subprocess.TimeoutExpired):
-                    process.communicate(timeout=5)
                 self._emit_error("팔레트 생성 시간 초과")
                 return False
-            except Exception:
-                try:
-                    process.kill()
-                    process.communicate(timeout=5)
-                except Exception:
-                    pass
-                raise
 
             if process.returncode != 0:
                 error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Unknown error"
@@ -695,30 +741,13 @@ class GifEncoder:
                 output_path
             ]
 
-            process = subprocess.Popen(
-                cmd_gif, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            # 프레임 스트리밍 (Pass 2) - 타임아웃 및 예외 시 프로세스 kill 보장
             try:
-                self._write_frames_to_pipe(process, frames)
-                _, stderr = process.communicate(timeout=600)  # 10분 타임아웃
+                process = self._run_streamed_ffmpeg(cmd_gif, frames)
+                stderr = process.stderr
             except subprocess.TimeoutExpired:
                 logger.error("GIF generation timeout")
-                process.kill()
-                with contextlib.suppress(subprocess.TimeoutExpired):
-                    process.communicate(timeout=5)
                 self._emit_error("GIF 생성 시간 초과")
                 return False
-            except Exception:
-                try:
-                    process.kill()
-                    process.communicate(timeout=5)
-                except Exception:
-                    pass
-                raise
 
             if process.returncode != 0:
                 error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Unknown error"
@@ -726,7 +755,6 @@ class GifEncoder:
                 return False
 
             self._emit_progress(total_steps, total_steps)
-            self._emit_finished(output_path)
             return True
 
         except Exception as e:
@@ -947,14 +975,13 @@ class GifEncoder:
                 optimize=True
             )
 
-            self._emit_finished(output_path)
             return True
 
         except Exception as e:
             self._emit_error(f"Pillow 인코딩 에러: {str(e)}")
             return False
 
-    def encode_mp4(self, frames: List[np.ndarray], fps: int, output_path: str, audio_path: Optional[str] = None) -> bool:
+    def _encode_mp4(self, frames: List[np.ndarray], fps: int, output_path: str, audio_path: Optional[str] = None) -> bool:
         """프레임 리스트를 MP4로 인코딩 (Pipe 방식)"""
         # 입력 검증
         if not frames:
@@ -1031,16 +1058,9 @@ class GifEncoder:
             if has_audio:
                 cmd.extend(['-i', audio_path])
 
-            cmd.extend(['-c:v', encoder])
-
-            if encoder in ('h264_nvenc', 'hevc_nvenc'):
-                cmd.extend(['-preset', 'p4', '-cq', crf])
-            elif encoder in ('h264_qsv', 'hevc_qsv'):
-                cmd.extend(['-preset', 'medium', '-global_quality', crf])
-            elif encoder in ('h264_amf', 'hevc_amf'):
-                cmd.extend(['-quality', 'balanced', '-rc', 'cqp', '-qp_i', crf, '-qp_p', crf])
-            else:
-                cmd.extend(['-preset', cpu_preset, '-crf', crf])
+            encoder_start = len(cmd)
+            cmd.extend(self._video_encoder_options(encoder, crf, cpu_preset))
+            encoder_end = len(cmd)
 
             cmd.extend([
                 '-r', str(fps),  # 출력 프레임레이트 (명시적으로 설정!)
@@ -1056,75 +1076,33 @@ class GifEncoder:
             logger.info(f"[MP4] Encoding {total_frames} frames at {fps} FPS using {encoder}")
             logger.debug(f"[MP4] FFmpeg command: {' '.join(cmd)}")
 
-            process = subprocess.Popen(
-                cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            # stderr를 별도 스레드에서 읽기 (버퍼 가득 차서 블로킹 방지)
-            stderr_data = []
-            def read_stderr():
-                """stderr를 읽어서 버퍼 블로킹 방지"""
-                try:
-                    for line in iter(process.stderr.readline, b''):
-                        stderr_data.append(line)
-                    process.stderr.close()
-                except Exception as e:
-                    logger.debug(f"[MP4] stderr reader error: {e}")
-
-            stderr_thread = threading.Thread(target=read_stderr, daemon=True)
-            stderr_thread.start()
-
-            # 프레임 스트리밍 - 타임아웃 추가
-            stderr_text = ""
             try:
-                logger.info(f"[MP4] Writing {total_frames} frames to FFmpeg pipe...")
-                self._emit_progress(0, total_steps)  # 시작 시 0% emit
-                self._write_frames_to_pipe(process, frames, total_steps)
-
-                # stderr 스레드를 먼저 join (교착 방지: stderr 버퍼가 차면 process.wait() 블로킹)
-                stderr_thread.join(timeout=10)
-                process.wait(timeout=600)  # 10분 타임아웃
-
-                # FFmpeg 출력 로깅 (디버깅용)
-                if stderr_data:
-                    stderr_text = b''.join(stderr_data).decode('utf-8', errors='ignore')
-                    # 프레임 정보 추출
-                    import re
-                    frame_matches = re.findall(r'frame=\s*(\d+)', stderr_text)
-                    if frame_matches:
-                        encoded_frames = frame_matches[-1]
-                        logger.info(f"[MP4] FFmpeg encoded {encoded_frames} frames")
-
-                    # FPS 정보 추출
-                    fps_matches = re.findall(r'fps=\s*([\d.]+)', stderr_text)
-                    if fps_matches:
-                        encoding_fps = fps_matches[-1]
-                        logger.info(f"[MP4] Encoding FPS: {encoding_fps}")
-                else:
-                    stderr_text = ""
-
+                self._emit_progress(0, total_steps)
+                hardware_failure = None
+                for attempt in range(2):
+                    process = self._run_streamed_ffmpeg(cmd, frames, total_steps)
+                    if (process.returncode == 0 or attempt == 1 or self._preferred_encoder != 'auto'
+                            or not self._is_hardware_encoder_failure(encoder, process.stderr)):
+                        break
+                    hardware_failure = (f"{encoder} (exit {process.returncode}): "
+                                        + process.stderr.decode('utf-8', errors='replace')[-1500:])
+                    cpu_encoder = 'libx265' if self._codec == 'h265' else 'libx264'
+                    logger.warning("%s failed (exit %s); retrying with %s. FFmpeg stderr:\n%s",
+                                   encoder, process.returncode, cpu_encoder,
+                                   process.stderr.decode('utf-8', errors='replace'))
+                    cmd[encoder_start:encoder_end] = self._video_encoder_options(cpu_encoder, crf, cpu_preset)
+                stderr_text = process.stderr.decode('utf-8', errors='replace')
             except subprocess.TimeoutExpired:
                 logger.error("MP4 encoding timeout")
-                process.kill()
-                stderr_thread.join(timeout=2)
                 self._emit_error("MP4 인코딩 시간 초과")
                 return False
-            except Exception:
-                try:
-                    process.kill()
-                    stderr_thread.join(timeout=2)
-                except Exception:
-                    pass
-                raise
 
             if process.returncode != 0:
                 # 에러 코드를 signed/unsigned 모두 로깅
                 signed_code = process.returncode if process.returncode < 2147483648 else process.returncode - 4294967296
                 logger.error(f"[MP4] FFmpeg failed (returncode={process.returncode}, signed={signed_code})")
                 if stderr_text:
-                    logger.error(f"[MP4] FFmpeg stderr: {stderr_text[:1000]}")  # 처음 1000자
+                    logger.error("[MP4] FFmpeg stderr: %s", stderr_text)
                 else:
                     logger.error("[MP4] No stderr output from FFmpeg")
 
@@ -1132,17 +1110,17 @@ class GifEncoder:
                 error_details = f"인코딩 실패 (코드 {process.returncode})"
                 if stderr_text:
                     # stderr에서 유용한 오류 메시지 추출
-                    import re
                     error_lines = [line for line in stderr_text.split('\n') if 'error' in line.lower() or 'fail' in line.lower()]
                     if error_lines:
                         error_details += f"\n\n세부사항:\n{error_lines[-1][:200]}"
 
+                if hardware_failure:
+                    error_details = hardware_failure + "\nCPU retry: " + error_details
                 self._emit_error(error_details)
                 return False
 
             logger.info(f"[MP4] Encoding completed successfully: {output_path}")
             self._emit_progress(total_steps, total_steps)
-            self._emit_finished(output_path)
             return True
 
         except Exception as e:

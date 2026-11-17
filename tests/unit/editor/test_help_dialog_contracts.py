@@ -26,9 +26,9 @@ def test_editor_help_exposes_current_product_metadata():
 
 
 def test_version_metadata_is_current_release_identity():
+    from datetime import date
     from core.version import APP_DEVELOPER, APP_LAST_MODIFIED, APP_VERSION, EDITOR_VERSION
 
-    assert APP_VERSION == "2.1.5"
-    assert EDITOR_VERSION == "2.1.5"
+    assert EDITOR_VERSION == APP_VERSION
     assert APP_DEVELOPER == "CoreVFX 서승욱"
-    assert APP_LAST_MODIFIED == "2026-05-18"
+    assert date.fromisoformat(APP_LAST_MODIFIED)

@@ -140,7 +140,7 @@ class CanvasWidget(wx.Panel):
         # 정주적인 사용자 토글 (현재 zoom 2-3개 + 인접 프레임 1-2개) 의 비용을 0
         # 으로 만든다. 각 항목 메모리는 frame size × 4 byte 정도 (1920×1080 RGBA
         # ≈ 8MB, 6 항목 ≈ 48MB) — 큰 부담 없음.
-        self._scaled_bitmap_cache: "OrderedDict[tuple, wx.Bitmap]" = OrderedDict()
+        self._scaled_bitmap_cache: "OrderedDict[tuple, tuple[Image.Image, wx.Bitmap]]" = OrderedDict()
         self._scaled_bitmap_cache_max = 6
 
         # 설정
@@ -635,7 +635,7 @@ class CanvasWidget(wx.Panel):
             if cached is not None:
                 # MRU 위치로 이동 (move_to_end)
                 self._scaled_bitmap_cache.move_to_end(cache_key)
-                scaled_bitmap = cached
+                _source_image, scaled_bitmap = cached
             else:
                 # PIL → wx.Bitmap 변환
                 wx_bitmap = pil_to_wx_bitmap(pil_image)
@@ -648,7 +648,8 @@ class CanvasWidget(wx.Panel):
                 scaled_image = wx_image.Scale(scaled_width, scaled_height, quality)
                 scaled_bitmap = wx.Bitmap(scaled_image)
                 # LRU 추가 + 한도 초과 시 가장 오래된 항목 제거
-                self._scaled_bitmap_cache[cache_key] = scaled_bitmap
+                # Retain the source so its id cannot be reused while this entry lives.
+                self._scaled_bitmap_cache[cache_key] = (pil_image, scaled_bitmap)
                 while len(self._scaled_bitmap_cache) > self._scaled_bitmap_cache_max:
                     self._scaled_bitmap_cache.popitem(last=False)
 

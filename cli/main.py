@@ -2,8 +2,56 @@
 import argparse
 import os
 import logging
+import math
+import re
 
 from core.version import APP_VERSION as __version__
+
+
+def _nonnegative_seconds(value: str) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0:
+        raise argparse.ArgumentTypeError("유한한 0 이상의 초를 입력하세요.")
+    return seconds
+
+
+def _positive_seconds(value: str) -> float:
+    seconds = _nonnegative_seconds(value)
+    if seconds == 0:
+        raise argparse.ArgumentTypeError("녹화 시간은 0보다 커야 합니다.")
+    return seconds
+
+
+def _monitor_index(value: str) -> int:
+    index = int(value)
+    if index < 0:
+        raise argparse.ArgumentTypeError("모니터 번호는 0 이상이어야 합니다.")
+    return index
+
+
+def _fps(value: str) -> int:
+    fps = int(value)
+    if not 1 <= fps <= 120:
+        raise argparse.ArgumentTypeError("FPS는 1~120 범위여야 합니다.")
+    return fps
+
+
+def _region(value: str) -> str:
+    try:
+        x, y, size = value.split(",")
+        int(x), int(y)
+        width, height = map(int, size.lower().split("x"))
+        if width < 50 or height < 50:
+            raise ValueError
+    except ValueError:
+        raise argparse.ArgumentTypeError("영역은 X,Y,WxH 형식이며 최소 50x50이어야 합니다.") from None
+    return value
+
+
+def _resize(value: str) -> str:
+    if not re.fullmatch(r"\d+x\d+", value):
+        raise argparse.ArgumentTypeError("출력 해상도는 WxH 형식이어야 합니다.")
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,18 +109,18 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument(
         "--region",
         "-r",
-        type=str,
+        type=_region,
         default=None,
         help='캡처 영역 "X,Y,WxH" (예: 100,100,800x600)',
     )
     rec.add_argument(
-        "--monitor", "-m", type=int, default=0, help="모니터 번호 (0=주 모니터)"
+        "--monitor", "-m", type=_monitor_index, default=0, help="모니터 번호 (0=주 모니터)"
     )
-    rec.add_argument("--fps", "-f", type=int, default=None, help="프레임레이트")
+    rec.add_argument("--fps", "-f", type=_fps, default=None, help="프레임레이트")
     rec.add_argument(
         "--duration",
         "-d",
-        type=float,
+        type=_positive_seconds,
         default=None,
         help="녹화 시간(초). 미지정 시 수동 중지",
     )
@@ -140,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="마이크 오디오 녹음 (MP4 전용)",
     )
     rec.add_argument(
-        "--delay", type=float, default=0, help="녹화 시작 전 카운트다운(초)"
+        "--delay", type=_nonnegative_seconds, default=0, help="녹화 시작 전 카운트다운(초)"
     )
     rec.add_argument(
         "--overwrite", "-y", action="store_true", default=False, help="기존 파일 덮어쓰기"
@@ -189,7 +237,7 @@ def build_parser() -> argparse.ArgumentParser:
     conv.add_argument(
         "--format", "-F", choices=["gif", "mp4"], default=None, help="출력 형식"
     )
-    conv.add_argument("--fps", "-f", type=int, default=None, help="출력 FPS")
+    conv.add_argument("--fps", "-f", type=_fps, default=None, help="출력 FPS")
     conv.add_argument(
         "--quality",
         "-q",
@@ -198,7 +246,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="품질",
     )
     conv.add_argument(
-        "--resize", "-s", type=str, default=None, help="출력 해상도 (WxH)"
+        "--resize", "-s", type=_resize, default=None, help="출력 해상도 (WxH)"
     )
     conv.add_argument(
         "--encoder",

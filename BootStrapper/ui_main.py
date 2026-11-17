@@ -569,11 +569,13 @@ class BootstrapperFrame(wx.Frame):
 
     def _on_window_close(self, event):
         self._cancel_auto_close()
-        if self._is_running and wx.MessageBox(
-            "작업이 진행 중입니다. 종료하시겠습니까?",
-            "확인", wx.YES_NO | wx.ICON_WARNING,
-        ) != wx.YES:
-            event.Veto()
+        if self._is_running or (self._worker and self._worker.is_alive()):
+            if event.CanVeto():
+                event.Veto()
+            wx.MessageBox(
+                "작업이 진행 중입니다. 설치 파일을 보호하기 위해 완료 후 창을 닫아 주세요.",
+                "작업 진행 중", wx.OK | wx.ICON_INFORMATION,
+            )
             return
         # Store result on app for exit code
         app = wx.GetApp()

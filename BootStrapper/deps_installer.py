@@ -331,6 +331,8 @@ def install_ffmpeg(progress_cb=None) -> bool:
         flatten_single_root=True,
         progress_cb=progress_cb,
     )
+    if not ok:
+        return False
 
     # XGif 앱은 {ffmpeg_dir}/ffmpeg.exe 를 기대하므로 bin/ 내용을 상위로 이동
     bin_dir = os.path.join(paths.FFMPEG_DIR, "bin")

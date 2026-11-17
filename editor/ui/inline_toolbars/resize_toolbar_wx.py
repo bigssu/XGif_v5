@@ -2,10 +2,12 @@
 ResizeToolbar - 크기 조절 인라인 툴바 (wxPython 버전)
 """
 import wx
+from contextlib import suppress
 from PIL import Image
 from typing import TYPE_CHECKING, Tuple, List, Optional
 from ..style_constants_wx import Colors
 from .base_toolbar_wx import InlineToolbarBase
+from ...utils.frame_targeting import _set_frame_image
 
 if TYPE_CHECKING:
     from ..main_window import MainWindow
@@ -180,10 +182,14 @@ class ResizeToolbar(InlineToolbarBase):
         # 이전 pending timer 가 있으면 취소 — 중복 갱신 방지
         if self._preview_timer.IsRunning():
             self._preview_timer.Stop()
+        self._preview_pending = True
         wx.CallAfter(self._update_preview)
 
     def _update_preview(self):
         """실시간 프리뷰 업데이트"""
+        if getattr(self._main_window, '_save_in_progress', False):
+            return
+        self._preview_pending = False
         # lazy snapshot — 첫 호출에서 원본 캡처
         self._ensure_original_images_snapshot()
         if not self._original_images:
@@ -256,20 +262,14 @@ class ResizeToolbar(InlineToolbarBase):
     def _restore_original_images_with_size(self):
         for i, frame in enumerate(self.frames):
             if i < len(self._original_images) and self._original_images[i] is not None:
-                try:
-                    frame._image = self._original_images[i].copy()
-                    if hasattr(frame, '_image_size'):
-                        frame._image_size = self._original_images[i].size
-                except Exception:
-                    pass
+                with suppress(Exception):
+                    _set_frame_image(frame, self._original_images[i].copy())
 
     def _apply_resized_images(self, width: int, height: int, resample: Image.Resampling):
         for i, frame in enumerate(self.frames):
             if i < len(self._original_images) and self._original_images[i] is not None:
                 try:
                     resized = self._original_images[i].resize((width, height), resample)
-                    frame._image = resized
-                    if hasattr(frame, '_image_size'):
-                        frame._image_size = resized.size
+                    _set_frame_image(frame, resized)
                 except Exception:
                     pass

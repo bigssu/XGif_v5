@@ -1,4 +1,8 @@
 from PIL import Image
+import pytest
+from types import SimpleNamespace
+
+from editor.core.frame import Frame
 
 from editor.utils.frame_targeting import (
     TargetMode,
@@ -16,6 +20,12 @@ class _Frame:
     def __init__(self, color: int):
         self.image = Image.new("RGBA", (2, 2), (color, color, color, 255))
         self._image = None
+
+    def copy_image(self):
+        return self.image.copy()
+
+    def _invalidate_cache(self):
+        pass
 
 
 class _Frames(list):
@@ -111,5 +121,95 @@ def test_apply_frame_processor_honors_selected_target_and_preview_current():
     )
 
     assert frames[0]._image.getpixel((0, 0))[0] == 200
-    assert frames[1]._image.getpixel((0, 0))[0] == 20
-    assert frames[2]._image.getpixel((0, 0))[0] == 202
+    assert frames[1]._image is None
+    assert frames[2]._image is None
+
+
+@pytest.mark.parametrize("target", list(TargetMode))
+def test_preview_only_processes_current_without_copying_untouched(target, monkeypatch):
+    frames = _Frames([_Frame(10), _Frame(20), _Frame(30)], selected_indices={2}, current_index=0)
+    originals = snapshot_original_images(frames)
+    calls = []
+
+    def reject_copy():
+        pytest.fail("untouched frame was copied")
+
+    for image in originals[1:]:
+        monkeypatch.setattr(image, "copy", reject_copy)
+
+    def processor(original, index, selected):
+        calls.append((index, selected))
+        return original.copy()
+
+    apply_frame_processor(frames, originals, target, processor, preview_current=True)
+    assert calls == [(0, target != TargetMode.SELECTED)]
+    assert frames[1]._image is None
+    assert frames[2]._image is None
+
+
+@pytest.mark.parametrize("target, expected", [(TargetMode.ALL, [99, 99, 99]),
+                                             (TargetMode.SELECTED, [10, 20, 99]),
+                                             (TargetMode.CURRENT, [10, 99, 30])])
+def test_apply_after_preview_navigation_preserves_targets(target, expected):
+    frames = _Frames([Frame(Image.new("RGB", (2, 2), (i, i, i))) for i in (10, 20, 30)],
+                     selected_indices={2}, current_index=0)
+    originals = snapshot_original_images(frames)
+    def processor(original, index, selected):
+        return Image.new("RGB", (2, 2), (99, 99, 99))
+    apply_frame_processor(frames, originals, target, processor, preview_current=True)
+    frames.current_index = 1
+    apply_frame_processor(frames, originals, target, processor, preview_current=True)
+    apply_frame_processor(frames, originals, target, processor)
+    for frame in frames:
+        frame.unload_image()
+    assert [frame.image.getpixel((0, 0))[0] for frame in frames] == expected
+
+
+def test_preview_navigation_cancel_restores_pixels_dimensions_and_thumbnail():
+    frames = _Frames([Frame(Image.new("RGB", (2, 2), (i, i, i))) for i in (10, 20)])
+    originals = snapshot_original_images(frames)
+    for frame in frames:
+        frame.get_thumbnail()
+    def processor(original, index, selected):
+        return Image.new("RGB", (4, 3), (99, 99, 99))
+    for current in (0, 1):
+        frames.current_index = current
+        apply_frame_processor(frames, originals, TargetMode.ALL, processor, preview_current=True)
+        frame = frames[current]
+        assert (frame.width, frame.height) == (4, 3)
+        assert frame.get_thumbnail().getpixel((0, 0))[0] == 99
+        frame.unload_image()
+        assert frame.image.getpixel((0, 0))[0] == 99
+    restore_original_images(frames, originals)
+    for frame, color in zip(frames, (10, 20)):
+        frame.unload_image()
+        assert frame.image.getpixel((0, 0))[0] == color
+        assert (frame.width, frame.height) == (2, 2)
+        assert frame.get_thumbnail().getpixel((0, 0))[0] == color
+
+
+@pytest.mark.parametrize("operation", ["generated", "resize", "resize_restore", "text_preview"])
+def test_toolbar_image_assignments_survive_unload(operation):
+    from editor.ui.inline_toolbars.base_toolbar_wx import InlineToolbarBase
+    from editor.ui.inline_toolbars.resize_toolbar_wx import ResizeToolbar
+    from editor.ui.inline_toolbars.text_toolbar_wx import TextToolbar
+
+    frame = Frame(Image.new("RGB", (2, 2), (10, 10, 10)))
+    frame.get_thumbnail()
+    image = Image.new("RGB", (4, 3), (99, 99, 99))
+    toolbar = SimpleNamespace(frames=_Frames([frame]), _original_images=[image],
+                              _is_low_end_mode=True, _apply_text=lambda original: original.copy(),
+                              _safe_canvas_update=lambda: None, update_preview=lambda: None)
+    if operation == "generated":
+        InlineToolbarBase._apply_generated_images(toolbar, [image])
+    elif operation == "resize":
+        ResizeToolbar._apply_resized_images(toolbar, 4, 3, Image.Resampling.NEAREST)
+    elif operation == "resize_restore":
+        ResizeToolbar._restore_original_images_with_size(toolbar)
+    else:
+        TextToolbar._update_preview(toolbar)
+    assert (frame.width, frame.height) == (4, 3)
+    assert frame.get_thumbnail().getpixel((0, 0))[0] == 99
+    frame.unload_image()
+    assert frame.image.size == (4, 3)
+    assert frame.image.getpixel((0, 0))[0] == 99

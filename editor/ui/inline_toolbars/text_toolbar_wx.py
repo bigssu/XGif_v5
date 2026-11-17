@@ -5,6 +5,7 @@ import wx
 from PIL import Image, ImageDraw, ImageFont
 from typing import TYPE_CHECKING, Optional, List
 from .base_toolbar_wx import InlineToolbarBase
+from ...utils.frame_targeting import _set_frame_image
 from ..style_constants_wx import Colors
 
 if TYPE_CHECKING:
@@ -394,7 +395,7 @@ class TextToolbar(InlineToolbarBase):
                 try:
                     processed = self._apply_text(self._original_images[current_idx])
                     if current_idx < len(self.frames):
-                        self.frames[current_idx]._image = processed
+                        _set_frame_image(self.frames[current_idx], processed)
                 except Exception:
                     pass
                 self._safe_canvas_update()

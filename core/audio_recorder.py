@@ -88,6 +88,7 @@ class AudioRecorder:
 
     def __init__(self, max_buffer_mb: Optional[float] = DEFAULT_AUDIO_BUFFER_LIMIT_MB):
         self.recording = False
+        self._paused = False
         self.record_system = True  # 시스템 오디오 녹음 여부
         self.record_mic = False    # 마이크 오디오 녹음 여부
 
@@ -201,6 +202,7 @@ class AudioRecorder:
         self.mic_audio_data = []
         self._audio_buffer_total_bytes = 0
         self._buffer_limit_reached = False
+        self._paused = False
 
     def set_max_buffer_mb(self, max_buffer_mb: Optional[float]) -> None:
         """오디오 버퍼 상한 설정 (MB). None이면 무제한."""
@@ -213,11 +215,22 @@ class AudioRecorder:
         """버퍼 상한에 도달했으면 True (녹음 중지 필요)."""
         return self._buffer_limit_reached
 
+    def pause(self) -> None:
+        """Discard incoming audio while video capture is paused."""
+        with self._lock:
+            if self.recording:
+                self._paused = True
+
+    def resume(self) -> None:
+        """Resume collecting audio without reopening the streams."""
+        with self._lock:
+            self._paused = False
+
     def _system_audio_callback(self, indata, frames, time, status):
         """시스템 오디오 스트림 콜백"""
         if self.recording and self.record_system:
             with self._lock:
-                if self._buffer_limit_reached:
+                if not self.recording or self._paused or self._buffer_limit_reached:
                     return
                 if (
                     self._max_buffer_bytes is not None
@@ -234,7 +247,7 @@ class AudioRecorder:
         """마이크 오디오 스트림 콜백"""
         if self.recording and self.record_mic:
             with self._lock:
-                if self._buffer_limit_reached:
+                if not self.recording or self._paused or self._buffer_limit_reached:
                     return
                 if (
                     self._max_buffer_bytes is not None
@@ -271,13 +284,11 @@ class AudioRecorder:
             self.recording = True
             system_started = False
             mic_started = False
-            system_uses_default_input = False
             last_error = None
 
             # 시스템 오디오 스트림 시작 (채널 수는 사용할 디바이스 기준으로 재확인)
-            if self.record_system:
+            if self.record_system and self._loopback_device is not None:
                 try:
-                    system_uses_default_input = self._loopback_device is None
                     dev = sd.query_devices(self._loopback_device) if self._loopback_device is not None else sd.query_devices(kind='input')
                     ch = self._safe_channels(dev, 2)
                     sr = int(dev.get('default_samplerate', 44100))
@@ -294,33 +305,10 @@ class AudioRecorder:
                     system_started = True
                 except (OSError, RuntimeError) as e:
                     logger.warning(f"시스템 오디오 스트림 시작 실패 (loopback): {e}")
-                    try:
-                        system_uses_default_input = True
-                        dev = sd.query_devices(kind='input')
-                        ch = self._safe_channels(dev, 2)
-                        sr = int(dev.get('default_samplerate', 44100))
-                        self._system_stream = sd.InputStream(
-                            samplerate=sr,
-                            channels=ch,
-                            callback=self._system_audio_callback,
-                            dtype='float32',
-                        )
-                        self._system_stream.start()
-                        self.system_sample_rate = sr
-                        self.system_channels = ch
-                        system_started = True
-                    except (OSError, RuntimeError) as e2:
-                        logger.error(f"시스템 오디오 스트림 폴백 실패: {e2}")
-                        self._system_stream = None
-                        last_error = str(e2)
+                    self._cleanup_streams()
+                    last_error = str(e)
 
-            # 마이크 오디오 스트림 시작 (채널 수는 디바이스 기준으로 재확인)
-            # 시스템 스트림이 기본 입력을 이미 쓰는 경우 같은 장치를 중복 오픈하지 않고
-            # 그 입력 스트림을 requested mic의 명시적 fallback으로 기록한다.
-            if self.record_mic and system_started and system_uses_default_input:
-                mic_started = True
-                logger.info("기본 입력 스트림을 마이크 녹음 fallback으로 사용합니다.")
-            elif self.record_mic:
+            if self.record_mic:
                 try:
                     dev = sd.query_devices(self._mic_device) if self._mic_device is not None else sd.query_devices(kind='input')
                     ch = self._safe_channels(dev, 2)
@@ -358,9 +346,6 @@ class AudioRecorder:
                 mic_requested=mic_requested,
                 system_started=system_started,
                 mic_started=mic_started,
-                mic_fallback_to_default_input=(
-                    mic_requested and mic_started and system_uses_default_input and self._mic_stream is None
-                ),
                 error=last_error,
             )
             return self.last_start_result
@@ -538,7 +523,7 @@ class AudioRecorder:
                 '-i', system_file,
                 '-i', mic_file,
                 '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=longest',
-                '-ar', '44100',
+                '-ar', str(max(self.system_sample_rate, self.mic_sample_rate)),
                 merged_file
             ]
 
@@ -549,13 +534,12 @@ class AudioRecorder:
                 merged_array, sr = sf.read(merged_file)
                 return merged_array
             else:
-                # FFmpeg 실패 시 시스템 오디오만 반환
-                return np.concatenate(self.system_audio_data, axis=0)
+                logger.warning("FFmpeg audio merge failed (exit code %s)", result.returncode)
+                return None
 
         except (subprocess.SubprocessError, IOError, OSError) as e:
             logger.warning(f"FFmpeg 오디오 병합 실패: {e}")
-            # 실패 시 시스템 오디오만 반환
-            return np.concatenate(self.system_audio_data, axis=0) if self.system_audio_data else None
+            return None
         finally:
             # 임시 파일 항상 정리
             for f in [system_file, mic_file, merged_file]:

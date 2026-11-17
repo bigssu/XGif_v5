@@ -402,13 +402,25 @@ class SettingsDialog(ThemedDialog):
                 self.settings.save()
             else:
                 import os
+                import tempfile
                 from core.utils import APP_SETTINGS_NAME
                 appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
                 config_dir = os.path.join(appdata, APP_SETTINGS_NAME)
                 os.makedirs(config_dir, exist_ok=True)
                 config_path = os.path.join(config_dir, 'config.ini')
-                with open(config_path, 'w', encoding='utf-8') as f:
-                    self.settings.write(f)
+                staged_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=config_dir,
+                                                     prefix='.config-', suffix='.tmp', delete=False) as f:
+                        staged_path = f.name
+                        self.settings.write(f)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(staged_path, config_path)
+                finally:
+                    if staged_path is not None:
+                        with contextlib.suppress(FileNotFoundError):
+                            os.remove(staged_path)
             return True
         except Exception as e:
             logger.warning("설정 저장 오류: %s", e)

@@ -1,5 +1,6 @@
 """CLI 설정 관리 -- AppSettings 기반으로 config.ini를 GUI와 공유"""
 import sys
+import configparser
 from typing import Dict, Optional
 
 from core.settings import AppSettings, get_config_path
@@ -56,7 +57,11 @@ def handle_config_command(args) -> int:
         return 0
 
     if args.config_action == "reset":
-        reset_config()
+        try:
+            reset_config()
+        except (OSError, UnicodeError, configparser.Error) as exc:
+            print(f"xgif: 설정 저장 실패: {exc}", file=sys.stderr)
+            return 1
         print("모든 설정이 기본값으로 복원되었습니다.")
         return 0
 
@@ -75,7 +80,12 @@ def handle_config_command(args) -> int:
         if not args.key or not args.value:
             print("xgif: 에러: 'set' 명령에는 KEY와 VALUE가 필요합니다.", file=sys.stderr)
             return 1
-        if set_config_value(args.key, args.value):
+        try:
+            saved = set_config_value(args.key, args.value)
+        except (OSError, UnicodeError, configparser.Error) as exc:
+            print(f"xgif: 설정 저장 실패: {exc}", file=sys.stderr)
+            return 1
+        if saved:
             print(f"{args.key}={args.value}")
             return 0
         else:

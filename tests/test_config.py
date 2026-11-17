@@ -151,3 +151,17 @@ class TestCLIParser:
         parser = build_parser()
         args = parser.parse_args(['record', '--no-cursor', '-o', 'test.gif'])
         assert args.cursor is False
+
+
+@pytest.mark.parametrize("action", ["set", "reset"])
+def test_config_command_reports_save_failure_without_overwriting(tmp_path, monkeypatch, capsys, action):
+    from types import SimpleNamespace
+    import cli.config as module
+    path = tmp_path / "config.ini"
+    original = b"not an ini file"
+    path.write_bytes(original)
+    monkeypatch.setattr(module, "get_config_path", lambda: str(path))
+    result = module.handle_config_command(SimpleNamespace(config_action=action, key="language", value="en"))
+    assert result != 0
+    assert path.read_bytes() == original
+    assert capsys.readouterr().err

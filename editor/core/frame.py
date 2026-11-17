@@ -314,6 +314,16 @@ class Frame:
                                          self._image_size[1] if self._image_size[1] > 0 else 100),
                                (255, 255, 255, 0))
 
+    def copy_image(self) -> Image.Image:
+        """Return independent pixels without retaining a newly decoded source image."""
+        was_loaded = self.is_loaded
+        try:
+            self._ensure_image_loaded()
+            return self._image.copy()
+        finally:
+            if not was_loaded:
+                self._image = None
+
     @property
     def numpy_array(self) -> np.ndarray:
         """numpy 배열로 반환 (H, W, 4) RGBA — 효과/배치 처리 경로의 진입점.
@@ -584,8 +594,7 @@ class Frame:
             썸네일 이미지
         """
         if max_size not in self._thumbnail_cache:
-            self._ensure_image_loaded()
-            thumb = self._image.copy()
+            thumb = self.copy_image()
             thumb.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
             self._thumbnail_cache[max_size] = thumb
         return self._thumbnail_cache[max_size]
@@ -601,9 +610,13 @@ class Frame:
 
     # === 복제 ===
     def clone(self) -> 'Frame':
-        """프레임 복제"""
-        self._ensure_image_loaded()
-        return Frame(self._image.copy(), self._delay_ms, lazy_load=self._lazy_load)
+        """Clone current pixels; unloaded frames can share immutable compressed bytes."""
+        if self._image is None and self._image_bytes is not None:
+            cloned = Frame(None, self._delay_ms, lazy_load=self._lazy_load)
+            cloned._image_bytes = self._image_bytes
+            cloned._image_size = self._image_size
+            return cloned
+        return Frame(self.copy_image(), self._delay_ms, lazy_load=self._lazy_load)
 
     def __copy__(self) -> 'Frame':
         return self.clone()

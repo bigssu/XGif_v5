@@ -661,6 +661,7 @@ class FrameListWidget(wx.Panel):
 
             def execute():
                 try:
+                    frames = self._main_window.frames
                     for row in reversed(selected_rows_copy):
                         if 0 <= row < frames.frame_count:
                             frames.delete_frame(row)
@@ -677,9 +678,7 @@ class FrameListWidget(wx.Panel):
             def undo():
                 try:
                     # 프레임 컬렉션 복원
-                    frames._frames = old_frames._frames
-                    frames._current_index = old_frames._current_index
-                    frames._selected_indices = old_frames._selected_indices.copy()
+                    self._main_window._frames = old_frames.clone()
                     self._main_window._refresh_all()
                 except Exception as e:
                     _t = getattr(self._main_window, '_translations', None)

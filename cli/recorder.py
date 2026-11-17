@@ -99,6 +99,7 @@ class CLIRecordingSession:
         self._audio_path = None
         self._recording_error: Optional[str] = None
         self._audio_limit_reached = False
+        self._memory_limit_mb = 1024
         self._stopped = False
         self._paused = False
         self._progress = TerminalProgress(quiet=getattr(args, "quiet", False))
@@ -133,6 +134,10 @@ class CLIRecordingSession:
 
         # 4. 설정 로드 및 CLI 인자 병합
         config = load_config()
+        try:
+            self._memory_limit_mb = int(config.get("memory_limit_mb", "1024"))
+        except (TypeError, ValueError):
+            self._memory_limit_mb = 1024
 
         # 5. FFmpeg 확인
         if not self._check_ffmpeg(output_format):
@@ -163,8 +168,14 @@ class CLIRecordingSession:
 
         # 10. 시작 딜레이
         delay = getattr(self.args, "delay", 0)
-        if delay > 0:
-            self._countdown(delay)
+        try:
+            if delay > 0:
+                self._countdown(delay)
+        except KeyboardInterrupt:
+            self._stopped = True
+        if self._stopped:
+            restore_signal_handlers()
+            return 130
 
         if not getattr(self.args, "quiet", False):
             duration = getattr(self.args, "duration", None)
@@ -222,13 +233,15 @@ class CLIRecordingSession:
             # 13. 녹화 대기
             self._wait_for_completion()
 
+            # Stop video before audio mixing can exceed the capture memory budget.
+            self._progress.clear_line()
+            frames = self._recorder.stop_recording()
+
             # 14. 오디오 녹음 중지
             if self._audio_recorder:
                 self._audio_path = self._audio_recorder.stop()
-
-            # 15. 녹화 중지 및 프레임 수집
-            self._progress.clear_line()
-            frames = self._recorder.stop_recording()
+                if not self._audio_path:
+                    print("xgif: 오디오를 저장하지 못했습니다. 비디오만 저장합니다.", file=sys.stderr)
 
             if self._audio_limit_reached:
                 restore_signal_handlers()
@@ -252,7 +265,7 @@ class CLIRecordingSession:
             self._encoder.set_progress_callback(self._on_encoding_progress)
 
             encode_start = time.time()
-            fps_int = round(actual_fps)
+            fps_int = max(1, min(120, round(actual_fps)))
             if output_format == "mp4":
                 audio_path = getattr(self, "_audio_path", None)
                 success = self._encoder.encode_mp4(
@@ -422,6 +435,8 @@ class CLIRecordingSession:
     def _countdown(self, seconds: float):
         """녹화 시작 전 카운트다운"""
         for i in range(int(seconds), 0, -1):
+            if self._stopped:
+                break
             self._progress.print(f"  녹화 시작까지 {i}...")
             time.sleep(1)
 
@@ -449,6 +464,15 @@ class CLIRecordingSession:
             elapsed = time.time() - start_time
             frame_count = self._recorder.get_frame_count()
 
+            if self._recorder.get_estimated_size_mb() >= self._memory_limit_mb:
+                self._stopped = True
+                self._progress.clear_line()
+                print(
+                    f"\nxgif: 메모리 제한({self._memory_limit_mb} MB)에 도달하여 녹화를 저장합니다.",
+                    file=sys.stderr,
+                )
+                break
+
             # duration 초과 확인
             if duration and elapsed >= duration:
                 break
@@ -470,9 +494,13 @@ class CLIRecordingSession:
                     if self._paused:
                         self._paused = False
                         self._recorder.resume_recording()
+                        if self._audio_recorder:
+                            self._audio_recorder.resume()
                     else:
                         self._paused = True
                         self._recorder.pause_recording()
+                        if self._audio_recorder:
+                            self._audio_recorder.pause()
 
             time.sleep(0.05)
 

@@ -383,3 +383,40 @@ def test_recover_resources_clears_degraded_state_after_threads_exit():
     assert recorder._capture_thread is None
     assert recorder._frame_buffer is None
 
+
+
+def test_actual_fps_excludes_repeated_pauses_and_stop_while_paused(monkeypatch):
+    import core.screen_recorder as sr
+    recorder = sr.ScreenRecorder()
+    recorder.is_recording = True
+    recorder._recording_start_time = 0.0
+    recorder.frames = [np.zeros((1, 1, 3), dtype=np.uint8)] * 60
+    now = [1.0]
+    monkeypatch.setattr(sr.time, "perf_counter", lambda: now[0])
+    recorder.pause_recording()
+    now[0] = 2.0
+    recorder.pause_recording()
+    now[0] = 11.0
+    recorder.resume_recording()
+    now[0] = 12.0
+    recorder.resume_recording()
+    recorder.pause_recording()
+    now[0] = 22.0
+    recorder.stop_recording()
+    assert recorder.actual_fps == 30.0
+
+
+def test_actual_fps_uses_frame_count_after_collector_drain(monkeypatch):
+    from types import SimpleNamespace
+    import core.screen_recorder as sr
+    recorder = sr.ScreenRecorder()
+    recorder.is_recording = True
+    recorder._recording_start_time = 10.0
+    recorder.frames = [np.zeros((1, 1, 3), dtype=np.uint8)]
+    recorder._collector_thread = SimpleNamespace(
+        is_alive=lambda: False,
+        join=lambda timeout: recorder.frames.append(recorder.frames[0]),
+    )
+    monkeypatch.setattr(sr.time, "perf_counter", lambda: 12.0)
+    recorder.stop_recording()
+    assert recorder.actual_fps == 1.0

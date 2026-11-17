@@ -31,10 +31,12 @@ with contextlib.suppress(AttributeError, OSError):
 # ── CLI 모드 조기 감지 (wx import 전에) ──
 def _is_cli_mode() -> bool:
     """sys.argv에서 CLI 모드 여부 판단"""
+    if getattr(sys, 'frozen', False) and os.path.basename(sys.executable).lower() == 'xgif-cli.exe':
+        return True
     if len(sys.argv) < 2:
         return False
     cli_commands = {'record', 'convert', 'config', 'doctor'}
-    cli_flags = {'--version', '-V', '--help', '-h'}
+    cli_flags = {'--version', '-V', '--help', '-h', '--quiet'}
     return sys.argv[1] in cli_commands or sys.argv[1] in cli_flags
 
 if _is_cli_mode():
