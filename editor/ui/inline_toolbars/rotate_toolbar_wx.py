@@ -53,9 +53,8 @@ class RotateToolbar(InlineToolbarBase):
 
     def _apply_rotate(self, angle: int):
         """회전 적용 (선택 즉시 적용 후 툴바 닫기)"""
-        if self.frames and not getattr(self.frames, 'is_empty', False) and hasattr(self._main_window, '_rotate_frames'):
-            self._main_window._rotate_frames(angle)
-            self._finish_apply()
+        if self.frames and not self.frames.is_empty and self._main_window._rotate_frames(angle):
+            self._finish_apply(keep_history=True)
 
     def _on_activated(self):
         """툴바 활성화"""

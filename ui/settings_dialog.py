@@ -4,6 +4,7 @@ Windows 11 Dark Theme 스타일
 GPU/인코더/캡처 백엔드 설정 포함
 """
 
+from copy import deepcopy
 import logging
 import wx
 import wx.lib.scrolledpanel as scrolled
@@ -27,17 +28,18 @@ class SettingsDialog(ThemedDialog):
     """설정 다이얼로그 - Windows 11 Dark Theme"""
 
     DEFAULT_SETTINGS = AppSettings().to_dict()
+    MEMORY_PRESETS = ("1024", "2048", "3072", "4096")
 
     def __init__(self, parent=None, settings=None):
         ThemedDialog.__init__(self, parent, title=tr('settings'), size=(520, 580),
                               style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         # settings는 AppSettings 인스턴스 또는 configparser.ConfigParser
-        self.settings = settings
+        self.settings = deepcopy(settings)
         self._is_app_settings = isinstance(settings, AppSettings)
         self.trans = get_trans_manager()
         self.trans.register_callback(self.retranslateUi)
 
-        self.SetMinSize((400, 420))
+        self.SetMinSize(self.FromDIP((400, 420)))
         self.status_label = None
         self._init_ui()
 
@@ -47,9 +49,6 @@ class SettingsDialog(ThemedDialog):
             clear_hdr_cache()
         except ImportError:
             pass
-
-        # 다이얼로그 닫을 때 번역 콜백 해제 (메모리 누수 방지)
-        self.Bind(wx.EVT_CLOSE, self._on_close)
 
     def _init_ui(self):
         """UI 초기화 (Windows 11 Dark Theme)"""
@@ -88,6 +87,8 @@ class SettingsDialog(ThemedDialog):
         self.memory_section = FormSection(self.scroll_panel, tr('memory_management'))
         self.memory_limit_combo = wx.Choice(self.scroll_panel,
             choices=["1 GB (" + tr('auto') + ")", "2 GB", "3 GB", "4 GB"])
+        for idx, value in enumerate(self.MEMORY_PRESETS):
+            self.memory_limit_combo.SetClientData(idx, value)
         self.memory_limit_combo.SetToolTip(tr('max_memory_tooltip'))
         self._style_choice(self.memory_limit_combo)
         self.memory_row = self.memory_section.add_row(tr('max_memory'), self.memory_limit_combo)
@@ -152,13 +153,14 @@ class SettingsDialog(ThemedDialog):
         bottom_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # 상태 레이블
-        self.status_label = wx.StaticText(bottom_panel, label="")
+        self.status_label = wx.StaticText(bottom_panel, label="", style=wx.ST_ELLIPSIZE_END)
+        self.status_label.SetMinSize((1, -1))
         self.status_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         self.status_label.Hide()
-        bottom_sizer.Add(self.status_label, 0, wx.ALL | wx.ALIGN_CENTER, 8)
+        bottom_sizer.Add(self.status_label, 0, wx.ALL | wx.EXPAND, 8)
 
         # 버튼 행 (shared command buttons)
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_sizer = wx.WrapSizer(wx.HORIZONTAL)
 
         # 기본값 복원 버튼
         self.reset_btn = CommandButton(bottom_panel, label=tr('reset_defaults'), size=(120, 30),
@@ -167,7 +169,7 @@ class SettingsDialog(ThemedDialog):
                                        hover_color=Colors.BG_HOVER)
         self.reset_btn.SetToolTip(tr('reset_tooltip'))
         self.reset_btn.Bind(wx.EVT_BUTTON, self._on_reset)
-        btn_sizer.Add(self.reset_btn, 0, wx.ALL, 8)
+        btn_sizer.Add(self.reset_btn, 0, wx.RIGHT, 8)
 
         # 의존성 확인 초기화 버튼
         self.reset_dep_btn = CommandButton(bottom_panel, label=tr('dep_reset_skip_flags'), size=(150, 30),
@@ -176,8 +178,14 @@ class SettingsDialog(ThemedDialog):
                                            hover_color=Colors.BG_HOVER)
         self.reset_dep_btn.SetToolTip(tr('dep_reset_skip_flags_tooltip'))
         self.reset_dep_btn.Bind(wx.EVT_BUTTON, self._on_reset_dep_flags)
-        btn_sizer.Add(self.reset_dep_btn, 0, wx.ALL, 8)
+        btn_sizer.Add(self.reset_dep_btn, 0)
+        bottom_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
 
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        version_label = wx.StaticText(bottom_panel, label=f"v{VERSION}")
+        version_label.SetForegroundColour(Colors.TEXT_SECONDARY)
+        version_label.SetFont(Fonts.get_font(Fonts.SIZE_SMALL))
+        btn_sizer.Add(version_label, 0, wx.ALIGN_CENTER_VERTICAL)
         btn_sizer.AddStretchSpacer()
 
         # 확인 버튼 (Accent 색상)
@@ -188,7 +196,7 @@ class SettingsDialog(ThemedDialog):
                                     hover_color=Colors.ACCENT_HOVER,
                                     pressed_color=Colors.ACCENT_PRESSED)
         self.ok_btn.Bind(wx.EVT_BUTTON, self._on_ok)
-        btn_sizer.Add(self.ok_btn, 0, wx.ALL, 8)
+        btn_sizer.Add(self.ok_btn, 0, wx.RIGHT, 8)
 
         # 취소 버튼
         cancel_label = tr('cancel')
@@ -197,15 +205,9 @@ class SettingsDialog(ThemedDialog):
                                         fg_color=Colors.TEXT_PRIMARY,
                                         hover_color=Colors.BG_HOVER)
         self.cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
-        btn_sizer.Add(self.cancel_btn, 0, wx.ALL, 8)
+        btn_sizer.Add(self.cancel_btn, 0)
 
-        bottom_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 8)
-
-        # 버전 정보
-        version_label = wx.StaticText(bottom_panel, label=f"v{VERSION}")
-        version_label.SetForegroundColour(Colors.TEXT_SECONDARY)
-        version_label.SetFont(Fonts.get_font(Fonts.SIZE_SMALL))
-        bottom_sizer.Add(version_label, 0, wx.ALL | wx.ALIGN_RIGHT, 8)
+        bottom_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.ALL, 12)
 
         bottom_panel.SetSizer(bottom_sizer)
         main_sizer.Add(bottom_panel, 0, wx.EXPAND | wx.ALL, 0)
@@ -286,7 +288,7 @@ class SettingsDialog(ThemedDialog):
     def _cfg_set(self, key: str, value: str) -> None:
         """설정 값 쓰기 — AppSettings / configparser 양쪽 호환."""
         if self._is_app_settings:
-            self.settings.set(key, value)
+            self.settings.set(key, value, force=getattr(self, '_reset_confirmed', False))
         else:
             if not self.settings.has_section('General'):
                 self.settings.add_section('General')
@@ -330,8 +332,13 @@ class SettingsDialog(ThemedDialog):
                 self.codec_combo.SetSelection(0)
 
             memory_limit = self._cfg('memory_limit_mb', '1024')
-            memory_map = {"1024": 0, "2048": 1, "3072": 2, "4096": 3}
-            self.memory_limit_combo.SetSelection(memory_map.get(memory_limit, 0))
+            if memory_limit in self.MEMORY_PRESETS:
+                index = self.MEMORY_PRESETS.index(memory_limit)
+            elif memory_limit.isdecimal() and int(memory_limit) > 0:
+                index = self.memory_limit_combo.Append(f"{memory_limit} MiB", memory_limit)
+            else:
+                index = 0
+            self.memory_limit_combo.SetSelection(index)
         except Exception as e:
             logger.warning("설정 불러오기 오류: %s", e)
 
@@ -389,17 +396,17 @@ class SettingsDialog(ThemedDialog):
             except (AttributeError, IndexError, KeyError):
                 self._cfg_set('codec', "h264")
 
-            memory_limit_map = {0: "1024", 1: "2048", 2: "3072", 3: "4096"}
-            self._cfg_set('memory_limit_mb', memory_limit_map.get(self.memory_limit_combo.GetSelection(), "1024"))
+            memory_index = self.memory_limit_combo.GetSelection()
+            if memory_index != wx.NOT_FOUND:
+                self._cfg_set('memory_limit_mb', self.memory_limit_combo.GetClientData(memory_index))
 
             lang_idx = self.lang_combo.GetSelection()
             lang_data = 'ko' if lang_idx == 0 else 'en'
             self._cfg_set('language', lang_data)
-            self.trans.set_language(lang_data)
 
             # 저장
             if self._is_app_settings:
-                self.settings.save()
+                self.settings.save(recover_invalid=getattr(self, '_reset_confirmed', False))
             else:
                 import os
                 import tempfile
@@ -421,6 +428,7 @@ class SettingsDialog(ThemedDialog):
                     if staged_path is not None:
                         with contextlib.suppress(FileNotFoundError):
                             os.remove(staged_path)
+            self.trans.set_language(lang_data)
             return True
         except Exception as e:
             logger.warning("설정 저장 오류: %s", e)
@@ -435,6 +443,7 @@ class SettingsDialog(ThemedDialog):
             wx.YES_NO | wx.ICON_QUESTION | wx.NO_DEFAULT
         )
         if dlg.ShowModal() == wx.ID_YES:
+            self._reset_confirmed = True
             self.mic_audio_cb.SetValue(self.DEFAULT_SETTINGS["mic_audio"] == "true")
             self.watermark_cb.SetValue(self.DEFAULT_SETTINGS["watermark"] == "true")
             self.click_highlight_cb.SetValue(self.DEFAULT_SETTINGS["click_highlight"] == "true")
@@ -455,9 +464,7 @@ class SettingsDialog(ThemedDialog):
             codec_idx = self._find_combo_index(CODEC_OPTIONS_MAP, self.DEFAULT_SETTINGS["codec"])
             self.codec_combo.SetSelection(codec_idx)
 
-            memory_limit = self.DEFAULT_SETTINGS["memory_limit_mb"]
-            memory_map = {"1024": 0, "2048": 1, "3072": 2, "4096": 3}
-            self.memory_limit_combo.SetSelection(memory_map.get(memory_limit, 0))
+            self.memory_limit_combo.SetSelection(0)
 
             self._show_status(tr('settings_reset'), success=True)
         dlg.Destroy()
@@ -475,6 +482,7 @@ class SettingsDialog(ThemedDialog):
         """상태 메시지 표시"""
         if self.status_label:
             self.status_label.SetLabel(message)
+            self.status_label.SetToolTip(message)
             self.status_label.Show()
 
             if success:
@@ -497,12 +505,7 @@ class SettingsDialog(ThemedDialog):
     def _on_ok(self, event):
         """확인 버튼 클릭"""
         if self.save_settings():
-            self._show_status(tr('settings_saved'), success=True)
-
-            def do_close():
-                with contextlib.suppress(RuntimeError, AttributeError):
-                    self.EndModal(wx.ID_OK)
-            wx.CallLater(300, do_close)
+            self.EndModal(wx.ID_OK)
         else:
             self._show_status(tr('save_failed'), success=False)
             wx.MessageBox(tr('save_failed'), tr('warning'), wx.OK | wx.ICON_WARNING)
@@ -511,11 +514,9 @@ class SettingsDialog(ThemedDialog):
         """취소 버튼 클릭"""
         self.EndModal(wx.ID_CANCEL)
 
-    def _on_close(self, event):
-        """다이얼로그 닫힐 때 번역 콜백 해제"""
-        with contextlib.suppress(Exception):
-            self.trans.unregister_callback(self.retranslateUi)
-        event.Skip()
+    def Destroy(self):
+        self.trans.unregister_callback(self.retranslateUi)
+        return super().Destroy()
 
     def retranslateUi(self, lang=None):
         """언어 변경 시 UI 업데이트"""
@@ -601,11 +602,7 @@ class SettingsDialog(ThemedDialog):
             self.reset_btn.SetToolTip(tr('reset_tooltip'))
 
         if hasattr(self, 'memory_limit_combo'):
-            curr_mem_idx = self.memory_limit_combo.GetSelection()
-            self.memory_limit_combo.Clear()
-            self.memory_limit_combo.AppendItems(["1 GB (" + tr('auto') + ")", "2 GB", "3 GB", "4 GB"])
-            if curr_mem_idx >= 0:
-                self.memory_limit_combo.SetSelection(curr_mem_idx)
+            self.memory_limit_combo.SetString(0, "1 GB (" + tr('auto') + ")")
 
         if hasattr(self, 'lang_combo'):
             curr_lang_idx = self.lang_combo.GetSelection()

@@ -18,7 +18,7 @@ class CustomToggleSwitch(wx.Panel):
     """커스텀 토글 스위치 - Windows 11 스타일"""
 
     def __init__(self, parent, id=wx.ID_ANY, checked=False):
-        super().__init__(parent, id, size=(45, 22))
+        super().__init__(parent, id, size=parent.FromDIP((45, 22)))
         self._checked = checked
         self._handle_position = 4.0 if not checked else 27.0
         self._animating = False
@@ -29,8 +29,8 @@ class CustomToggleSwitch(wx.Panel):
         self._off_handle_color = Colors.TOGGLE_OFF_HANDLE
         self._on_handle_color = Colors.TOGGLE_ON_HANDLE
 
-        self.SetMinSize((45, 22))
-        self.SetMaxSize((45, 22))
+        self.SetMinSize(self.FromDIP((45, 22)))
+        self.SetMaxSize(self.FromDIP((45, 22)))
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
 
@@ -111,10 +111,10 @@ class CustomToggleSwitch(wx.Panel):
             gc.DrawRoundedRectangle(0, 0, width, height, height / 2)
 
             handle_color = self._on_handle_color if self._checked else self._off_handle_color
-            handle_size = 14
+            handle_size = height * 14 / 22
             handle_y = (height - handle_size) / 2
             gc.SetBrush(wx.Brush(handle_color))
-            gc.DrawEllipse(self._handle_position, handle_y, handle_size, handle_size)
+            gc.DrawEllipse(self._handle_position * width / 45, handle_y, handle_size, handle_size)
 
         memdc.SelectObject(wx.NullBitmap)
         dc.DrawBitmap(bitmap, 0, 0, False)
@@ -165,9 +165,8 @@ class CaptureControlBar(wx.Panel):
         self.Freeze()
 
         # 메인 레이아웃 (inner_panel 없이 직접 배치 — 패널 중첩 크래시 방지)
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        main_sizer.Add((20, 0))  # 좌측 패딩
-        self.SetSizer(main_sizer)
+        self._groups = []
+        group = self._new_group()
 
         # 기본 폰트
         default_font = Fonts.get_font(Fonts.SIZE_DEFAULT)
@@ -184,14 +183,14 @@ class CaptureControlBar(wx.Panel):
         self.format_combo.Bind(wx.EVT_COMBOBOX, self._on_format_combo_changed)
         self._style_combobox(self.format_combo)
         self.format_combo.SetFont(default_font)
-        main_sizer.Add(self.format_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        group.Add(self.format_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
         # FPS 라벨
         self.fps_label = wx.StaticText(self, label=tr('fps'))
         self.fps_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         self.fps_label.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT, bold=True))
         self.fps_label.SetToolTip(tr('fps_label_tooltip'))
-        main_sizer.Add(self.fps_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        group.Add(self.fps_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # FPS 콤보박스
         self.fps_combo = wx.ComboBox(self, choices=["1", "3", "5", "8", "10", "15", "20", "25", "30"],
@@ -201,8 +200,9 @@ class CaptureControlBar(wx.Panel):
         self.fps_combo.Bind(wx.EVT_COMBOBOX, self._on_fps_combo_changed)
         self._style_combobox(self.fps_combo)
         self.fps_combo.SetFont(default_font)
-        main_sizer.Add(self.fps_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        group.Add(self.fps_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
+        group = self._new_group()
         # 해상도 선택 (사용자 입력 가능)
         self.resolution_combo = wx.ComboBox(self,
                                             choices=["320 × 240", "640 × 480", "800 × 600", "1024 × 768"],
@@ -213,7 +213,7 @@ class CaptureControlBar(wx.Panel):
         self.resolution_combo.Bind(wx.EVT_TEXT_ENTER, self._on_resolution_combo_changed)
         self._style_combobox(self.resolution_combo)
         self.resolution_combo.SetFont(default_font)
-        main_sizer.Add(self.resolution_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
+        group.Add(self.resolution_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
         # 품질 선택
         self.quality_combo = wx.ComboBox(self, choices=[tr('high'), tr('medium'), tr('low')],
@@ -223,48 +223,40 @@ class CaptureControlBar(wx.Panel):
         self.quality_combo.Bind(wx.EVT_COMBOBOX, self._on_quality_combo_changed)
         self._style_combobox(self.quality_combo)
         self.quality_combo.SetFont(default_font)
-        main_sizer.Add(self.quality_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
-
-        # 구분선 1 (커스텀 패널로 색상 제어)
-        sep1 = wx.Panel(self, size=(1, 28))
-        sep1.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
-        main_sizer.Add(sep1, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 14)
+        group.Add(self.quality_combo, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 12)
 
         # ═══════════════════════════════════════════════════════════════
         # 중앙 섹션: 토글 스위치들
         # ═══════════════════════════════════════════════════════════════
 
+        group = self._new_group()
         # 커서 아이콘
         self.cursor_icon = RailIcon(self, "cursor", tr('cursor_tooltip'), size=(24, 24))
         self.cursor_icon.SetToolTip(tr('cursor_tooltip'))
-        main_sizer.Add(self.cursor_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        group.Add(self.cursor_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # 커서 토글 스위치
         self.cursor_toggle = CustomToggleSwitch(self, checked=True)
         self.cursor_toggle.SetToolTip(tr('cursor_tooltip'))
         self.cursor_toggle.set_changed_callback(self._on_cursor_toggle_changed)
-        main_sizer.Add(self.cursor_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        group.Add(self.cursor_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # 영역 아이콘
         self.region_icon = RailIcon(self, "region", tr('click_highlight_icon_tooltip'), size=(24, 24))
         self.region_icon.SetToolTip(tr('click_highlight_icon_tooltip'))
-        main_sizer.Add(self.region_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        group.Add(self.region_icon, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # 영역 토글 스위치
         self.region_toggle = CustomToggleSwitch(self, checked=False)
         self.region_toggle.SetToolTip(tr('click_highlight_icon_tooltip'))
         self.region_toggle.set_changed_callback(self._on_region_toggle_changed)
-        main_sizer.Add(self.region_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-
-        # 구분선 2
-        sep2 = wx.Panel(self, size=(1, 28))
-        sep2.SetBackgroundColour(Colors.DIVIDER_SUBTLE)
-        main_sizer.Add(sep2, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 14)
+        group.Add(self.region_toggle, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         # ═══════════════════════════════════════════════════════════════
         # 오른쪽 섹션: 플랫 버튼들
         # ═══════════════════════════════════════════════════════════════
 
+        group = self._new_group()
         # GPU 상태 버튼 (초기 중립 상태 — 클릭 시 GPU 정보 확인)
         self.gpu_status_button = CommandButton(self, label="GPU", size=(64, 30), icon_type="gpu",
                                                bg_color=Colors.GPU_BTN_OFF,
@@ -274,8 +266,16 @@ class CaptureControlBar(wx.Panel):
         self.gpu_status_button.SetToolTip(tr('gpu_status_tooltip'))
         self.gpu_status_button.Bind(wx.EVT_BUTTON, self._on_gpu_button_clicked)
         self._on_gpu_click_callback = None
-        main_sizer.Add(self.gpu_status_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        # Reserve the longest status, including the asynchronous probe.
+        gpu_width = 0
+        for text in ("GPU Off", "GPU On", tr("gpu_initializing")):
+            self.gpu_status_button.SetLabel(text)
+            gpu_width = max(gpu_width, self.gpu_status_button.GetEffectiveMinSize().width)
+        self.gpu_status_button.SetLabel("GPU")
+        group.Add(self.gpu_status_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        group.SetItemMinSize(self.gpu_status_button, gpu_width, self.gpu_status_button.GetEffectiveMinSize().height)
 
+        group = self._new_group()
         # REC 버튼
         self.rec_button = CommandButton(self, label="REC", size=(76, 30), icon_type="record",
                                         bg_color=Colors.REC_READY,
@@ -285,7 +285,7 @@ class CaptureControlBar(wx.Panel):
                                         border_color=Colors.REC_READY_PRESSED)
         self.rec_button.SetToolTip(tr('rec_tooltip'))
         self.rec_button.Bind(wx.EVT_BUTTON, self._on_rec_button_clicked)
-        main_sizer.Add(self.rec_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        group.Add(self.rec_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
 
         # Pause 버튼
         self.pause_btn = CommandButton(self, size=(36, 30), icon_type="pause",
@@ -295,10 +295,12 @@ class CaptureControlBar(wx.Panel):
                                        pressed_color=Colors.PAUSE_PRESSED,
                                        border_color=Colors.PAUSE_PRESSED)
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
+        self.pause_btn.SetName(tr('pause_tooltip'))
         self.pause_btn.Enable(False)
         self.pause_btn.Bind(wx.EVT_BUTTON, self._on_pause_button_clicked)
-        main_sizer.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        group.Add(self.pause_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
+        group = self._new_group()
         # 설정 버튼 (아이콘 2배 크기)
         self.settings_button = CommandButton(self, size=(42, 36), icon_type="settings", icon_size=21,
                                              bg_color=Colors.BG_INPUT_DARK,
@@ -308,7 +310,7 @@ class CaptureControlBar(wx.Panel):
         self.settings_button.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
         self.settings_button.SetToolTip(tr('settings_tooltip'))
         self.settings_button.Bind(wx.EVT_BUTTON, self._on_settings_button_clicked)
-        main_sizer.Add(self.settings_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        group.Add(self.settings_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
 
         # 도움말 버튼
         self.help_button = CommandButton(self, size=(38, 36), icon_type="help", icon_size=21,
@@ -319,11 +321,10 @@ class CaptureControlBar(wx.Panel):
         self.help_button.SetFont(Fonts.get_font(Fonts.SIZE_LG, bold=True))
         self.help_button.SetToolTip(tr('help_tooltip'))
         self.help_button.Bind(wx.EVT_BUTTON, self._on_help_button_clicked)
-        main_sizer.Add(self.help_button, 0, wx.ALIGN_CENTER_VERTICAL)
+        group.Add(self.help_button, 0, wx.ALIGN_CENTER_VERTICAL)
 
-        main_sizer.Add((20, 0))  # 우측 패딩
-
-        self.Layout()
+        self._measure_choices()
+        self.layout_for_width(self.GetClientSize().width)
         self.Thaw()  # Freeze() 해제 — 이제 한 번에 화면 갱신
 
         self.Bind(wx.EVT_SIZE, self._on_control_bar_size)
@@ -334,9 +335,54 @@ class CaptureControlBar(wx.Panel):
         self._pause_enabled = False
         self._stop_enabled = False
 
+    def _new_group(self):
+        group = wx.BoxSizer(wx.HORIZONTAL)
+        group.SetContainingWindow(self)
+        self._groups.append(group)
+        return group
+
+    def _measure_choices(self):
+        arrow = wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self)
+        for combo in (self.format_combo, self.fps_combo, self.resolution_combo, self.quality_combo):
+            values = [*combo.GetItems(), combo.GetValue()]
+            width = max(combo.GetTextExtent(value).width for value in values)
+            padding = max(32, arrow + self.FromDIP(18))
+            combo.SetMinSize((width + padding, combo.GetBestSize().height))
+
+    def preferred_width(self):
+        return sum(group.CalcMin().width for group in self._groups) + 2 * self.FromDIP(16)
+
+    def layout_for_width(self, width):
+        """Keep related controls together, wrapping whole groups to another row."""
+        pad = self.FromDIP(16)
+        gap = self.FromDIP(6)
+        rows = [[]]
+        used = 0
+        for group in self._groups:
+            size = group.CalcMin()
+            if used and used + size.width > width - 2 * pad:
+                rows.append([])
+                used = 0
+            rows[-1].append((group, size))
+            used += size.width
+
+        y = self.FromDIP(10)
+        for row in rows:
+            height = max(size.height for _, size in row)
+            x = pad
+            for group, size in row:
+                group.SetDimension(x, y, size.width, height)
+                x += size.width
+            y += height + gap
+        height = max(self.FromDIP(60), y - gap + self.FromDIP(10))
+        if self.GetMinHeight() != height:
+            self.SetMinSize((1, height))
+        return height
+
     def _on_control_bar_size(self, event):
+        self.layout_for_width(event.GetSize().width)
+        self.Refresh()
         event.Skip()
-        self.Refresh(True)
 
     def _on_paint(self, event):
         dc = wx.PaintDC(self)
@@ -571,6 +617,8 @@ class CaptureControlBar(wx.Panel):
         self.pause_btn.SetToolTip(tr('pause_tooltip'))
         self.settings_button.SetToolTip(tr('settings_tooltip'))
         self.help_button.SetToolTip(tr('help_tooltip'))
+        self._measure_choices()
+        self.layout_for_width(self.GetClientSize().width)
 
     def _on_destroy(self, event):
         """윈도우 파괴 시 번역 콜백 해제"""
@@ -651,6 +699,7 @@ class CaptureControlBar(wx.Panel):
         else:
             self.gpu_status_button.SetLabel("GPU Off")
         self._style_gpu_button(self.gpu_status_button, enabled)
+        self.layout_for_width(self.GetClientSize().width)
 
     def get_format(self):
         return self.format_combo.GetValue()

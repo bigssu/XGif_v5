@@ -271,12 +271,12 @@ def setup_cli_logging(quiet=False):
 
     appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
     log_dir = os.path.join(appdata, "XGif", "logs")
-    os.makedirs(log_dir, exist_ok=True)
 
     handlers = []
 
     # 파일 핸들러
     try:
+        os.makedirs(log_dir, exist_ok=True)
         file_handler = RotatingFileHandler(
             os.path.join(log_dir, "cli.log"),
             maxBytes=5 * 1024 * 1024,
@@ -285,7 +285,7 @@ def setup_cli_logging(quiet=False):
         )
         file_handler.setLevel(logging.INFO)
         handlers.append(file_handler)
-    except (OSError, PermissionError):
+    except OSError:
         pass
 
     # 콘솔 핸들러

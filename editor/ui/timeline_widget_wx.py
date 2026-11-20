@@ -292,7 +292,7 @@ class TimelineWidget(wx.ScrolledCanvas):
             frames = self._main_window.frames
             if self._drag_start_index != self._drag_target_index:
                 frames.move_frame(self._drag_start_index, self._drag_target_index)
-                self._main_window._is_modified = True
+                self._main_window._mark_untracked_edit()
 
                 # 이벤트 발생
                 evt = FramesReorderedEvent(self._drag_start_index, self._drag_target_index)
@@ -372,7 +372,7 @@ class TimelineWidget(wx.ScrolledCanvas):
                 if hasattr(self._main_window, "_on_delay_changed"):
                     self._main_window._on_delay_changed(index, delay)
                 if hasattr(self._main_window, "_is_modified"):
-                    self._main_window._is_modified = True
+                    self._main_window._mark_untracked_edit()
 
                 # 이벤트 발생
                 evt = FrameDelayChangedEvent(index, delay)

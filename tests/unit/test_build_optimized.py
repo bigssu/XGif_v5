@@ -5,6 +5,26 @@ from pathlib import Path
 import build_optimized
 
 
+@pytest.mark.parametrize("environment", ["project", "existing", "fresh"])
+def test_build_resolves_the_source_requirements_with_pip(tmp_path, monkeypatch, environment):
+    project_env = str(tmp_path / ".venv")
+    build_env = str(tmp_path / "build_venv")
+    monkeypatch.setattr(build_optimized, "PROJECT_DIR", str(tmp_path))
+    monkeypatch.setattr(build_optimized, "DOT_VENV", project_env)
+    monkeypatch.setattr(build_optimized, "BUILD_VENV", build_env)
+    selected = project_env if environment == "project" else build_env
+    monkeypatch.setattr(build_optimized, "_is_valid_venv",
+                        lambda path: environment != "fresh" and path == selected)
+    monkeypatch.setattr(build_optimized.venv, "create", lambda *a, **kw: None)
+    calls = []
+    monkeypatch.setattr(build_optimized.subprocess, "run",
+                        lambda args, **kwargs: calls.append((args, kwargs)))
+    build_optimized.setup_venv()
+    requirements_command = [build_optimized._get_python_exe(selected), "-m", "pip", "install",
+                            "-r", str(tmp_path / "requirements.txt")]
+    assert (requirements_command, {"check": True}) in calls
+
+
 def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch):
     from core.version import APP_VERSION
 
@@ -36,6 +56,7 @@ def test_run_installer_injects_app_version_and_source_exe(tmp_path, monkeypatch)
 def test_installer_version_info_uses_release_metadata():
     script = Path("installer/xgif_setup.iss").read_text(encoding="utf-8")
 
+    assert "ArchitecturesAllowed=x64compatible" in script
     assert "VersionInfoVersion={#MyAppVersion}.0" in script
     assert "VersionInfoProductVersion={#MyAppVersion}" in script
     assert "VersionInfoTextVersion={#MyAppVersion}" in script
@@ -64,7 +85,14 @@ def test_nuitka_build_output_name_matches_release_contract(monkeypatch):
     assert "--output-filename=XGif.exe" in calls[0]
     assert "--output-filename=XGif-cli.exe" in calls[1]
     assert "--windows-console-mode=force" in calls[1]
-    assert "--windows-disable-console" not in calls[1]
+    assert "--windows-console-mode=disable" in calls[0]
+    assert "--windows-console-mode=disable" not in calls[1]
+    for command in calls:
+        assert "--enable-plugin=wx" not in command
+        for name in ("resources", "requirements.txt", "requirements-gpu.txt"):
+            option = "include-data-dir" if name == "resources" else "include-data-files"
+            source = Path(build_optimized.PROJECT_DIR) / name
+            assert source.exists() and f"--{option}={source}={name}" in command
 
 
 def test_build_keeps_debug_launcher_opt_in_only():
@@ -73,6 +101,9 @@ def test_build_keeps_debug_launcher_opt_in_only():
     assert "--diagnostic-launcher" in source
     assert "os.remove(diag_bat)" in source
     assert "if args.diagnostic_launcher:" in source
+    assert '"%~dp0XGif-cli.exe" doctor >> "%LOGFILE%"' in source
+    assert "XGif-cli.exe doctor --install-cupy" in source
+    assert "CUPY_ENV=" not in source
 
 
 def test_windows_version_tuple_preserves_patch_versions():

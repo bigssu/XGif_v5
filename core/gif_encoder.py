@@ -8,19 +8,19 @@ import os
 import shutil
 import subprocess
 import tempfile
-import asyncio
+import contextlib
 import uuid
 import logging
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Callable
-from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, Callable, Protocol
+from collections.abc import Iterable, Iterator
 import numpy as np
-from .utils import safe_rmtree, run_subprocess_silent
+from PIL import GifImagePlugin, Image, ImageChops
+from .utils import publish_output, safe_rmtree, run_subprocess_silent
 
 logger = logging.getLogger(__name__)
-
 
 def _create_temp_dir(prefix: str = 'giffy_') -> str:
     """안전하게 임시 디렉토리 생성 (UUID 사용)"""
@@ -76,35 +76,134 @@ def _create_temp_dir(prefix: str = 'giffy_') -> str:
 # GPU 유틸리티 (FFmpeg GPU 가속용)
 from .gpu_utils import detect_gpu
 
-# 이미지 I/O 최적화: imageio 우선, 폴백으로 PIL
-from PIL import Image  # Pillow fallback용 (항상 필요)
-import contextlib
-
-try:
-    import imageio
-    HAS_IMAGEIO = True
-except ImportError:
-    HAS_IMAGEIO = False
+class FrameSource(Protocol):
+    def __len__(self) -> int: ...
+    def __getitem__(self, index: int, /) -> np.ndarray: ...
+    def __iter__(self) -> Iterator[np.ndarray]: ...
 
 
-def _save_frame_to_bmp(args):
-    """프레임을 BMP로 저장 (최적화: imageio 우선 사용)"""
-    idx, frame, out_dir = args
-    try:
-        # BGR to RGB 변환 (NumPy 뷰 연산 - 매우 빠름)
-        rgb_frame = frame[:, :, ::-1]
-        output_path = os.path.join(out_dir, f'{idx:06d}.bmp')
+def _gif_ticks(frame_count, fps):
+    return int(frame_count * 100 / fps + 0.5)
 
-        if HAS_IMAGEIO:
-            # imageio 사용 (더 빠름)
-            imageio.imwrite(output_path, rgb_frame, format='BMP')
-        else:
-            # PIL 폴백
-            img = Image.fromarray(rgb_frame)
-            img.save(output_path, 'BMP')
-    except Exception as e:
-        logger.warning(f"프레임 {idx} 저장 실패: {e}")
-    return idx
+
+def gif_frame_timing(frame_count: int, fps: float) -> Iterator[tuple[int, int]]:
+    """Yield source indices and delays in milliseconds, rounded on the GIF timeline."""
+    if not 0 < fps <= 120:
+        raise ValueError("GIF frame rate must be in (0, 120]")
+    if fps > 100:
+        # GIF can display at most one distinct image per centisecond.
+        count = _gif_ticks(frame_count, fps)
+        for step in range(count):
+            index = round(step * (frame_count - 1) / (count - 1)) if count > 1 else 0
+            yield index, 10
+    else:
+        previous = 0
+        for index in range(frame_count):
+            end = _gif_ticks(index + 1, fps)
+            yield index, (end - previous) * 10
+            previous = end
+
+
+def _gif_frames(frames, fps):
+    if fps <= 100:
+        return frames
+    return (frames[index] for index, _ in gif_frame_timing(len(frames), fps))
+
+
+def _bgr_frames(frames: Iterable[np.ndarray]):
+    shape = None
+    for index, frame in enumerate(frames):
+        if (not isinstance(frame, np.ndarray) or frame.dtype != np.uint8
+                or frame.ndim != 3 or frame.shape[2] not in (3, 4)
+                or (shape is not None and frame.shape[:2] != shape) or frame.size == 0):
+            raise ValueError(f"Invalid BGR/BGRA frame at index {index}")
+        shape = frame.shape[:2]
+        yield frame[:, :, :3]
+
+
+def write_palette_gif(output_path, images: Iterable[tuple[Image.Image, float]], loop=0, optimize=True,
+                      *, transparent_canvas=False):
+    """Write adjacent frame differences with independent palettes and delays in ms."""
+    elapsed_ms = 0
+    written_ticks = 0
+
+    def write_frame(output, tile, offset, duration):
+        nonlocal elapsed_ms, written_ticks
+        first = output.tell() == 0
+        info = {key: tile.info[key] for key in ('transparency',) if key in tile.info}
+        if first:
+            header_info = info.copy() if loop is None else {"loop": loop, **info}
+            if transparent_canvas:
+                header_info['background'] = info['transparency']
+            header, _ = GifImagePlugin.getheader(tile, info=header_info)
+            output.writelines(header)
+        elapsed_ms += duration
+        end_tick = int((elapsed_ms + 5) // 10)
+        ticks = end_tick - written_ticks
+        written_ticks = end_tick
+        while True:
+            delay = min(ticks, 65535)
+            blocks = GifImagePlugin.getdata(tile, offset=offset, duration=delay * 10,
+                                            include_color_table=not first, disposal=2 if transparent_canvas else 0, **info)
+            output.writelines(blocks)
+            # Pillow's per-frame collector class also holds this list until cyclic GC.
+            blocks.clear()
+            ticks -= delay
+            if not ticks:
+                break
+            first = False
+
+    pending = None
+    previous = None
+    pending_duration = 0
+    offset = (0, 0)
+    with contextlib.ExitStack() as stack:
+        output = output_path if hasattr(output_path, 'write') else stack.enter_context(open(output_path, 'wb'))
+        for frame, duration in images:
+            if frame.mode != 'P' or duration < 0:
+                raise ValueError("GIF frames require a palette and a nonnegative delay")
+            # Converting a transparent P image changes Pillow's internal palette to RGBA.
+            # Keep the original RGB palette for the GIF color table.
+            comparison_frame = frame.copy() if 'transparency' in frame.info else frame
+            rgba = comparison_frame.convert('RGBA')
+            if previous is None:
+                tile = frame
+            else:
+                if rgba.size != previous.size:
+                    raise ValueError(f"GIF frame sizes differ: {previous.size} / {rgba.size}")
+                delta = ImageChops.difference(previous, rgba)
+                bbox = delta.getbbox(alpha_only=False)
+                if bbox is None:
+                    pending_duration += duration
+                    continue
+                write_frame(output, pending, offset, pending_duration)
+                if transparent_canvas:
+                    # Disposal clears the full canvas between frames so pixels can become transparent.
+                    pending, previous, pending_duration = frame, rgba, duration
+                    continue
+                offset = bbox[:2]
+                tile = frame.crop(bbox)
+                if optimize:
+                    transparent = frame.info.get('transparency')
+                    if transparent is None:
+                        used = {index for _, index in frame.getcolors()}
+                        transparent = next((i for i in range(256) if i not in used), None)
+                    if transparent is not None:
+                        # Unchanged pixels must retain the displayed canvas, which can
+                        # differ from the previous source outside an earlier cropped tile.
+                        palette = tile.getpalette()
+                        missing = 3 * (transparent + 1) - len(palette)
+                        if missing > 0:
+                            tile.putpalette(palette + [0] * missing)
+                        r, g, b, a = delta.crop(bbox).split()
+                        changed = ImageChops.lighter(ImageChops.lighter(r, g), ImageChops.lighter(b, a))
+                        tile.paste(transparent, mask=changed.point([255] + [0] * 255))
+                        tile.info['transparency'] = transparent
+            pending, previous, pending_duration = tile, rgba, duration
+        if pending is None:
+            raise ValueError("GIF contains no frames")
+        write_frame(output, pending, offset, pending_duration)
+        output.write(b";")
 
 
 class GifEncoder:
@@ -367,7 +466,7 @@ class GifEncoder:
                 'cpu': 'libx264' if codec == 'h264' else 'libx265',
             }
             preferred = encoder_map.get(self._preferred_encoder)
-            if preferred and self._test_encoder(preferred):
+            if preferred:
                 return preferred
 
         # 자동 선택
@@ -421,97 +520,12 @@ class GifEncoder:
         }
         return display_names.get(encoder, encoder)
 
-    def _run_ffmpeg_async(self, cmd: List[str]) -> subprocess.CompletedProcess:
-        """비동기 FFmpeg 실행 (진행률 모니터링 가능)"""
-        loop = None
-        try:
-            # asyncio를 사용한 비동기 실행
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(self._async_run_ffmpeg(cmd))
-            return result
-        except Exception as e:
-            # asyncio 실패 시 동기 방식으로 폴백
-            logger.warning("asyncio 실패, 동기 모드로 폴백: %s", e)
-            return subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                timeout=600,  # 10분 타임아웃
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-        finally:
-            # 이벤트 루프 안전하게 정리
-            if loop is not None:
-                try:
-                    # 실행 중인 모든 태스크 취소
-                    pending = asyncio.all_tasks(loop)
-                    for task in pending:
-                        task.cancel()
-
-                    # 취소된 태스크가 완료될 때까지 대기
-                    if pending:
-                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                except (RuntimeError, asyncio.CancelledError):
-                    pass
-                finally:
-                    with contextlib.suppress(RuntimeError):
-                        loop.close()
-
-    async def _async_run_ffmpeg(self, cmd: List[str], input_data: Optional[bytes] = None) -> subprocess.CompletedProcess:
-        """비동기 FFmpeg 실행 (입력 데이터 지원)"""
-        process = None
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE if input_data is not None else None,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(input=input_data),
-                timeout=600  # 10분 타임아웃
-            )
-
-            return subprocess.CompletedProcess(
-                cmd,
-                process.returncode if process.returncode is not None else -1,
-                stdout=stdout.decode('utf-8', errors='ignore') if stdout else '',
-                stderr=stderr.decode('utf-8', errors='ignore') if stderr else ''
-            )
-        except asyncio.TimeoutError:
-            if process is not None:
-                try:
-                    process.kill()
-                    await process.wait()
-                except Exception:
-                    pass
-            raise
-        except Exception:
-            if process is not None:
-                try:
-                    process.kill()
-                    await process.wait()
-                except Exception:
-                    pass
-            raise
-
-    def _write_frames_to_pipe(self, process, frames: List[np.ndarray], total_steps: int = 0):
+    def _write_frames_to_pipe(self, process, frames: FrameSource, total_steps: int, on_frame_written):
         """Stream uint8 BGR/BGRA capture frames as bgr24, one frame at a time."""
-        shape = frames[0].shape[:2]
         try:
-            for i, frame in enumerate(frames):
-                if (not isinstance(frame, np.ndarray) or frame.dtype != np.uint8
-                        or frame.ndim != 3 or frame.shape[2] not in (3, 4)
-                        or frame.shape[:2] != shape or frame.size == 0):
-                    raise ValueError(f"Invalid BGR/BGRA frame at index {i}")
-                process.stdin.write(frame[:, :, :3].tobytes())
+            for i, bgr in enumerate(_bgr_frames(frames)):
+                process.stdin.write(memoryview(np.ascontiguousarray(bgr)).cast("B"))
+                on_frame_written()
                 if total_steps > 0 and ((i + 1) % 10 == 0 or i + 1 == len(frames)):
                     self._emit_progress(i + 1, total_steps)
         finally:
@@ -519,8 +533,7 @@ class GifEncoder:
                 process.stdin.close()
 
     def _run_streamed_ffmpeg(self, cmd, frames, total_steps=0, timeout=600):
-        """Bound both stdin writes and process completion by the same deadline."""
-        deadline = time.monotonic() + timeout
+        """Allow long encodes while bounding stalled frame writes and post-EOF finalization."""
         # A file cannot fill a stderr pipe while the child is waiting for stdin.
         with tempfile.TemporaryFile() as stderr:
             process = subprocess.Popen(
@@ -529,10 +542,15 @@ class GifEncoder:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
             )
             write_errors = []
+            last_write = time.monotonic()
+
+            def mark_frame_written():
+                nonlocal last_write
+                last_write = time.monotonic()
 
             def write_frames():
                 try:
-                    self._write_frames_to_pipe(process, frames, total_steps)
+                    self._write_frames_to_pipe(process, frames, total_steps, mark_frame_written)
                 except (BrokenPipeError, OSError) as exc:
                     write_errors.append(exc)
                 except Exception as exc:
@@ -543,10 +561,12 @@ class GifEncoder:
             writer = threading.Thread(target=write_frames, name='ffmpeg-frame-writer')
             try:
                 writer.start()
-                writer.join(max(0, deadline - time.monotonic()))
-                if writer.is_alive():
-                    raise subprocess.TimeoutExpired(cmd, timeout)
-                process.wait(timeout=max(0, deadline - time.monotonic()))
+                while writer.is_alive():
+                    remaining = timeout - (time.monotonic() - last_write)
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(cmd, timeout)
+                    writer.join(remaining)
+                process.wait(timeout=timeout)
             finally:
                 if process.poll() is None:
                     process.kill()
@@ -561,13 +581,13 @@ class GifEncoder:
                 raise write_errors[0]
             return subprocess.CompletedProcess(cmd, process.returncode, stderr=error_output)
 
-    def _check_disk_space(self, output_path: str, frames: List[np.ndarray]) -> bool:
+    def _check_disk_space(self, output_path: str, frames: FrameSource) -> bool:
         """인코딩 전 디스크 공간 확인. 부족하면 False 반환."""
         try:
             output_dir = os.path.dirname(os.path.abspath(output_path)) or '.'
             usage = shutil.disk_usage(output_dir)
             # 예상 필요 공간: 원본 프레임 크기의 약 10% (GIF/MP4 압축 고려) + 여유 100MB
-            estimated_raw = sum(f.nbytes for f in frames[:1]) * len(frames) if frames else 0
+            estimated_raw = frames[0].nbytes * len(frames) if frames else 0
             estimated_needed = max(estimated_raw // 10, 100 * 1024 * 1024)  # 최소 100MB
             if usage.free < estimated_needed:
                 free_mb = usage.free / (1024 * 1024)
@@ -578,13 +598,14 @@ class GifEncoder:
             pass  # 디스크 확인 실패 시 인코딩 계속 진행
         return True
 
-    def encode(self, frames: List[np.ndarray], fps: int, output_path: str) -> bool:
-        return self._encode_atomic(self._encode_gif, frames, fps, output_path)
+    def encode(self, frames: FrameSource, fps: float, output_path: str, *, overwrite=True) -> bool:
+        return self._encode_atomic(self._encode_gif, frames, fps, output_path, overwrite=overwrite)
 
-    def encode_mp4(self, frames: List[np.ndarray], fps: int, output_path: str, audio_path: Optional[str] = None) -> bool:
-        return self._encode_atomic(self._encode_mp4, frames, fps, output_path, audio_path)
+    def encode_mp4(self, frames: FrameSource, fps: float, output_path: str,
+                   audio_path: Optional[str] = None, *, overwrite=True) -> bool:
+        return self._encode_atomic(self._encode_mp4, frames, fps, output_path, audio_path, overwrite=overwrite)
 
-    def _encode_atomic(self, encode, frames, fps, output_path, *args):
+    def _encode_atomic(self, encode, frames, fps, output_path, *args, overwrite):
         staged = None
         try:
             if not output_path or not isinstance(output_path, str):
@@ -597,9 +618,12 @@ class GifEncoder:
                 return False
             if os.path.getsize(staged) == 0:
                 raise ValueError("인코딩 결과 파일이 비어 있습니다.")
-            os.replace(staged, destination)
+            publish_output(staged, destination, overwrite=overwrite)
             self._emit_finished(output_path)
             return True
+        except FileExistsError:
+            self._emit_error(f"출력 파일이 이미 존재합니다: {output_path}")
+            return False
         except Exception as exc:
             self._emit_error(f"인코딩 파일 저장 실패: {exc}")
             return False
@@ -608,14 +632,14 @@ class GifEncoder:
                 with contextlib.suppress(OSError):
                     os.remove(staged)
 
-    def _encode_gif(self, frames: List[np.ndarray], fps: int, output_path: str) -> bool:
+    def _encode_gif(self, frames: FrameSource, fps: float, output_path: str) -> bool:
         """프레임 리스트를 GIF로 인코딩 (Pipe 방식 우선)"""
         # 입력 검증
         if not frames:
             self._emit_error("인코딩할 프레임이 없습니다.")
             return False
 
-        if fps <= 0 or fps > 120:
+        if not 0 < fps <= 120:
             logger.error(f"Invalid FPS: {fps}")
             self._emit_error(f"유효하지 않은 FPS 값: {fps}")
             return False
@@ -641,36 +665,13 @@ class GifEncoder:
         if not self._check_disk_space(output_path, frames):
             return False
 
-        # FFmpeg 사용 가능 시 파이프 방식으로 진행
-        if self._ffmpeg_path:
+        # The streaming Pillow writer can split holds beyond GIF's 16-bit delay field.
+        if self._ffmpeg_path and fps >= 100 / 65535:
             return self._encode_with_pipe(frames, output_path, fps)
 
-        # FFmpeg 미설치 시 기존 BMP 방식 (Pillow) 폴백
-        total_steps = len(frames) + 1
-        temp_dir = _create_temp_dir(prefix='giffy_')
-        frames_dir = os.path.join(temp_dir, 'frames')
-        os.makedirs(frames_dir, exist_ok=True)
+        return self._encode_with_pillow(frames, output_path, fps)
 
-        try:
-            self._save_frames_parallel(frames, frames_dir, total_steps)
-            success = self._encode_with_pillow(frames_dir, output_path, fps, len(frames))
-            self._emit_progress(total_steps, total_steps)
-            return success
-        except Exception as e:
-            self._emit_error(f"Pillow 인코딩 에러: {str(e)}")
-            return False
-        finally:
-            safe_rmtree(temp_dir)
-
-    def _save_frames_parallel(self, frames: List[np.ndarray], frames_dir: str, total_steps: int):
-        """프레임을 BMP로 병렬 저장 (Pillow 폴백용)"""
-        args_list = [(i, frame, frames_dir) for i, frame in enumerate(frames)]
-        max_workers = min(os.cpu_count() or 4, 8)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for done_idx in executor.map(_save_frame_to_bmp, args_list):
-                self._emit_progress(done_idx + 1, total_steps)
-
-    def _encode_with_pipe(self, frames: List[np.ndarray], output_path: str, fps: int) -> bool:
+    def _encode_with_pipe(self, frames: FrameSource, output_path: str, fps: float) -> bool:
         """FFmpeg Pipe를 사용한 2-pass GIF 인코딩 (디스크 I/O 최소화)"""
         if not frames:
             logger.error("No frames to encode")
@@ -697,7 +698,7 @@ class GifEncoder:
             # Pass 1: Palette Generation via Pipe
             palettegen_filter = f"palettegen=max_colors={preset['max_colors']}:stats_mode={preset['stats_mode']}"
             cmd_palette = [
-                self._ffmpeg_path, '-y',
+                self._ffmpeg_path, '-y', '-loglevel', 'error',
                 '-f', 'rawvideo', '-vcodec', 'rawvideo',
                 '-s', f"{w}x{h}", '-pix_fmt', 'bgr24', '-framerate', str(fps),
                 '-i', '-',
@@ -730,19 +731,20 @@ class GifEncoder:
 
             filter_complex = f"[0:v][1:v]{paletteuse_filter}"
 
+            final_delay = 1 if fps > 100 else _gif_ticks(total_frames, fps) - _gif_ticks(total_frames - 1, fps)
             cmd_gif = [
-                self._ffmpeg_path, '-y',
+                self._ffmpeg_path, '-y', '-loglevel', 'error',
                 '-f', 'rawvideo', '-vcodec', 'rawvideo',
-                '-s', f"{w}x{h}", '-pix_fmt', 'bgr24', '-framerate', str(fps),
+                '-s', f"{w}x{h}", '-pix_fmt', 'bgr24', '-framerate', str(min(fps, 100)),
                 '-i', '-',
                 '-i', palette_path,
                 '-lavfi', filter_complex,
-                '-loop', '0',
+                '-loop', '0', '-final_delay', str(final_delay),
                 output_path
             ]
 
             try:
-                process = self._run_streamed_ffmpeg(cmd_gif, frames)
+                process = self._run_streamed_ffmpeg(cmd_gif, _gif_frames(frames, fps))
                 stderr = process.stderr
             except subprocess.TimeoutExpired:
                 logger.error("GIF generation timeout")
@@ -763,232 +765,36 @@ class GifEncoder:
         finally:
             safe_rmtree(temp_dir)
 
-    def _encode_with_ffmpeg(self, frames_dir: str, output_path: str, fps: int, frame_count: int) -> bool:
-        """
-        FFmpeg를 사용한 고화질 GIF 인코딩
+    def _encode_with_pillow(self, frames: FrameSource, output_path: str, fps: float) -> bool:
+        total = len(frames)
+        colors = 256 if self.quality in ('high', 'medium') else 128
+        dither = Image.Dither.FLOYDSTEINBERG if colors == 256 else Image.Dither.NONE
 
-        2-pass 방식:
-        - Pass 1: palettegen으로 영상 전체에서 최적 256색 팔레트 생성
-        - Pass 2: paletteuse로 팔레트 적용하여 GIF 생성
+        def quantized_frames():
+            timing = gif_frame_timing(total, fps)
+            for (source_index, delay), bgr in zip(timing, _bgr_frames(_gif_frames(frames, fps)), strict=True):
+                index = source_index + 1
+                rgb = Image.fromarray(bgr[:, :, ::-1])
+                yield rgb.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=dither), delay
+                if index % 10 == 0 or index == total:
+                    self._emit_progress(index, total + 1)
 
-        GPU 가속 (NVENC 사용 가능 시):
-        - hwaccel cuda로 디코딩 가속
-        """
-        preset = self.QUALITY_PRESETS[self.quality]
-        temp_dir = os.path.dirname(frames_dir)
-        palette_path = os.path.join(temp_dir, 'palette.png')
-
-        # palettegen 필터 구성
-        palettegen_filter = f"palettegen=max_colors={preset['max_colors']}:stats_mode={preset['stats_mode']}"
-
-        # paletteuse 필터 구성
-        paletteuse_opts = [f"dither={preset['dither']}"]
-        if 'bayer_scale' in preset:
-            paletteuse_opts.append(f"bayer_scale={preset['bayer_scale']}")
-        if preset.get('diff_mode') and preset['diff_mode'] != 'none':
-            paletteuse_opts.append(f"diff_mode={preset['diff_mode']}")
-        paletteuse_filter = f"paletteuse={':'.join(paletteuse_opts)}"
-
-        # GPU 가속 옵션
-        hwaccel_opts = []
-        if self._use_gpu and self._has_nvenc:
-            hwaccel_opts = ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda']
-
-        total_steps = frame_count * 2 + 2
         try:
-            # Pass 1: 팔레트 생성
-            self._emit_progress(0, total_steps)
-            cmd_palette = [
-                self._ffmpeg_path,
-                '-y',  # 덮어쓰기
-            ]
-            if hwaccel_opts:
-                cmd_palette.extend(hwaccel_opts)
-            cmd_palette.extend([
-                '-framerate', str(fps),
-                '-i', os.path.join(frames_dir, '%06d.bmp'),
-                '-vf', palettegen_filter,
-                palette_path
-            ])
-
-            result = subprocess.run(
-                cmd_palette,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-                timeout=600
-            )
-
-            if result.returncode != 0:
-                # GPU 모드 실패 시 CPU로 재시도
-                if hwaccel_opts:
-                    return self._encode_with_ffmpeg_cpu(frames_dir, output_path, fps, frame_count)
-                self._emit_error(f"팔레트 생성 실패: {result.stderr}")
-                return False
-
-            self._emit_progress(frame_count, total_steps)
-
-            # Pass 2: GIF 생성
-            filter_complex = f"[0:v][1:v]{paletteuse_filter}"
-
-            cmd_gif = [
-                self._ffmpeg_path,
-                '-y',
-            ]
-            if hwaccel_opts:
-                cmd_gif.extend(hwaccel_opts)
-            cmd_gif.extend([
-                '-framerate', str(fps),
-                '-i', os.path.join(frames_dir, '%06d.bmp'),
-                '-i', palette_path,
-                '-lavfi', filter_complex,
-                '-loop', '0',  # 무한 반복
-                output_path
-            ])
-
-            result = subprocess.run(
-                cmd_gif,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-
-            if result.returncode != 0:
-                # GPU 모드 실패 시 CPU로 재시도
-                if hwaccel_opts:
-                    return self._encode_with_ffmpeg_cpu(frames_dir, output_path, fps, frame_count)
-                self._emit_error(f"GIF 생성 실패: {result.stderr}")
-                return False
-
-            self._emit_progress(total_steps, total_steps)
-            self._emit_finished(output_path)
+            write_palette_gif(output_path, quantized_frames())
+            self._emit_progress(total + 1, total + 1)
             return True
-
         except Exception as e:
-            self._emit_error(f"FFmpeg 실행 에러: {str(e)}")
+            self._emit_error(f"Pillow 인코딩 에러: {e}")
             return False
 
-    def _encode_with_ffmpeg_cpu(self, frames_dir: str, output_path: str, fps: int, frame_count: int) -> bool:
-        """CPU 전용 FFmpeg 인코딩 (GPU 실패 시 fallback)"""
-        preset = self.QUALITY_PRESETS[self.quality]
-        temp_dir = os.path.dirname(frames_dir)
-        palette_path = os.path.join(temp_dir, 'palette.png')
-
-        palettegen_filter = f"palettegen=max_colors={preset['max_colors']}:stats_mode={preset['stats_mode']}"
-
-        paletteuse_opts = [f"dither={preset['dither']}"]
-        if 'bayer_scale' in preset:
-            paletteuse_opts.append(f"bayer_scale={preset['bayer_scale']}")
-        if preset.get('diff_mode') and preset['diff_mode'] != 'none':
-            paletteuse_opts.append(f"diff_mode={preset['diff_mode']}")
-        paletteuse_filter = f"paletteuse={':'.join(paletteuse_opts)}"
-
-        total_steps = frame_count * 2 + 2
-        try:
-            # Pass 1: 팔레트 생성 (CPU)
-            self._emit_progress(0, total_steps)
-            cmd_palette = [
-                self._ffmpeg_path,
-                '-y',
-                '-framerate', str(fps),
-                '-i', os.path.join(frames_dir, '%06d.bmp'),
-                '-vf', palettegen_filter,
-                palette_path
-            ]
-
-            result = self._run_ffmpeg_async(cmd_palette)
-
-            if result.returncode != 0:
-                self._emit_error(f"팔레트 생성 실패: {result.stderr}")
-                return False
-
-            self._emit_progress(frame_count, total_steps)
-
-            # Pass 2: GIF 생성 (CPU)
-            filter_complex = f"[0:v][1:v]{paletteuse_filter}"
-
-            cmd_gif = [
-                self._ffmpeg_path,
-                '-y',
-                '-framerate', str(fps),
-                '-i', os.path.join(frames_dir, '%06d.bmp'),
-                '-i', palette_path,
-                '-lavfi', filter_complex,
-                '-loop', '0',
-                output_path
-            ]
-
-            result = self._run_ffmpeg_async(cmd_gif)
-
-            if result.returncode != 0:
-                self._emit_error(f"GIF 생성 실패: {result.stderr}")
-                return False
-
-            self._emit_progress(total_steps, total_steps)
-            self._emit_finished(output_path)
-            return True
-
-        except Exception as e:
-            self._emit_error(f"FFmpeg 실행 에러: {str(e)}")
-            return False
-
-    def _encode_with_pillow(self, frames_dir: str, output_path: str, fps: int, frame_count: int) -> bool:
-        """
-        Pillow를 사용한 GIF 인코딩 (FFmpeg 없을 때 fallback)
-        """
-        try:
-            # 프레임 로드
-            total_steps = frame_count + 1
-            images = []
-            for i in range(frame_count):
-                img_path = os.path.join(frames_dir, f'{i:06d}.bmp')
-                # with 문으로 파일 핸들 자동 해제
-                with Image.open(img_path) as img:
-                    rgb_img = img.convert('RGB')
-
-                    # 품질에 따른 양자화 설정
-                    if self.quality == 'high' or self.quality == 'medium':
-                        quantized = rgb_img.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
-                    else:
-                        quantized = rgb_img.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-
-                    images.append(quantized.convert('P'))
-
-                # 진행률 업데이트 (10프레임마다)
-                if (i + 1) % 10 == 0 or i == frame_count - 1:
-                    self._emit_progress(i + 1, total_steps)
-
-            # GIF 저장
-            duration = int(1000 / fps)
-            images[0].save(
-                output_path,
-                save_all=True,
-                append_images=images[1:],
-                duration=duration,
-                loop=0,
-                optimize=True
-            )
-
-            return True
-
-        except Exception as e:
-            self._emit_error(f"Pillow 인코딩 에러: {str(e)}")
-            return False
-
-    def _encode_mp4(self, frames: List[np.ndarray], fps: int, output_path: str, audio_path: Optional[str] = None) -> bool:
+    def _encode_mp4(self, frames: FrameSource, fps: float, output_path: str, audio_path: Optional[str] = None) -> bool:
         """프레임 리스트를 MP4로 인코딩 (Pipe 방식)"""
         # 입력 검증
         if not frames:
             self._emit_error("인코딩할 프레임이 없습니다.")
             return False
 
-        if fps <= 0 or fps > 120:
+        if not 0 < fps <= 120:
             logger.error(f"Invalid FPS: {fps}")
             self._emit_error(f"유효하지 않은 FPS 값: {fps}")
             return False
@@ -1017,25 +823,6 @@ class GifEncoder:
 
         h, w = frames[0].shape[:2]
 
-        # yuv420p 제약: 너비와 높이는 2의 배수여야 함
-        # 홀수 크기인 경우 1픽셀 잘라내기 (크롭)
-        original_h, original_w = h, w
-        if w % 2 != 0:
-            w = w - 1
-            logger.warning(f"[MP4] Width {original_w} is odd, cropping to {w}")
-        if h % 2 != 0:
-            h = h - 1
-            logger.warning(f"[MP4] Height {original_h} is odd, cropping to {h}")
-
-        # 프레임 크롭이 필요한 경우
-        if w != original_w or h != original_h:
-            logger.info(f"[MP4] Cropping frames from {original_w}x{original_h} to {w}x{h}")
-            cropped_frames = []
-            for frame in frames:
-                cropped_frame = frame[:h, :w]  # numpy slicing으로 크롭
-                cropped_frames.append(cropped_frame)
-            frames = cropped_frames
-
         total_frames = len(frames)
         total_steps = total_frames + 1
 
@@ -1058,6 +845,10 @@ class GifEncoder:
             if has_audio:
                 cmd.extend(['-i', audio_path])
 
+            if w % 2 or h % 2:
+                # Pad the original BGR pixels before the normal encoder color conversion.
+                cmd.extend(['-vf', 'format=bgr24,pad=ceil(iw/2)*2:ceil(ih/2)*2'])
+
             encoder_start = len(cmd)
             cmd.extend(self._video_encoder_options(encoder, crf, cpu_preset))
             encoder_end = len(cmd)
@@ -1068,7 +859,8 @@ class GifEncoder:
             ])
 
             if has_audio:
-                cmd.extend(['-c:a', 'aac', '-b:a', '192k', '-shortest'])
+                audio_filter = f'apad,atrim=duration={total_frames / fps:.9f}'
+                cmd.extend(['-af', audio_filter, '-c:a', 'aac', '-b:a', '192k'])
 
             cmd.append(output_path)
 
@@ -1107,7 +899,7 @@ class GifEncoder:
                     logger.error("[MP4] No stderr output from FFmpeg")
 
                 # 사용자에게 자세한 오류 메시지 제공
-                error_details = f"인코딩 실패 (코드 {process.returncode})"
+                error_details = f"{encoder} 인코딩 실패 (코드 {process.returncode})"
                 if stderr_text:
                     # stderr에서 유용한 오류 메시지 추출
                     error_lines = [line for line in stderr_text.split('\n') if 'error' in line.lower() or 'fail' in line.lower()]
@@ -1125,140 +917,6 @@ class GifEncoder:
 
         except Exception as e:
             self._emit_error(f"MP4 인코딩 에러: {str(e)}")
-            return False
-
-    def _encode_mp4_with_ffmpeg(self, frames_dir: str, output_path: str, fps: int, frame_count: int, audio_path: Optional[str] = None) -> bool:
-        """FFmpeg를 사용한 MP4 인코딩 (H.264/H.265, NVENC/QSV/AMF 지원)"""
-        try:
-            # 품질 설정
-            if self.quality == 'high':
-                crf = '18'
-                cpu_preset = 'slow'
-            elif self.quality == 'medium':
-                crf = '23'
-                cpu_preset = 'medium'
-            else:
-                crf = '28'
-                cpu_preset = 'fast'
-
-            # 오디오 파일 존재 여부 확인
-            has_audio = audio_path and os.path.exists(audio_path)
-
-            # 최적 인코더 선택
-            encoder = self._get_best_encoder(self._codec)
-            is_hw_encoder = encoder not in ('libx264', 'libx265')
-
-            logger.info("코덱: %s, 인코더: %s (%s)", self._codec.upper(), encoder, self.get_encoder_display_name(encoder))
-
-            # 명령어 구성
-            cmd = [
-                self._ffmpeg_path,
-                '-y',
-                '-framerate', str(fps),
-                '-i', os.path.join(frames_dir, '%06d.bmp'),
-            ]
-            if has_audio:
-                cmd.extend(['-i', audio_path])
-
-            # 인코더별 옵션 설정
-            cmd.extend(['-c:v', encoder])
-
-            if encoder in ('h264_nvenc', 'hevc_nvenc'):
-                # NVIDIA NVENC
-                cmd.extend(['-preset', 'p4', '-cq', crf])
-            elif encoder in ('h264_qsv', 'hevc_qsv'):
-                # Intel QSV
-                cmd.extend(['-preset', 'medium', '-global_quality', crf])
-            elif encoder in ('h264_amf', 'hevc_amf'):
-                # AMD AMF
-                cmd.extend(['-quality', 'balanced', '-rc', 'cqp', '-qp_i', crf, '-qp_p', crf])
-            else:
-                # CPU (libx264/libx265)
-                cmd.extend(['-preset', cpu_preset, '-crf', crf])
-
-            cmd.extend(['-pix_fmt', 'yuv420p'])
-
-            if has_audio:
-                cmd.extend(['-c:a', 'aac', '-b:a', '192k', '-shortest'])
-
-            cmd.append(output_path)
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-                timeout=600
-            )
-
-            if result.returncode != 0:
-                # 하드웨어 인코더 실패 시 CPU로 재시도
-                if is_hw_encoder:
-                    logger.warning("%s 실패, CPU 폴백...", encoder)
-                    return self._encode_mp4_cpu_fallback(frames_dir, output_path, fps, crf, audio_path)
-                self._emit_error(f"MP4 생성 실패: {result.stderr}")
-                return False
-
-            self._emit_finished(output_path)
-            return True
-
-        except Exception as e:
-            self._emit_error(f"FFmpeg 실행 에러: {str(e)}")
-            return False
-
-    def _encode_mp4_cpu_fallback(self, frames_dir: str, output_path: str, fps: int, crf: str, audio_path: Optional[str] = None) -> bool:
-        """CPU 전용 MP4 인코딩 (GPU 실패 시 fallback)"""
-        try:
-            has_audio = audio_path and os.path.exists(audio_path)
-
-            # 코덱에 따른 CPU 인코더 선택
-            cpu_encoder = 'libx265' if self._codec == 'h265' else 'libx264'
-
-            cmd = [
-                self._ffmpeg_path,
-                '-y',
-                '-framerate', str(fps),
-                '-i', os.path.join(frames_dir, '%06d.bmp'),
-            ]
-            if has_audio:
-                cmd.extend(['-i', audio_path])
-
-            cmd.extend([
-                '-c:v', cpu_encoder,
-                '-preset', 'medium',
-                '-crf', crf,
-                '-pix_fmt', 'yuv420p',
-            ])
-            if has_audio:
-                cmd.extend(['-c:a', 'aac', '-b:a', '192k', '-shortest'])
-
-            cmd.append(output_path)
-
-            logger.info("CPU 폴백: %s", cpu_encoder)
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                env=self._ffmpeg_env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-                timeout=600
-            )
-
-            if result.returncode != 0:
-                self._emit_error(f"MP4 생성 실패: {result.stderr}")
-                return False
-
-            self._emit_finished(output_path)
-            return True
-
-        except Exception as e:
-            self._emit_error(f"FFmpeg 실행 에러: {str(e)}")
             return False
 
     def is_gpu_mode(self) -> bool:

@@ -129,6 +129,7 @@ class DXCamBackend(CaptureBackend):
 
     # 클래스 레벨 카메라 (재사용)
     _shared_camera: Optional['dxcam.DXCamera'] = None
+    _capture_owner = None
     _camera_lock = threading.Lock()
     _instance_count = 0  # 활성 인스턴스 수 추적
 
@@ -136,6 +137,7 @@ class DXCamBackend(CaptureBackend):
     def cleanup_shared_camera(cls):
         """앱 종료 시 공유 카메라 명시적 정리 (메모리 누수 방지)"""
         with cls._camera_lock:
+            cls._capture_owner = None
             if cls._shared_camera is not None:
                 with suppress(Exception):
                     cls._shared_camera.stop()
@@ -150,6 +152,7 @@ class DXCamBackend(CaptureBackend):
         self._running = False
         self._target_fps = 30
         self._using_shared = False
+        self._owner_token = object()
 
         # 인스턴스 수 추적
         with DXCamBackend._camera_lock:
@@ -199,6 +202,9 @@ class DXCamBackend(CaptureBackend):
             # video_mode=True: 연속 캡처 모드 (성능 향상)
             # 락 내에서 start 호출하여 동시 start 레이스 컨디션 방지
             with DXCamBackend._camera_lock:
+                if DXCamBackend._capture_owner is not None or getattr(self._camera, "is_capturing", False):
+                    return False
+                DXCamBackend._capture_owner = self._owner_token
                 try:
                     self._camera.start(region=self._region, target_fps=target_fps, video_mode=True)
                 except TypeError:
@@ -220,26 +226,23 @@ class DXCamBackend(CaptureBackend):
 
             return True
 
-        except (RuntimeError, OSError, AttributeError, TypeError) as e:
+        except Exception as e:
+            # DXGI can raise COMError when the current desktop cannot be duplicated.
             logger.error(f"[DXCamBackend] 시작 실패: {e}")
-            self._running = False
+            self.stop()
             return False
 
     def stop(self):
         """캡처 중지 (카메라는 유지 - 재사용 위해)."""
-        # 먼저 running 플래그 해제 (새 캡처 방지)
-        self._running = False
-
-        if self._camera is not None:
-            with DXCamBackend._camera_lock:
-                try:
-                    self._camera.stop()  # 캡처만 중지
-                    logger.debug("[DXCamBackend] Capture stopped (camera kept for reuse)")
-                    # 카메라는 삭제하지 않음 - 공유 카메라로 유지
-                except Exception as exc:  # P2-3: dxcam 내부에서 RuntimeError/OSError 외
-                    # AttributeError/ValueError/KeyError 등도 던질 수 있음. 정보 유실 방지
-                    # 위해 범위를 Exception 으로 확대하고 로그 레벨을 warning 으로 격상.
-                    logger.warning(f"[DXCamBackend] 중지 오류: {exc}")
+        with DXCamBackend._camera_lock:
+            self._running = False
+            if DXCamBackend._capture_owner is not self._owner_token:
+                return
+            DXCamBackend._capture_owner = None
+            try:
+                self._camera.stop()
+            except Exception as exc:
+                logger.warning(f"[DXCamBackend] 중지 오류: {exc}")
 
     def grab(self) -> Optional[np.ndarray]:
         """프레임 캡처"""
@@ -289,6 +292,9 @@ class DXCamBackend(CaptureBackend):
         with DXCamBackend._camera_lock:
             # 공유 카메라와 동일한 객체면 클래스 레벨 참조도 정리
             if DXCamBackend._shared_camera is broken_camera:
+                if DXCamBackend._capture_owner not in (None, self._owner_token):
+                    return
+                DXCamBackend._capture_owner = None
                 DXCamBackend._shared_camera = None
                 logger.warning(
                     "[DXCamBackend] force_release: shared camera cleared (DXGI duplicator GC)"

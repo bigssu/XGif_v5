@@ -32,3 +32,29 @@ def test_version_metadata_is_current_release_identity():
     assert EDITOR_VERSION == APP_VERSION
     assert APP_DEVELOPER == "CoreVFX 서승욱"
     assert date.fromisoformat(APP_LAST_MODIFIED)
+
+def test_editor_help_lists_only_bound_shortcuts_in_both_languages():
+    import wx
+    from editor.ui.dialogs.help_dialog_wx import HelpDialog
+    from ui.i18n import get_trans_manager
+
+    app = wx.GetApp() or wx.App(False)
+    manager = get_trans_manager()
+    before = manager.current_lang
+    try:
+        for lang, save_as in [('en', 'Save as'), ('ko', '다른 이름으로 저장')]:
+            manager.set_language(lang)
+            dialog = HelpDialog()
+            try:
+                notebook = next(child for child in dialog.GetChildren() if isinstance(child, wx.Notebook))
+                page = notebook.GetPage(2)
+                labels = [label.GetLabel() for label, _ in dialog._page_wrap_labels[page]]
+                keys = [text.split()[0] for text in labels]
+                assert keys == ['Ctrl+O', 'Ctrl+S', 'Ctrl+Shift+S', 'Space', 'Left/Right',
+                                'Ctrl+D', 'Ctrl+A', 'Delete']
+                assert save_as in labels[2]
+            finally:
+                dialog.Destroy()
+                app.Yield()
+    finally:
+        manager.set_language(before)

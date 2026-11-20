@@ -78,8 +78,10 @@ class SpeedToolbar(InlineToolbarBase):
     def _on_activated(self):
         """툴바 활성화"""
         # 원본 딜레이 저장
+        self._speed_spin.SetValue(1.0)
+        self._speed_slider.SetValue(100)
         if self.frames:
-            self._original_delays = [f.delay_ms for f in self.frames]
+            self._original_delays = [f.duration_ms for f in self.frames]
         self._update_result_label()
 
     def _on_deactivated(self):
@@ -116,8 +118,7 @@ class SpeedToolbar(InlineToolbarBase):
         # 프레임 딜레이 임시 변경
         for i, frame in enumerate(self.frames):
             if i < len(self._original_delays):
-                new_delay = max(10, int(self._original_delays[i] / speed))
-                frame.delay_ms = new_delay
+                frame.duration_ms = self._original_delays[i] / speed
 
         self._update_result_label()
 
@@ -133,7 +134,7 @@ class SpeedToolbar(InlineToolbarBase):
             return
 
         original_total = sum(self._original_delays)
-        current_total = sum(f.delay_ms for f in self.frames)
+        current_total = self.frames.total_duration
 
         translations = getattr(self._main_window, '_translations', None)
         fmt = translations.tr("speed_result_fmt") if translations else "{cur:.2f}초 (원본: {orig:.2f}초)"
@@ -149,10 +150,11 @@ class SpeedToolbar(InlineToolbarBase):
 
     def _on_apply(self, event):
         """적용 버튼 클릭"""
-        # 변경사항이 이미 프리뷰에 반영되어 있으므로 원본 딜레이만 업데이트
-        if self.frames:
-            self._original_delays = [f.delay_ms for f in self.frames]
-        self._finish_apply()
+        speed = self._speed_spin.GetValue()
+        self.reset_to_default()
+        if speed != 1 and self.frames:
+            self._main_window._scale_speed(speed)
+        self._finish_apply(keep_history=True)
 
     def _on_cancel(self, event):
         """취소 버튼 클릭 - 프리뷰 딜레이 복원"""
@@ -165,7 +167,7 @@ class SpeedToolbar(InlineToolbarBase):
         if self._original_delays and self.frames:
             for i, frame in enumerate(self.frames):
                 if i < len(self._original_delays):
-                    frame.delay_ms = self._original_delays[i]
+                    frame.duration_ms = self._original_delays[i]
 
             if hasattr(self._main_window, '_frame_list'):
                 self._main_window._frame_list.refresh()

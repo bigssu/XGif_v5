@@ -7,7 +7,7 @@ Python 3.11 embed + wxPython 기반 의존성 설치 부트스트래퍼
 - 문서 검증 기준일: `2026-05-18`
 - 현재 커밋된 의존성 floor: `wxPython 4.2.5`, `PyInstaller 6.20.0`
 - 저장소에서 바로 재현 가능한 빌드 경로: `build_simple.bat` 또는 수동 `pyinstaller ... app_entry.py`
-- `build.bat`는 로컬 `XGif_Bootstrapper.spec`가 있을 때만 동작한다. 해당 spec 파일은 현재 저장소에 커밋돼 있지 않다.
+- `build.bat`는 로컬 spec 파일이 있으면 사용하고, 첫 빌드는 `build_simple.bat`로 실행한다.
 
 ## 구조
 
@@ -22,7 +22,7 @@ BootStrapper/
 ├── paths.py              # 경로 관리
 ├── requirements.txt      # 실행 + 빌드 의존성
 ├── requirements_min.txt  # 최소 실행 의존성
-├── build.bat             # spec 기반 빌드(로컬 spec 필요)
+├── build.bat             # 로컬 spec 또는 기본 설정으로 빌드
 ├── build_simple.bat      # 저장소 기준 재현 가능한 간단 빌드
 └── XGif_Setup.bat        # 배포용 설치 배치
 ```
@@ -50,12 +50,10 @@ pip install -r requirements.txt
 .\build_simple.bat
 ```
 
-**방법 B: 전체 빌드 (아이콘 포함)**
+**방법 B: 로컬 spec을 우선 사용하는 빌드**
 ```powershell
 .\build.bat
 ```
-
-주의: 이 경로는 `XGif_Bootstrapper.spec`가 로컬에 있을 때만 동작합니다. 현재 저장소에는 spec 파일이 없습니다.
 
 **방법 C: 수동 PyInstaller 빌드**
 ```powershell

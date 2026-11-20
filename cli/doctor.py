@@ -6,6 +6,8 @@ import subprocess
 import logging
 
 from cli import EXIT_SUCCESS, EXIT_DEPENDENCY
+from core.dependency_checker import DependencyState, check_cupy
+from cupy_env import frozen_install_commands, run_install_command
 from cupy_policy import (
     CUDA11_CUPY_PACKAGE,
     CUDA12_CUPY_PACKAGE,
@@ -38,15 +40,16 @@ def run_doctor(args) -> int:
 
     # ── FFmpeg ──
     from core.ffmpeg_installer import FFmpegManager
-    ffmpeg_path = FFmpegManager.get_ffmpeg_executable()
+    ffmpeg_path, ffprobe_path = FFmpegManager.get_ffmpeg_tools()
     if ffmpeg_path:
         _check("FFmpeg", ffmpeg_path, True)
         if verbose:
             _show_ffmpeg_version(ffmpeg_path)
     else:
         _check("FFmpeg", "미설치", False)
-        if getattr(args, "install_ffmpeg", False):
-            return _install_ffmpeg()
+    _check("FFprobe", ffprobe_path or "미설치", bool(ffprobe_path))
+    if not ffprobe_path and getattr(args, "install_ffmpeg", False):
+        return _install_ffmpeg()
 
     # ── Pillow ──
     try:
@@ -82,7 +85,7 @@ def run_doctor(args) -> int:
     has_cupy = False
     try:
         from core.gpu_utils import detect_gpu
-        gpu = detect_gpu()
+        gpu = detect_gpu(skip_cupy=True)
         if gpu.gpu_name:
             gpu_detected = True
             mem_str = f" ({gpu.gpu_memory_mb}MB)" if gpu.gpu_memory_mb else ""
@@ -98,33 +101,19 @@ def run_doctor(args) -> int:
     if gpu_detected:
         print()
         print("  GPU 가속:")
-        try:
-            import cupy as cp
+        status = check_cupy(verify_compute=True)
+        if status.state == DependencyState.INSTALLED:
+            _check("CuPy", status.installed_version, True)
             has_cupy = True
-            cupy_ver = cp.__version__
-            # CUDA 런타임 버전 확인
-            try:
-                cuda_ver_int = cp.cuda.runtime.runtimeGetVersion()
-                cuda_major = cuda_ver_int // 1000
-                cuda_minor = (cuda_ver_int % 1000) // 10
-                cuda_ver = f"{cuda_major}.{cuda_minor}"
-                _check("CuPy", f"{cupy_ver} (CUDA {cuda_ver})", True)
-            except Exception:
-                _check("CuPy", cupy_ver, True)
-
-            # GPU 메모리 테스트
-            try:
-                test_arr = cp.zeros((100, 100), dtype=cp.float32)
-                del test_arr
-                _check("CUDA 연산", "정상 동작", True)
-            except Exception as e:
-                _check("CUDA 연산", f"실패: {e}", False)
-
-        except ImportError:
-            _check("CuPy", "미설치 -- GPU 가속 비활성", False)
+            _check("CUDA 연산", "정상 동작", True)
+        else:
+            _check("CuPy", status.error_message or f"버전 {status.required_version} 이상 필요", False)
             _suggest_cupy_install()
             if getattr(args, "install_cupy", False):
                 return _install_cupy()
+    elif getattr(args, "install_cupy", False):
+        print("  NVIDIA GPU를 감지하지 못했습니다.", file=sys.stderr)
+        return EXIT_DEPENDENCY
 
     # ── 인코더 감지 (실제 인코딩 테스트 기반) ──
     if ffmpeg_path:
@@ -203,7 +192,7 @@ def run_doctor(args) -> int:
         recommendations.append(
             "GPU 가속을 활성화하려면: xgif doctor --install-cupy"
         )
-    if not ffmpeg_path:
+    if not ffprobe_path:
         recommendations.append(
             "FFmpeg를 설치하려면: xgif doctor --install-ffmpeg"
         )
@@ -229,9 +218,10 @@ def _suggest_cupy_install():
     """cupy 설치 방법 안내"""
     print("          GPU 가속을 위해 CuPy를 설치하세요:")
     print("          → xgif doctor --install-cupy  (자동 감지 및 설치)")
+    if getattr(sys, 'frozen', False):
+        return
     print("          또는 수동 설치:")
-    if not getattr(sys, 'frozen', False):
-        print(f"          → pip install -r {GPU_REQUIREMENTS_FILE}  (CUDA 13.x, Windows 검증 조합)")
+    print(f"          → pip install -r {GPU_REQUIREMENTS_FILE}  (CUDA 13.x, Windows 검증 조합)")
     print(f"          → pip install \"{CUDA13_CUPY_PACKAGE}\"  (CUDA 13.x)")
     print(f"          → pip install {CUDA12_CUPY_PACKAGE}     (CUDA 12.x)")
     print(f"          → pip install {CUDA11_CUPY_PACKAGE}     (CUDA 11.x)")
@@ -371,9 +361,6 @@ def _install_dxcam() -> int:
 
 def _install_cupy() -> int:
     """CuPy 자동 설치 (CUDA 버전 자동 감지)"""
-    if getattr(sys, 'frozen', False):
-        print("  패키징된 환경에서는 pip install을 실행할 수 없습니다.", file=sys.stderr)
-        return EXIT_DEPENDENCY
     print("\n  CuPy 설치를 시작합니다...")
 
     # CUDA 버전 감지
@@ -394,54 +381,22 @@ def _install_cupy() -> int:
     print("  설치 중... (수 분이 소요될 수 있습니다)")
 
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", *packages],
-            timeout=600,  # 10분
-        )
-        if result.returncode == 0:
-            # 설치 검증 (ASCII만 사용하여 인코딩 문제 방지)
-            print()
-            try:
-                env = os.environ.copy()
-                env["PYTHONIOENCODING"] = "utf-8"
-                verify = subprocess.run(
-                    [sys.executable, "-c",
-                     "import cupy; v=cupy.__version__; print('CuPy_OK:' + v)"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=env,
-                )
-                if verify.returncode == 0 and "CuPy_OK:" in verify.stdout:
-                    ver = verify.stdout.strip().split("CuPy_OK:")[1]
-                    print(f"  CuPy {ver} 설치 완료")
-                    print("  GPU 가속이 활성화되었습니다!")
-                    print("  (변경사항을 적용하려면 앱을 재시작하세요)")
-                    return EXIT_SUCCESS
-                else:
-                    # pip 성공했지만 import 실패 — CUDA 경로 문제일 수 있음
-                    stderr_msg = verify.stderr[:300] if verify.stderr else ""
-                    if "CUDA path" in stderr_msg or "cudart" in stderr_msg.lower():
-                        print("  CuPy 패키지 설치 완료, 그러나 CUDA 런타임을 찾을 수 없습니다.")
-                        print("  해결: CUDA Toolkit을 설치하거나 CUDA_PATH 환경 변수를 설정하세요.")
-                        print("  https://developer.nvidia.com/cuda-downloads")
-                        return EXIT_SUCCESS  # pip 자체는 성공
-                    else:
-                        print("  CuPy 패키지 설치 완료, 그러나 import 검증 실패", file=sys.stderr)
-                        if stderr_msg:
-                            logger.debug(f"Verify stderr: {stderr_msg}")
-                        return EXIT_SUCCESS  # pip 자체는 성공
-            except Exception:
-                print("  CuPy 패키지 설치 완료")
-                return EXIT_SUCCESS
+        if getattr(sys, "frozen", False):
+            commands = frozen_install_commands(packages)
         else:
-            print()
-            print(f"  CuPy 설치 실패 (종료 코드: {result.returncode})", file=sys.stderr)
-            print(
-                f"  수동 설치를 시도하세요: pip install {' '.join(packages)}",
-                file=sys.stderr,
-            )
+            commands = [[sys.executable, "-m", "pip", "install", *packages]]
+        for command in commands:
+            result = run_install_command(command, timeout=600)
+            if result.returncode:
+                print(f"  CuPy 설치 실패 (종료 코드: {result.returncode})", file=sys.stderr)
+                return EXIT_DEPENDENCY
+
+        status = check_cupy(verify_compute=True)
+        if status.state != DependencyState.INSTALLED:
+            print(f"  CuPy 검증 실패: {status.error_message or status.state.value}", file=sys.stderr)
             return EXIT_DEPENDENCY
+        print(f"  CuPy {status.installed_version} 설치 및 CUDA 연산 확인 완료")
+        return EXIT_SUCCESS
     except subprocess.TimeoutExpired:
         print("\n  CuPy 설치 시간 초과 (10분)", file=sys.stderr)
         return EXIT_DEPENDENCY

@@ -10,11 +10,14 @@ import subprocess
 import sys
 import wx
 
+from cupy_env import (
+    PYTHON_BITS, PYTHON_VERSION, MissingCompatiblePython, frozen_install_commands,
+    run_install_command, select_cupy_env,
+)
 from cupy_policy import (
     GPU_REQUIREMENTS_FILE,
     cupy_packages_for_driver_version,
     format_gpu_requirements_command,
-    format_pip_install_command,
     should_use_gpu_requirements,
 )
 from core.dependency_checker import DependencyState
@@ -91,7 +94,7 @@ class DependencyInstallDialog(ThemedDialog):
         desc = wx.StaticText(self, label=feature_description)
         desc.SetForegroundColour(Colors.TEXT_SECONDARY)
         desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
-        desc.Wrap(420)
+        desc.Wrap(self.FromDIP(420))
         sizer.Add(desc, 0, wx.LEFT | wx.RIGHT, 16)
 
         sizer.AddStretchSpacer()
@@ -174,10 +177,11 @@ class DependencyRescanDialog(ThemedDialog):
         sizer.Add(name_label, 0, wx.ALL, 16)
 
         # 안내 텍스트
-        guide = wx.StaticText(self, label=guide_text)
+        guide = wx.TextCtrl(self, value=guide_text,
+                            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE)
+        guide.SetBackgroundColour(Colors.BG_PANEL)
         guide.SetForegroundColour(Colors.TEXT_SECONDARY)
         guide.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
-        guide.Wrap(400)
         sizer.Add(guide, 1, wx.LEFT | wx.RIGHT | wx.EXPAND, 16)
 
         # 버튼 행
@@ -252,53 +256,12 @@ def _get_gpu_requirements_path():
     return path if os.path.exists(path) else None
 
 
-def _get_external_cupy_env_dir():
-    """Frozen 앱이 CuPy를 로드하는 외부 venv 경로 반환."""
-    base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(base, "XGif", "env")
-
-
-def _get_external_cupy_python(env_dir=None):
-    """외부 CuPy venv의 Python 실행 파일 경로 반환."""
-    env_dir = env_dir or _get_external_cupy_env_dir()
-    return os.path.join(env_dir, "Scripts", "python.exe")
-
-
-def _build_cupy_pip_args(use_requirements, requirements_path, cupy_packages):
-    if use_requirements and requirements_path:
-        return ["-r", requirements_path]
-    return list(cupy_packages)
-
-
-def _build_direct_cupy_install_commands(
-    *,
-    is_frozen,
-    system_python,
-    external_env_dir,
-    cupy_packages,
-    use_requirements,
-    requirements_path,
-):
-    """CuPy 직접 설치에 사용할 명령 시퀀스를 구성한다."""
-    pip_args = _build_cupy_pip_args(use_requirements, requirements_path, cupy_packages)
-    if is_frozen:
-        if not system_python:
-            raise RuntimeError(tr('cupy_guide_python_missing_cmd'))
-        env_python = _get_external_cupy_python(external_env_dir)
-        return [
-            [system_python, "-m", "venv", external_env_dir],
-            [env_python, "-m", "pip", "install", "--upgrade", "pip>=24.0", "--quiet"],
-            [env_python, "-m", "pip", "install", *pip_args, "--no-cache-dir"],
-        ]
-    return [[sys.executable, "-m", "pip", "install", *pip_args, "--no-cache-dir"]]
-
-
 def _run_cupy_install_commands(commands, *, timeout=900):
     """명령 시퀀스를 실행하고 마지막 stdout/stderr를 반환한다."""
     creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     last_message = ""
     for command in commands:
-        result = subprocess.run(
+        result = run_install_command(
             command,
             capture_output=True,
             text=True,
@@ -313,20 +276,9 @@ def _run_cupy_install_commands(commands, *, timeout=900):
 
 def _verify_cupy_install_status():
     """직접 설치 후 실제 CuPy import 가능 여부를 재검증한다."""
-    import importlib
-
-    importlib.invalidate_caches()
-    with contextlib.suppress(AttributeError):
-        delattr(sys, "_xgif_site_packages_added")
-    with contextlib.suppress(Exception):
-        from core import gpu_utils
-        gpu_utils.reset_gpu_cache()
-    with contextlib.suppress(Exception):
-        from core.utils import ensure_system_site_packages
-        ensure_system_site_packages()
-
-    from core.dependency_checker import check_cupy
-    return check_cupy()
+    from core.gpu_utils import get_cupy_status, reset_gpu_cache
+    reset_gpu_cache()
+    return get_cupy_status()
 
 
 def _install_cupy_and_verify(commands):
@@ -341,34 +293,23 @@ def _install_cupy_and_verify(commands):
     return False, status.error_message or tr('dep_cupy_still_missing')
 
 
-def _format_frozen_cupy_install_commands(
-    system_python,
-    env_dir,
-    cupy_packages,
-    *,
-    requirements_path=None,
-    use_requirements=False,
-):
-    """사용자에게 복사할 frozen 앱용 외부 env 설치 명령 생성."""
-    env_python = _get_external_cupy_python(env_dir)
-    if use_requirements and requirements_path:
-        install_cmd = format_gpu_requirements_command(
-            python_executable=env_python,
-            requirements_path=requirements_path,
-        )
-    else:
-        install_cmd = format_pip_install_command(
-            cupy_packages,
-            python_executable=env_python,
-        )
+def _format_powershell_commands(commands):
+    def quote(value):
+        return "'" + value.replace("'", "''") + "'"
 
-    return "\n".join(
-        [
-            f'"{system_python}" -m venv "{env_dir}"',
-            f'"{env_python}" -m pip install --upgrade "pip>=24.0"',
-            install_cmd,
-        ]
-    )
+    cli = os.path.join(os.path.dirname(sys.executable), "XGif-cli.exe")
+    if os.path.isfile(cli):
+        return f"& {quote(cli)} doctor --install-cupy"
+
+    # The standalone GUI can also be distributed without the console executable.
+    lines = ["& {"]
+    for command in commands:
+        if command[1:3] == ["-m", "venv"]:
+            lines.append("  New-Item -ItemType Directory -ErrorAction Stop -Path "
+                         + quote(command[3]) + " | Out-Null")
+        lines.append("  & " + " ".join(map(quote, command)))
+        lines.append("  if ($LASTEXITCODE -ne 0) { return }")
+    return "\n".join([*lines, "}"])
 
 
 def _has_nvidia_gpu_hardware():
@@ -391,29 +332,41 @@ class CuPyInstallGuideDialog(ThemedDialog):
     개발 환경은 현재 Python에, frozen 앱은 XGif 외부 env에 직접 설치한다.
     """
 
-    def __init__(self, parent):
+    def __init__(self, parent, diagnostic=""):
         title = tr('cupy_guide_title')
-        ThemedDialog.__init__(self, parent, title=title, size=(500, 380),
-                          style=wx.DEFAULT_DIALOG_STYLE)
+        ThemedDialog.__init__(self, parent, title=title,
+                              style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.SetSize(self.FromDIP((520, 450)))
         self.SetBackgroundColour(Colors.BG_PANEL)
+        self._diagnostic = diagnostic
         self._is_frozen = getattr(sys, 'frozen', False)
         self._cuda_version = _detect_cuda_driver_version()
         self._cupy_packages = cupy_packages_for_driver_version(self._cuda_version)
         self._package_name = " ".join(self._cupy_packages)
         self._requirements_path = _get_gpu_requirements_path()
-        self._external_env_dir = _get_external_cupy_env_dir()
         cuda_major = self._cuda_version[0] if self._cuda_version else None
         self._use_requirements = bool(self._requirements_path and should_use_gpu_requirements(cuda_major))
-        self._system_python = None
-        if self._is_frozen:
-            from core.dependency_checker import check_system_python, find_system_python_exe
-            if check_system_python().state == DependencyState.INSTALLED:
-                self._system_python = find_system_python_exe()
-        self._can_direct_install = bool(
-            self._cupy_packages and (not self._is_frozen or self._system_python)
-        )
+        self._external_env_dir = select_cupy_env() if self._is_frozen else None
+        self._commands = []
+        self._install_problem = ""
+        if self._cupy_packages:
+            try:
+                self._commands = self._install_commands()
+            except MissingCompatiblePython:
+                self._install_problem = tr("cupy_guide_python_missing_cmd",
+                                           version=".".join(map(str, PYTHON_VERSION)), bits=PYTHON_BITS)
+            except RuntimeError:
+                self._install_problem = tr("cupy_guide_env_conflict", env=str(self._external_env_dir))
+        self._can_direct_install = bool(self._commands)
         self._build_ui()
         self.CenterOnParent()
+
+    def _install_commands(self):
+        if self._is_frozen:
+            # Copied commands must still work after the onefile bundle's temp directory is gone.
+            return frozen_install_commands(self._cupy_packages, env_dir=self._external_env_dir)
+        args = ["-r", self._requirements_path] if self._use_requirements else self._cupy_packages
+        return [[sys.executable, "-m", "pip", "install", *args, "--no-cache-dir"]]
 
     def _build_ui(self):
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -432,15 +385,21 @@ class CuPyInstallGuideDialog(ThemedDialog):
         # GPU 정보 + 안내 메시지
         info_text = tr('cupy_guide_msg', gpu_name=gpu_name, cuda_version=cuda_ver_str)
         if self._is_frozen:
-            info_text += "\n\n" + tr('cupy_guide_frozen_msg')
+            info_text += "\n\n" + tr('cupy_guide_frozen_msg', env=str(self._external_env_dir))
         else:
             info_text += "\n\n" + tr('cupy_guide_dev_msg')
 
-        desc = wx.StaticText(self, label=info_text)
+        desc = wx.TextCtrl(self, value=info_text,
+                           style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE)
+        desc.SetBackgroundColour(Colors.BG_PANEL)
         desc.SetForegroundColour(Colors.TEXT_SECONDARY)
         desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
-        desc.Wrap(460)
-        sizer.Add(desc, 0, wx.LEFT | wx.RIGHT, 16)
+        sizer.Add(desc, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 16)
+
+        if self._diagnostic:
+            detail = wx.TextCtrl(self, value=self._diagnostic, size=self.FromDIP((-1, 52)),
+                                 style=wx.TE_MULTILINE | wx.TE_READONLY)
+            sizer.Add(detail, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 16)
 
         sizer.Add((0, 12))
 
@@ -448,16 +407,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
         if not self._cupy_packages:
             cmd_text = tr('cupy_cuda_unsupported', cuda_version=cuda_ver_str)
         elif self._is_frozen:
-            if self._system_python:
-                cmd_text = _format_frozen_cupy_install_commands(
-                    self._system_python,
-                    self._external_env_dir,
-                    self._cupy_packages,
-                    requirements_path=self._requirements_path,
-                    use_requirements=self._use_requirements,
-                )
-            else:
-                cmd_text = tr('cupy_guide_python_missing_cmd')
+            cmd_text = _format_powershell_commands(self._commands) if self._commands else self._install_problem
         elif self._use_requirements:
             cmd_text = format_gpu_requirements_command(requirements_path=GPU_REQUIREMENTS_FILE)
         else:
@@ -466,7 +416,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
         self._cmd_ctrl = wx.TextCtrl(
             self, value=cmd_text,
-            size=(-1, 66 if "\n" in cmd_text else -1),
+            size=self.FromDIP((-1, 66 if "\n" in cmd_text else -1)),
             style=wx.TE_READONLY | wx.BORDER_SIMPLE | wx.TE_MULTILINE | wx.TE_DONTWRAP
         )
         self._cmd_ctrl.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
@@ -483,8 +433,6 @@ class CuPyInstallGuideDialog(ThemedDialog):
         cmd_sizer.Add(copy_btn, 0, wx.ALIGN_CENTER_VERTICAL)
 
         sizer.Add(cmd_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 16)
-
-        sizer.AddStretchSpacer()
 
         # 하단 버튼 행
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -517,6 +465,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
         sizer.Add(btn_sizer, 0, wx.ALL | wx.ALIGN_RIGHT, 16)
         self.SetSizer(sizer)
+        self.SetMinSize(sizer.ComputeFittingWindowSize(self))
 
     def _on_copy(self, event):
         """명령어를 클립보드에 복사"""
@@ -536,8 +485,7 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
     def _on_recheck(self, event):
         """CuPy 재검사"""
-        from core.dependency_checker import check_cupy
-        status = check_cupy()
+        status = _verify_cupy_install_status()
         if status.state == DependencyState.INSTALLED:
             wx.MessageBox(
                 tr('dep_cupy_installed_ok'),
@@ -547,7 +495,8 @@ class CuPyInstallGuideDialog(ThemedDialog):
             self.EndModal(wx.ID_OK)
         else:
             wx.MessageBox(
-                tr('dep_cupy_still_missing'),
+                tr('cupy_check_failed', detail=status.error_message) if status.error_message
+                else tr('dep_cupy_still_missing'),
                 tr('warning'),
                 wx.OK | wx.ICON_WARNING
             )
@@ -566,21 +515,13 @@ class CuPyInstallGuideDialog(ThemedDialog):
             )
             return
 
-        install_label = self._requirements_path if self._use_requirements else self._package_name
+        install_label = self._package_name if self._is_frozen or not self._use_requirements else self._requirements_path
+        self.Disable()
         self._busy_info = wx.BusyInfo(tr('cupy_guide_installing', target=install_label))
 
         def do_install():
             try:
-                if self._is_frozen:
-                    os.makedirs(os.path.dirname(self._external_env_dir), exist_ok=True)
-                commands = _build_direct_cupy_install_commands(
-                    is_frozen=self._is_frozen,
-                    system_python=self._system_python,
-                    external_env_dir=self._external_env_dir,
-                    cupy_packages=self._cupy_packages,
-                    use_requirements=self._use_requirements,
-                    requirements_path=self._requirements_path,
-                )
+                commands = self._install_commands()
                 success, msg = _install_cupy_and_verify(commands)
                 wx.CallAfter(_on_done, success, msg)
             except subprocess.TimeoutExpired:
@@ -590,6 +531,9 @@ class CuPyInstallGuideDialog(ThemedDialog):
 
         def _on_done(success, message):
             self._busy_info = None
+            if not self:
+                return
+            self.Enable()
             if success:
                 wx.MessageBox(
                     tr('dep_cupy_installed_ok'),
@@ -637,7 +581,7 @@ def _install_ffmpeg(parent, dep_status):
     """
     from core.ffmpeg_installer import FFmpegDownloader, FFmpegManager
 
-    if FFmpegManager.is_available():
+    if not FFmpegManager.needs_installation():
         return True
 
     progress = ThemedProgressDialog(
@@ -741,7 +685,7 @@ def _install_ffmpeg(parent, dep_status):
 
 def _install_cupy(parent, dep_status):
     """CuPy 설치 흐름 — 설치 가이드 다이얼로그 표시"""
-    dlg = CuPyInstallGuideDialog(parent)
+    dlg = CuPyInstallGuideDialog(parent, dep_status.error_message)
     ret = dlg.ShowModal()
     dlg.Destroy()
     return ret == wx.ID_OK

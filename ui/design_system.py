@@ -163,7 +163,7 @@ class CommandButton(wx.Control):
         if size == wx.DefaultSize:
             size = (86, 32) if label else (36, 32)
         self._base_size = self._normalize_base_size(size)
-        super().__init__(parent, id, pos=wx.DefaultPosition, size=size, style=wx.BORDER_NONE)
+        super().__init__(parent, id, pos=wx.DefaultPosition, size=size, style=wx.BORDER_NONE | wx.WANTS_CHARS)
         self._label = label
         self._icon_type = icon_type
         self._icon_size = icon_size
@@ -171,6 +171,7 @@ class CommandButton(wx.Control):
         self._enabled = True
         self._hovered = False
         self._pressed = False
+        self._armed_key = None
         self._bg_color = _as_colour(bg_color, Colors.BG_INPUT_DARK)
         self._fg_color = _as_colour(fg_color, Colors.TEXT_PRIMARY)
         self._hover_color = _as_colour(hover_color, Colors.BG_HOVER)
@@ -184,8 +185,8 @@ class CommandButton(wx.Control):
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT, bold=bool(label and icon_type)))
-        self._sync_min_size_to_content()
 
+        self.Bind(wx.EVT_DPI_CHANGED, self._on_dpi_changed)
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda _event: None)
         self.Bind(wx.EVT_ENTER_WINDOW, self._on_enter)
@@ -194,6 +195,10 @@ class CommandButton(wx.Control):
         self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
         self.Bind(wx.EVT_MOUSE_CAPTURE_LOST, self._on_mouse_capture_lost)
+        self.Bind(wx.EVT_KEY_DOWN, self._on_key_press)
+        self.Bind(wx.EVT_KEY_UP, self._on_key_release)
+        self.Bind(wx.EVT_SET_FOCUS, self._on_focus_changed)
+        self.Bind(wx.EVT_KILL_FOCUS, self._on_focus_changed)
 
     def SetLabel(self, label):
         self._label = str(label)
@@ -203,6 +208,18 @@ class CommandButton(wx.Control):
 
     def GetLabel(self):
         return self._label
+
+    def SetFont(self, font):
+        changed = super().SetFont(font)
+        self._cached_bmp = None
+        self._sync_min_size_to_content()
+        self.Refresh()
+        return changed
+
+    def _on_dpi_changed(self, event):
+        self._cached_bmp = None
+        self._sync_min_size_to_content()
+        event.Skip()
 
     def SetIconType(self, icon_type: str | None):
         self._icon_type = icon_type
@@ -238,6 +255,7 @@ class CommandButton(wx.Control):
 
     def Enable(self, enable=True):
         self._enabled = bool(enable)
+        self._armed_key = None
         changed = super().Enable(enable)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND if enable else wx.CURSOR_ARROW))
         self._hovered = False
@@ -262,16 +280,17 @@ class CommandButton(wx.Control):
         return max(0, int(width)), max(1, int(height) if int(height) > 0 else 32)
 
     def _sync_min_size_to_content(self):
-        text_w = 0
+        text_w = text_h = 0
         if self._label:
             dc = wx.ClientDC(self)
-            dc.SetFont(self.GetFont())
-            text_w = dc.GetTextExtent(self._label).width
+            gc = wx.GraphicsContext.Create(dc)
+            gc.SetFont(self.GetFont(), self._fg_color)
+            text_w, text_h = gc.GetTextExtent(self._label)[:2]
         icon_w = self._icon_size if self._icon_type else 0
         gap = 6 if self._icon_type and self._label else 0
         horizontal_padding = 18 if self._label else 12
-        min_w = max(self._base_size[0], int(text_w + icon_w + gap + horizontal_padding))
-        min_h = self._base_size[1]
+        min_w = max(self._base_size[0], math.ceil(text_w + icon_w + gap + horizontal_padding))
+        min_h = max(self._base_size[1], math.ceil(max(text_h, icon_w)) + self.FromDIP(6))
         if self.GetMinSize() != wx.Size(min_w, min_h):
             self.SetMinSize((min_w, min_h))
             parent = self.GetParent()
@@ -291,8 +310,9 @@ class CommandButton(wx.Control):
         self._set_hovered(self._is_mouse_over())
 
     def _on_left_down(self, _event):
-        if not self._enabled or not self._is_mouse_over():
+        if not self._enabled or self._armed_key is not None or not self._is_mouse_over():
             return
+        self.SetFocus()
         self._set_hovered(True)
         self._pressed = True
         if not self.HasCapture():
@@ -308,9 +328,39 @@ class CommandButton(wx.Control):
         self._set_hovered(inside)
         self.Refresh()
         if was_pressed and self._enabled and inside:
-            event = wx.CommandEvent(wx.wxEVT_COMMAND_BUTTON_CLICKED, self.GetId())
-            event.SetEventObject(self)
-            self.GetEventHandler().ProcessEvent(event)
+            self._click()
+
+    def _click(self):
+        event = wx.CommandEvent(wx.wxEVT_COMMAND_BUTTON_CLICKED, self.GetId())
+        event.SetEventObject(self)
+        self.GetEventHandler().ProcessEvent(event)
+
+    def _on_key_press(self, event):
+        key = event.GetKeyCode()
+        if key == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
+            direction = wx.NavigationKeyEvent.IsBackward if event.ShiftDown() else wx.NavigationKeyEvent.IsForward
+            self.Navigate(direction)
+            return
+        if key not in (wx.WXK_SPACE, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) or event.HasAnyModifiers():
+            event.Skip()
+            return
+        if self._enabled and self._armed_key is None and not self.HasCapture() and not event.IsAutoRepeat():
+            self._armed_key = key
+            self.Refresh()
+
+    def _on_key_release(self, event):
+        if event.GetKeyCode() != self._armed_key:
+            event.Skip()
+            return
+        self._armed_key = None
+        self.Refresh()
+        if self._enabled and self.HasFocus():
+            self._click()
+
+    def _on_focus_changed(self, event):
+        self._armed_key = None
+        self.Refresh()
+        event.Skip()
 
     def _on_mouse_capture_lost(self, _event):
         self._pressed = False
@@ -337,8 +387,10 @@ class CommandButton(wx.Control):
         if w <= 0 or h <= 0:
             return
 
+        focused = self.HasFocus() and self._enabled
+        pressed = self._pressed or self._armed_key is not None
         state_key = (
-            w, h, self._hovered, self._pressed, self._enabled, self._label,
+            w, h, self._hovered, pressed, focused, self._enabled, self._label,
             self._icon_type, self._bg_color.Get(), self._fg_color.Get(),
             self._hover_color.Get(), self._pressed_color.Get(), self._border_color.Get(),
         )
@@ -358,7 +410,7 @@ class CommandButton(wx.Control):
             if not self._enabled:
                 bg = Colors.BTN_DISABLED_BG
                 fg = Colors.BTN_DISABLED_FG
-            elif self._pressed:
+            elif pressed:
                 bg = self._pressed_color
                 fg = self._fg_color
             elif self._hovered:
@@ -372,6 +424,10 @@ class CommandButton(wx.Control):
             gc.SetPen(wx.Pen(Colors.BORDER_HOVER if self._hovered and self._enabled else self._border_color, 1))
             inset = 0.5
             gc.DrawRoundedRectangle(inset, inset, w - 1, h - 1, self._corner_radius)
+            if focused:
+                gc.SetBrush(wx.TRANSPARENT_BRUSH)
+                gc.SetPen(wx.Pen(Colors.TEXT_PRIMARY, 2))
+                gc.DrawRoundedRectangle(2, 2, w - 4, h - 4, self._corner_radius)
 
             gc.SetFont(self.GetFont(), fg)
             text_w = text_h = 0
@@ -585,10 +641,11 @@ class FormRow(wx.Panel):
         self._label_text: wx.StaticText | None = None
         sizer = wx.BoxSizer(wx.HORIZONTAL)
         if label:
-            text = wx.StaticText(self, label=label)
+            text = wx.StaticText(self)
+            text.SetLabelText(label)
             text.SetForegroundColour(Colors.TEXT_SECONDARY)
             text.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
-            text.SetMinSize((self.LABEL_COL_WIDTH, -1))
+            text.SetMinSize((max(self.FromDIP(self.LABEL_COL_WIDTH), text.GetBestSize().width), -1))
             sizer.Add(text, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
             self._label_text = text
         if control.GetParent() is not self:
@@ -599,7 +656,11 @@ class FormRow(wx.Panel):
     def set_label(self, text: str) -> None:
         """Update the label column text (for live retranslation)."""
         if self._label_text is not None:
-            self._label_text.SetLabel(text)
+            self._label_text.SetLabelText(text)
+            self._label_text.SetMinSize((-1, -1))
+            width = max(self.FromDIP(self.LABEL_COL_WIDTH), self._label_text.GetBestSize().width)
+            self._label_text.SetMinSize((width, -1))
+            self.GetParent().Layout()
 
 
 class FormSection(wx.Panel):
@@ -612,12 +673,14 @@ class FormSection(wx.Panel):
         # 생성 시점의 부모 배경을 상속. 부모 배경이 이후 바뀌면 Refresh() 필요.
         self.SetBackgroundColour(parent.GetBackgroundColour())
         self._sizer = wx.BoxSizer(wx.VERTICAL)
-        self._heading: wx.StaticText = wx.StaticText(self, label=title)
+        self._heading: wx.StaticText = wx.StaticText(self)
+        self._heading.SetLabelText(title)
         self._heading.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._heading.SetFont(Fonts.get_font(Fonts.SIZE_LABEL, bold=True))
         self._sizer.Add(self._heading, 0, wx.BOTTOM, 6)
         if description:
-            desc = wx.StaticText(self, label=description)
+            desc = wx.StaticText(self)
+            desc.SetLabelText(description)
             desc.SetForegroundColour(Colors.TEXT_SECONDARY)
             desc.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
             self._sizer.Add(desc, 0, wx.BOTTOM, 8)
@@ -625,7 +688,7 @@ class FormSection(wx.Panel):
 
     def set_title(self, title: str) -> None:
         """Update the section heading text (for live retranslation)."""
-        self._heading.SetLabel(title)
+        self._heading.SetLabelText(title)
 
     def add(self, window: wx.Window, *, gap: int = 6):
         """Add *window* to this section's vertical stack.

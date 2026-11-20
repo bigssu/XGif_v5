@@ -51,7 +51,7 @@ class SystemDetector:
                 if w.recorder:
                     if user_backend == "auto":
                         hdr_active = is_hdr_active()
-                        actual_backend = "gdi" if hdr_active else "dxcam"
+                        actual_backend = "gdi" if hdr_active else pipeline.capture_backend
                         logger.info("[SystemDetector] Auto: HDR %s → %s",
                                     "ON" if hdr_active else "OFF", actual_backend)
                         w.recorder.set_capture_backend(actual_backend)
@@ -60,19 +60,6 @@ class SystemDetector:
                         w.recorder.set_capture_backend(user_backend)
                     else:
                         w.recorder.set_capture_backend(pipeline.capture_backend)
-
-                if w.encoder:
-                    w.encoder.set_codec(pipeline.codec)
-                    encoder_type = "auto"
-                    if "nvenc" in pipeline.encoder:
-                        encoder_type = "nvenc"
-                    elif "qsv" in pipeline.encoder:
-                        encoder_type = "qsv"
-                    elif "amf" in pipeline.encoder:
-                        encoder_type = "amf"
-                    elif "lib" in pipeline.encoder:
-                        encoder_type = "cpu"
-                    w.encoder.set_preferred_encoder(encoder_type)
 
                 logger.info("[SystemDetector] 최적 파이프라인 적용: %s", pipeline.name)
 
@@ -168,13 +155,14 @@ class SystemDetector:
 
         self._cupy_install_offer_shown = True
         try:
-            from core.dependency_checker import DependencyState, check_cupy
+            from core.dependency_checker import DependencyState
+            from core.gpu_utils import get_cupy_status
             from ui.dependency_dialogs import show_install_flow
         except Exception as e:
             logger.warning("[SystemDetector] CuPy 설치 흐름 로드 실패: %s", e)
             return False
 
-        status = check_cupy()
+        status = get_cupy_status()
         if status.state == DependencyState.INSTALLED:
             self._refresh_gpu_status()
             return True
@@ -189,7 +177,7 @@ class SystemDetector:
     def _refresh_gpu_status(self) -> None:
         try:
             from core import gpu_utils
-            gpu_utils.reset_gpu_cache()
+            gpu_utils.reset_gpu_cache(reset_cupy=False)
             info = detect_gpu(skip_cupy=False)
         except Exception:
             info = GpuInfo()

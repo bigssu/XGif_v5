@@ -82,6 +82,19 @@ class _DarkSelectPopup(wx.PopupTransientWindow):
 
     def popup_below_owner(self):
         width, height = self._popup_size()
+        origin = self._owner.ClientToScreen((0, self._owner.GetClientSize().height))
+        display_index = wx.Display.GetFromWindow(self._owner)
+        if display_index != wx.NOT_FOUND:
+            area = wx.Display(display_index).GetClientArea()
+            width = min(width, area.width)
+            origin.x = max(area.x, min(origin.x, area.x + area.width - width))
+            above = max(0, self._owner.ClientToScreen((0, 0)).y - area.y)
+            below = max(0, area.y + area.height - origin.y)
+            if height > below and above > below:
+                height = min(height, above)
+                origin.y = area.y + above - height
+            else:
+                height = max(1, min(height, below))
         self.SetSize((width, height))
         self._list.SetMinSize((width, height))
         self._list.SetSize((width, height))
@@ -90,7 +103,6 @@ class _DarkSelectPopup(wx.PopupTransientWindow):
         if self._owner.GetSelection() >= 0:
             self._list.SetSelection(self._owner.GetSelection())
 
-        origin = self._owner.ClientToScreen((0, self._owner.GetClientSize().height))
         self.Move(origin)
         self.Popup(self._list)
 
@@ -202,7 +214,33 @@ class _DarkSelectPopup(wx.PopupTransientWindow):
             self.Destroy()
 
 
-class DarkSelect(wx.Control):
+class _DarkField(wx.Control):
+    """Keep the owner-drawn label and inline editor tall enough for the current font."""
+
+    def SetFont(self, font):
+        changed = super().SetFont(font)
+        if self._editor is not None:
+            self._editor.SetFont(font)
+        self._sync_field_size()
+        return changed
+
+    def _sync_field_size(self):
+        width, height = self._base_size
+        height = max(height, self.GetTextExtent("Ag한")[1] + self.FromDIP(6))
+        self.SetMinSize((max(width, self._content_width()), height))
+        self._cached_bmp = None
+        self.Refresh()
+        self.GetParent().Layout()
+
+    def _on_dpi_changed(self, event):
+        self._sync_field_size()
+        event.Skip()
+
+    def _content_width(self):
+        return 0
+
+
+class DarkSelect(_DarkField):
     """Compact read-only/selectable combo replacement.
 
     The native wx.ComboBox on MSW can ignore custom dark backgrounds. This
@@ -241,8 +279,9 @@ class DarkSelect(wx.Control):
         self._editor = None
         self._closing_editor = False
         self._destroying = False
+        self._base_size = tuple(size)
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
-        self.SetMinSize(size)
+        self.Bind(wx.EVT_DPI_CHANGED, self._on_dpi_changed)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         if self._choices and not self._value:
@@ -310,6 +349,9 @@ class DarkSelect(wx.Control):
     def GetCount(self):
         return len(self._choices)
 
+    def GetItems(self):
+        return list(self._choices)
+
     def FindString(self, text):
         text = str(text)
         for idx, item in enumerate(self._choices):
@@ -355,7 +397,8 @@ class DarkSelect(wx.Control):
         return self._value
 
     def GetBestSize(self):
-        return wx.Size(max(70, self.GetMinSize().GetWidth()), 26)
+        size = self.GetMinSize()
+        return wx.Size(max(70, size.width), size.height)
 
     def _on_enter(self, _event):
         if not self.IsEnabled():
@@ -557,8 +600,15 @@ class DarkSelect(wx.Control):
             gc.DrawRoundedRectangle(0.5, 0.5, w - 1, h - 1, 4)
             gc.SetFont(self.GetFont(), fg)
             text = self._value
+            available = max(0, w - 32)
             tw, th = gc.GetTextExtent(text)[:2]
+            if tw > available:
+                mem.SetFont(self.GetFont())
+                text = wx.Control.Ellipsize(text, mem, wx.ELLIPSIZE_END, available, 0)
+            gc.PushState()
+            gc.Clip(8, 0, available, h)
             gc.DrawText(text, 8, (h - th) / 2)
+            gc.PopState()
             pen = wx.Pen(Colors.TEXT_SECONDARY if enabled else Colors.TEXT_MUTED, 1)
             gc.SetPen(pen)
             path = gc.CreatePath()
@@ -575,7 +625,7 @@ class DarkSelect(wx.Control):
         dc.DrawBitmap(bmp, 0, 0, False)
 
 
-class DarkSpinCtrl(wx.Control):
+class DarkSpinCtrl(_DarkField):
     """Compact owner-drawn numeric field with step buttons."""
 
     _double = False
@@ -613,8 +663,9 @@ class DarkSpinCtrl(wx.Control):
         self._editor = None
         self._closing_editor = False
         self._destroying = False
+        self._base_size = tuple(size)
         self.SetFont(Fonts.get_font(Fonts.SIZE_DEFAULT))
-        self.SetMinSize(size)
+        self.Bind(wx.EVT_DPI_CHANGED, self._on_dpi_changed)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
 
@@ -660,14 +711,17 @@ class DarkSpinCtrl(wx.Control):
         self._min = minimum
         self._max = maximum
         self.SetValue(self._value)
+        self._sync_field_size()
 
     def SetMin(self, minimum):
         self._min = minimum
         self.SetValue(self._value)
+        self._sync_field_size()
 
     def SetMax(self, maximum):
         self._max = maximum
         self.SetValue(self._value)
+        self._sync_field_size()
 
     def GetMin(self):
         return self._min
@@ -680,8 +734,7 @@ class DarkSpinCtrl(wx.Control):
 
     def SetDigits(self, digits):
         self._digits = int(digits)
-        self._cached_bmp = None
-        self.Refresh()
+        self._sync_field_size()
 
     def GetValue(self):
         if self._editor is not None:
@@ -696,7 +749,13 @@ class DarkSpinCtrl(wx.Control):
         self.Refresh()
 
     def GetBestSize(self):
-        return wx.Size(max(62, self.GetMinSize().GetWidth()), 26)
+        size = self.GetMinSize()
+        return wx.Size(max(62, size.width), size.height)
+
+    def _content_width(self):
+        end_points = (self._min, self._max)
+        labels = (f"{v:.{self._digits}f}" if self._double else str(int(v)) for v in end_points)
+        return max(self.GetTextExtent(label)[0] for label in labels) + 32
 
     def _coerce(self, value):
         with contextlib.suppress(TypeError, ValueError):

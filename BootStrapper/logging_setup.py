@@ -52,10 +52,11 @@ def setup_logging(log_file: Path, level: int = logging.INFO) -> logging.Logger:
     _logger.addHandler(file_handler)
 
     # 콘솔 핸들러 (개발용)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(level)
-    _logger.addHandler(console_handler)
+    if sys.stderr is not None:
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setFormatter(formatter)
+        console_handler.setLevel(level)
+        _logger.addHandler(console_handler)
 
     # UI 핸들러
     ui_handler = UIHandler()

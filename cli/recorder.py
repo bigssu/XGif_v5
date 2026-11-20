@@ -3,6 +3,9 @@ import os
 import sys
 import time
 import logging
+import shutil
+import tempfile
+from pathlib import Path
 
 if sys.platform == 'win32':
     import msvcrt
@@ -21,7 +24,7 @@ logger = logging.getLogger(__name__)
 AUDIO_BUFFER_LIMIT_ERROR = "오디오 버퍼 한계에 도달하여 녹화를 중지합니다."
 
 
-def _get_monitor_region(monitor_index: int = 0) -> Tuple[int, int, int, int]:
+def _get_monitor_region(monitor_index: int = 0) -> Optional[Tuple[int, int, int, int]]:
     """모니터 전체 영역 반환 (ctypes로 직접 조회, wx 불필요)"""
     import ctypes
     from ctypes import wintypes
@@ -55,14 +58,16 @@ def _get_monitor_region(monitor_index: int = 0) -> Tuple[int, int, int, int]:
     cb = MONITORENUMPROC(callback)
     user32.EnumDisplayMonitors(None, None, cb, 0)
 
-    if monitor_index < len(monitors):
+    # The primary display has desktop origin (0, 0) and is exposed as index 0.
+    monitors.sort(key=lambda region: region[:2] != (0, 0))
+    if 0 <= monitor_index < len(monitors):
         return monitors[monitor_index]
 
     print(
-        f"xgif: 경고: 모니터 {monitor_index}을 찾을 수 없습니다. 주 모니터를 사용합니다.",
+        f"xgif: 에러: 모니터 {monitor_index}을 찾을 수 없습니다.",
         file=sys.stderr,
     )
-    return monitors[0] if monitors else (0, 0, 1920, 1080)
+    return None
 
 
 def _parse_region_string(region_str: str) -> Optional[Tuple[int, int, int, int]]:
@@ -100,6 +105,7 @@ class CLIRecordingSession:
         self._recording_error: Optional[str] = None
         self._audio_limit_reached = False
         self._memory_limit_mb = 1024
+        self._cancelled = False
         self._stopped = False
         self._paused = False
         self._progress = TerminalProgress(quiet=getattr(args, "quiet", False))
@@ -108,12 +114,17 @@ class CLIRecordingSession:
         """녹화 실행. 반환값: 종료 코드"""
         self._audio_limit_reached = False
         self._recording_error = None
+        self._cancelled = False
         self._stopped = False
         self._paused = False
 
         # 1. 출력 포맷 결정
         output_path = self.args.output
-        output_format = self._detect_format(output_path)
+        suffix = Path(output_path).suffix.lower()
+        output_format = getattr(self.args, "format", None) or suffix[1:]
+        if suffix not in (".gif", ".mp4") or suffix != "." + output_format:
+            print(f"xgif: 출력 파일 확장자는 녹화 포맷과 일치해야 합니다 (.gif 또는 .mp4): {output_path}", file=sys.stderr)
+            return EXIT_USER_ERROR
 
         # 2. 출력 디렉토리 존재 확인
         output_dir = os.path.dirname(output_path)
@@ -139,17 +150,16 @@ class CLIRecordingSession:
         except (TypeError, ValueError):
             self._memory_limit_mb = 1024
 
+        region = self._resolve_region()
+        if not region:
+            return EXIT_USER_ERROR
+
         # 5. FFmpeg 확인
         if not self._check_ffmpeg(output_format):
             return EXIT_DEPENDENCY
 
         # 6. 엔진 초기화
         self._init_engines(config, output_format)
-
-        # 7. 캡처 영역 결정
-        region = self._resolve_region()
-        if not region:
-            return EXIT_USER_ERROR
 
         # 8. 시그널 핸들러 등록
         install_signal_handlers(self._on_stop_signal)
@@ -200,6 +210,7 @@ class CLIRecordingSession:
                         config.get("memory_limit_mb", "1024")
                     )
                     self._audio_recorder = AudioRecorder(max_buffer_mb=audio_limit_mb)
+                    self._audio_recorder.set_record_system(False)
                     self._audio_recorder.set_record_mic(True)
                     audio_start = self._audio_recorder.start()
                     if audio_start and not getattr(audio_start, "requested_mic_missing", False):
@@ -219,33 +230,36 @@ class CLIRecordingSession:
                 logger.warning(f"Audio recorder init failed: {e}")
                 self._audio_recorder = None
 
+        recovery_failed = False
         # 12. 녹화 시작
         self._recorder.set_region(*region)
 
         try:
             self._recorder.start_recording()
-            if not self._recorder.is_recording:
-                err_msg = self._recording_error or "녹화를 시작하지 못했습니다."
+            if not self._recorder.is_recording and not self._recorder.get_frame_count():
+                err_msg = self._recording_error or self._recorder.storage_stop_reason or "녹화를 시작하지 못했습니다."
                 print(f"\nxgif: 에러: {err_msg}", file=sys.stderr)
                 restore_signal_handlers()
                 return EXIT_RUNTIME_ERROR
 
             # 13. 녹화 대기
             self._wait_for_completion()
+            restore_signal_handlers()
+            if self._cancelled:
+                return 130
 
             # Stop video before audio mixing can exceed the capture memory budget.
             self._progress.clear_line()
             frames = self._recorder.stop_recording()
+            reason = self._recorder.storage_stop_reason
+            if reason and reason != self._recording_error:
+                print(f"\nxgif: {reason}", file=sys.stderr)
 
             # 14. 오디오 녹음 중지
             if self._audio_recorder:
                 self._audio_path = self._audio_recorder.stop()
                 if not self._audio_path:
                     print("xgif: 오디오를 저장하지 못했습니다. 비디오만 저장합니다.", file=sys.stderr)
-
-            if self._audio_limit_reached:
-                restore_signal_handlers()
-                return EXIT_RUNTIME_ERROR
 
             if not frames:
                 if self._recording_error:
@@ -254,7 +268,7 @@ class CLIRecordingSession:
                 restore_signal_handlers()
                 return EXIT_RUNTIME_ERROR
 
-            actual_fps = self._recorder.actual_fps or self._recorder.fps
+            actual_fps = min(120, self._recorder.actual_fps or self._recorder.fps)
             elapsed = len(frames) / actual_fps if actual_fps > 0 else 0
             self._progress.print(
                 f"\n  녹화 완료: {len(frames)} 프레임 ({elapsed:.1f}초)"
@@ -265,21 +279,20 @@ class CLIRecordingSession:
             self._encoder.set_progress_callback(self._on_encoding_progress)
 
             encode_start = time.time()
-            fps_int = max(1, min(120, round(actual_fps)))
-            if output_format == "mp4":
-                audio_path = getattr(self, "_audio_path", None)
-                success = self._encoder.encode_mp4(
-                    frames, fps_int, output_path, audio_path=audio_path
-                )
-            else:
-                success = self._encoder.encode(frames, fps_int, output_path)
+            try:
+                if output_format == "mp4":
+                    success = self._encoder.encode_mp4(
+                        frames, actual_fps, output_path, audio_path=self._audio_path,
+                        overwrite=self.args.overwrite,
+                    )
+                else:
+                    success = self._encoder.encode(frames, actual_fps, output_path, overwrite=self.args.overwrite)
+            except Exception as exc:
+                print(f"xgif: 인코딩 오류: {exc}", file=sys.stderr)
+                success = False
             encode_time = time.time() - encode_start
 
             restore_signal_handlers()
-
-            # 오디오 임시 파일 정리
-            if self._audio_recorder:
-                self._audio_recorder.cleanup()
 
             if success and os.path.exists(output_path):
                 file_size = os.path.getsize(output_path)
@@ -293,9 +306,18 @@ class CLIRecordingSession:
                 # quiet 모드: 파일 경로만 stdout
                 if getattr(self.args, "quiet", False):
                     print(output_path)
+                if self._audio_limit_reached:
+                    print(f"xgif: 오디오 한계까지 녹화된 구간을 저장했습니다: {output_path}", file=sys.stderr)
+                    return EXIT_RUNTIME_ERROR
+                if reason or self._recording_error:
+                    print(f"xgif: 중단 전까지 녹화된 구간을 저장했습니다: {output_path}", file=sys.stderr)
+                    return EXIT_RUNTIME_ERROR
                 return EXIT_SUCCESS
             else:
                 print("\nxgif: 에러: 인코딩 실패", file=sys.stderr)
+                # A spool read error during recovery must not trigger WAV cleanup.
+                recovery_failed = True
+                recovery_failed = not self._save_recovery_sources(frames, actual_fps)
                 return EXIT_RUNTIME_ERROR
         except KeyboardInterrupt:
             # Ctrl+C: 리소스 정리 후 관례적 종료 코드 130 반환
@@ -311,26 +333,46 @@ class CLIRecordingSession:
             try:
                 if self._recorder and self._recorder.is_recording:
                     self._recorder.stop_recording()
+                if self._recorder and not recovery_failed:
+                    self._recorder.clear_frames()
             except Exception:
                 pass
             try:
-                if self._audio_recorder:
+                if recovery_failed and self._audio_path and os.path.isfile(self._audio_path):
+                    print(f"xgif: 복구용 오디오: {self._audio_path}", file=sys.stderr)
+                elif self._audio_recorder:
                     self._audio_recorder.cleanup()
             except Exception:
                 pass
             with contextlib.suppress(Exception):
                 restore_signal_handlers()
 
-    def _detect_format(self, output_path: str) -> str:
-        """출력 파일 확장자로 포맷 결정"""
-        fmt = getattr(self.args, "format", None)
-        if fmt:
-            return fmt
-
-        ext = os.path.splitext(output_path)[1].lower()
-        if ext == ".mp4":
-            return "mp4"
-        return "gif"
+    def _save_recovery_sources(self, frames, fps):
+        """Retain the raw take. Try the output folder if the temp volume is full."""
+        height, width = frames[0].shape[:2]
+        audio_input = ' -i audio.wav' if self._audio_path else ''
+        suffix = Path(self.args.output).suffix.lower()
+        audio_filter = f' -af apad,atrim=duration={len(frames) / fps:.9f}' if self._audio_path else ''
+        command = (f'ffmpeg -f rawvideo -pixel_format bgr24 -video_size {width}x{height} '
+                   f'-framerate {fps} -i video.bgr{audio_input}{audio_filter} recovered{suffix}')
+        roots = [Path(self.args.output).absolute().parent]
+        with contextlib.suppress(OSError):
+            roots.insert(0, Path(tempfile.gettempdir()))
+        for root in dict.fromkeys(roots):
+            directory = root
+            try:
+                directory = Path(tempfile.mkdtemp(prefix="xgif-recovery-", dir=root))
+                (directory / "recovery.txt").write_text(command + "\n", encoding="utf-8")
+                with (directory / "video.bgr").open("wb") as target:
+                    for frame in frames:
+                        target.write(frame[:, :, :3].tobytes())
+                if self._audio_path:
+                    shutil.move(self._audio_path, directory / "audio.wav")
+                print(f"xgif: 복구 파일 위치: {directory}", file=sys.stderr)
+                return True
+            except OSError as exc:
+                print(f"xgif: 복구 저장 실패 ({directory}): {exc}", file=sys.stderr)
+        return False
 
     def _check_ffmpeg(self, output_format: str) -> bool:
         """FFmpeg 사용 가능 여부 확인"""
@@ -363,7 +405,12 @@ class CLIRecordingSession:
         from core.gif_encoder import GifEncoder
 
         self._recorder = ScreenRecorder()
+        self._recorder.configure_frame_storage(
+            memory_limit_mb=max(1, self._memory_limit_mb),
+            spill_to_disk=output_format == "gif",
+        )
         self._encoder = GifEncoder()
+        self._encoder.set_error_callback(lambda message: print(f"xgif: 인코딩 오류: {message}", file=sys.stderr))
         self._recording_error = None
 
         # FPS 결정 (검증 포함)
@@ -434,15 +481,16 @@ class CLIRecordingSession:
 
     def _countdown(self, seconds: float):
         """녹화 시작 전 카운트다운"""
-        for i in range(int(seconds), 0, -1):
-            if self._stopped:
-                break
-            self._progress.print(f"  녹화 시작까지 {i}...")
-            time.sleep(1)
+        while seconds > 0 and not self._stopped:
+            self._progress.print(f"  녹화 시작까지 {seconds:g}...")
+            interval = min(1.0, seconds)
+            time.sleep(interval)
+            seconds -= interval
 
     def _wait_for_completion(self):
         """녹화 완료 대기 (duration 또는 키 입력 또는 Ctrl+C)"""
-        start_time = time.time()
+        previous = time.monotonic()
+        elapsed = 0.0
         duration = getattr(self.args, "duration", None)
 
         while not self._stopped:
@@ -461,17 +509,11 @@ class CLIRecordingSession:
                 print(f"\nxgif: 녹화 오류: {AUDIO_BUFFER_LIMIT_ERROR}", file=sys.stderr)
                 break
 
-            elapsed = time.time() - start_time
+            now = time.monotonic()
+            if not self._paused:
+                elapsed += now - previous
+            previous = now
             frame_count = self._recorder.get_frame_count()
-
-            if self._recorder.get_estimated_size_mb() >= self._memory_limit_mb:
-                self._stopped = True
-                self._progress.clear_line()
-                print(
-                    f"\nxgif: 메모리 제한({self._memory_limit_mb} MB)에 도달하여 녹화를 저장합니다.",
-                    file=sys.stderr,
-                )
-                break
 
             # duration 초과 확인
             if duration and elapsed >= duration:
@@ -506,6 +548,7 @@ class CLIRecordingSession:
 
     def _on_stop_signal(self):
         """Ctrl+C 시그널 핸들러 콜백"""
+        self._cancelled = True
         self._stopped = True
 
     def _on_recording_error(self, error_msg: str):

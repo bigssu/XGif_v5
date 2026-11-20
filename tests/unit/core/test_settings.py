@@ -160,4 +160,53 @@ def test_failed_settings_save_preserves_original_and_removes_stage(tmp_path, mon
     with pytest.raises(OSError, match="disk failure"):
         AppSettings(language="en").save(path)
     assert path.read_bytes() == original
-    assert list(tmp_path.iterdir()) == [path]
+    assert set(tmp_path.iterdir()) == {path, tmp_path / "config.ini.lock"}
+
+
+def _save_in_process(path, key, value, ready):
+    import time
+    settings = AppSettings.load(path)
+    setattr(settings, key, value)
+    original_write = configparser.ConfigParser.write
+
+    def slow_write(parser, stream):
+        time.sleep(0.25)
+        original_write(parser, stream)
+
+    configparser.ConfigParser.write = slow_write
+    ready.wait(timeout=10)
+    settings.save(path)
+
+
+def test_processes_merge_independent_changes_from_same_snapshot(tmp_path):
+    import multiprocessing
+    path = tmp_path / "config.ini"
+    path.write_text("[General]\ncustom=kept\n[Other]\ncustom=also kept\n", encoding="utf-8")
+    gui = AppSettings.load(path)
+    ctx = multiprocessing.get_context("spawn")
+    ready = ctx.Barrier(2)
+    processes = [
+        ctx.Process(target=_save_in_process, args=(path, key, value, ready))
+        for key, value in (("encoder", "cpu"), ("fps", "24"))
+    ]
+    for process in processes:
+        process.start()
+    try:
+        for process in processes:
+            process.join(20)
+            assert process.exitcode == 0
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+                process.join()
+    gui.set("encoder", gui.encoder)
+    gui.last_save_dir = "new"
+    gui.save(path)
+    merged = AppSettings.load(path)
+    assert (merged.encoder, merged.fps, merged.last_save_dir) == ("cpu", "24", "new")
+    assert gui == merged
+    config = configparser.ConfigParser()
+    config.read(path, encoding="utf-8")
+    assert config["General"]["custom"] == "kept"
+    assert config["Other"]["custom"] == "also kept"

@@ -412,7 +412,7 @@ class IconToolbar(wx.Panel):
         scroll_panel = wx.ScrolledWindow(self, style=wx.HSCROLL)
         self._scroll_panel = scroll_panel
         scroll_panel.SetScrollRate(5, 0)
-        scroll_panel.ShowScrollbars(wx.SHOW_SB_NEVER, wx.SHOW_SB_NEVER)
+        scroll_panel.ShowScrollbars(wx.SHOW_SB_DEFAULT, wx.SHOW_SB_NEVER)
         scroll_panel.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         scroll_panel.Bind(wx.EVT_PAINT, self._on_scroll_paint)
         scroll_panel.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
@@ -515,7 +515,7 @@ class IconToolbar(wx.Panel):
         button_sizer.AddStretchSpacer()
 
         scroll_panel.SetSizer(button_sizer)
-        main_sizer.Add(scroll_panel, 1, wx.EXPAND | wx.ALL, 10)
+        main_sizer.Add(scroll_panel, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
         self.SetSizer(main_sizer)
 
         scroll_panel.Thaw()

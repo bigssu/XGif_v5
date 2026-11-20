@@ -28,6 +28,48 @@ def _yield_for(milliseconds: int):
         time.sleep(0.02)
 
 
+@pytest.mark.skipif(wx.Platform != "__WXMSW__", reason="Windows restart handoff")
+def test_second_launch_requests_vetoable_close_only_on_registered_recorder(monkeypatch):
+    import uuid
+    from core import app_shutdown
+
+    _ensure_wx_app()
+    monkeypatch.setattr(app_shutdown, "_RECORDER_PROPERTY", uuid.uuid4().hex)
+    recorder = wx.Frame(None)
+    closed = []
+
+    def keep_take(event):
+        closed.append(event.CanVeto())
+        event.Veto()
+
+    def dispatch_native_messages():
+        loop = wx.GUIEventLoop()
+        timer = wx.CallLater(150, loop.Exit)
+        try:
+            loop.Run()
+        finally:
+            timer.Stop()
+
+    try:
+        recorder.Show()
+        assert not app_shutdown.request_recorder_close()
+        app_shutdown.register_recorder_window(recorder)
+        recorder.Bind(wx.EVT_CLOSE, keep_take)
+        recorder.Disable()
+        assert not app_shutdown.request_recorder_close()
+        recorder.Enable()
+        assert app_shutdown.request_recorder_close()
+        dispatch_native_messages()
+        assert closed == [True] and recorder.IsShown()
+        recorder.Unbind(wx.EVT_CLOSE, handler=keep_take)
+        assert app_shutdown.request_recorder_close()
+        dispatch_native_messages()
+        assert not app_shutdown.request_recorder_close()
+    finally:
+        if recorder:
+            recorder.Destroy()
+
+
 def test_capture_overlay_is_owned_by_parent_window_and_dies_with_it():
     _ensure_wx_app()
     from ui.capture_overlay import CaptureOverlay
@@ -76,3 +118,30 @@ def test_main_window_does_not_recreate_overlay_when_primary_window_is_not_live()
     assert "wx.CallLater(100, self._show_capture_overlay)" in on_overlay_closed_source
     assert "self.GetHandle()" in recreate_guard_source
     assert "self.IsShown()" in recreate_guard_source
+
+
+@pytest.mark.parametrize(("origin", "aware", "scale"), [((0, 0), True, 1), ((-640, -240), True, 1), ((-640, 20), False, 1.5)])
+def test_overlay_region_and_size_share_the_capture_border(origin, aware, scale, monkeypatch):
+    from ui.capture_overlay import CaptureOverlay
+
+    _ensure_wx_app()
+    overlay = CaptureOverlay()
+    try:
+        assert not overlay.IsShown()
+        monkeypatch.setattr(overlay, "_is_dpi_aware", lambda: aware)
+        class Display:
+            def GetGeometry(self):
+                return wx.Rect(-1280, 0, 1280, 720)
+
+            def GetPPI(self):
+                return (round(96 * scale),) * 2
+
+        monkeypatch.setattr(overlay, "_get_current_screen", Display)
+        x, y = origin
+        overlay.set_capture_region(x, y, 640, 480)
+        assert overlay.get_capture_region() == tuple(int(v * scale) for v in (x, y, 640, 480))
+        overlay.set_capture_size(802, 602)
+        assert overlay.get_capture_size() == (802, 602)
+        assert overlay.get_capture_region() == tuple(int(v * scale) for v in (x, y, 802, 602))
+    finally:
+        overlay.Destroy()

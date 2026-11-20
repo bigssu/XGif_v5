@@ -10,9 +10,7 @@ dxcam>=0.3.0,<1.0.0  # DXGI Desktop Duplication (optional high-perf backend)
 
 # Image Processing
 numpy>=2.4.4,<3.0.0
-Pillow>=12.2.0,<13.0.0
-imageio>=2.37.3,<3.0.0
-# imageio-ffmpeg removed (uses system FFmpeg via IMAGEIO_FFMPEG_EXE)
+Pillow==13.0.0
 
 # GPU Monitoring
 nvidia-ml-py>=13.595.45,<14.0.0  # pynvml

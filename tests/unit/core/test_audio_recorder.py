@@ -54,6 +54,38 @@ def test_stop_clears_buffers_when_merge_fails(monkeypatch):
     assert recorder.buffer_limit_reached is False
 
 
+@pytest.mark.parametrize("failure", ["query", "open", "start"])
+def test_microphone_portaudio_failure_allows_silent_video_and_retry(monkeypatch, failure):
+    from unittest.mock import Mock
+
+    sd = pytest.importorskip("sounddevice")
+    monkeypatch.setattr(audio_recorder.AudioRecorder, "_find_devices", lambda self: None)
+    recorder = audio_recorder.AudioRecorder()
+    recorder.set_record_system(False)
+    recorder.set_record_mic(True)
+    error = sd.PortAudioError("microphone disconnected")
+    query = Mock(return_value={"max_input_channels": 1})
+    stream = Mock()
+    open_stream = Mock(return_value=stream)
+    failing_call = {"query": query, "open": open_stream, "start": stream.start}[failure]
+    failing_call.side_effect = error
+    stream.stop.side_effect = error
+    monkeypatch.setattr(sd, "query_devices", query)
+    monkeypatch.setattr(sd, "InputStream", open_stream)
+    result = recorder.start()
+    assert not result and result.requested_mic_missing
+    assert result.error == str(error)
+    assert not recorder.is_recording()
+    assert recorder._mic_stream is None
+    if failure == "start":
+        stream.close.assert_called_once_with()
+    failing_call.side_effect = None
+    try:
+        assert recorder.start().mic_started
+    finally:
+        recorder.cleanup()
+
+
 def test_start_result_reports_requested_mic_failure_when_system_only(monkeypatch):
     class FakeStream:
         def __init__(self, *args, device=None, **kwargs):
@@ -155,6 +187,49 @@ def test_start_result_uses_explicit_mic_lane_without_loopback(monkeypatch):
         assert len(recorder.mic_audio_data) == 1
     finally:
         recorder.cleanup()
+
+
+def test_next_recording_uses_current_default_microphone(monkeypatch):
+    from unittest.mock import Mock
+
+    devices = [{"name": name, "index": i, "max_input_channels": 1, "default_samplerate": rate}
+               for i, (name, rate) in enumerate([("Desktop", 44100), ("Headset", 48000)])]
+    default = 0
+    def query(device=None, kind=None):
+        if kind == "input":
+            return devices[default]
+        return devices if device is None else devices[device]
+
+    streams = Mock()
+    monkeypatch.setattr(audio_recorder.sd, "query_devices", query)
+    monkeypatch.setattr(audio_recorder.sd, "InputStream", streams)
+    recorder = audio_recorder.AudioRecorder()
+    recorder.set_record_system(False)
+    recorder.set_record_mic(True)
+    for default in (0, 1):
+        assert recorder.start().mic_started
+        assert streams.call_args.kwargs["device"] == default
+        assert streams.call_args.kwargs["samplerate"] == devices[default]["default_samplerate"]
+        recorder.stop()
+
+
+def test_failed_wav_write_removes_partial_audio_and_allows_video_fallback(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    # Simulate a native libsndfile write error after the WAV file has been opened.
+    def fail_write(path, *args):
+        Path(path).write_bytes(b"partial audio")
+        raise audio_recorder.sf.LibsndfileError(2)
+
+    monkeypatch.setattr(audio_recorder, "HAS_AUDIO", False)
+    monkeypatch.setattr(audio_recorder.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(audio_recorder.sf, "write", fail_write)
+    recorder = audio_recorder.AudioRecorder()
+    recorder.recording = True
+    recorder.mic_audio_data = [np.zeros((1, 1), dtype=np.float32)]
+    assert recorder.stop() is None
+    assert recorder._temp_file is None
+    assert not list(tmp_path.iterdir())
 
 
 def test_pause_discards_both_inputs_without_consuming_buffer(monkeypatch):

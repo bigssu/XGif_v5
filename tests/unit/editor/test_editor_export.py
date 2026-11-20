@@ -82,6 +82,18 @@ def test_save_all_formats_replaces_destination(tmp_path, frames, suffix, frame_c
     assert list(tmp_path.iterdir()) == [output]
 
 
+def test_new_save_destination_created_during_encoding_survives(tmp_path, frames, monkeypatch):
+    output = tmp_path / 'race.gif'
+    def race(collection, path, settings):
+        path.write_bytes(b'encoded')
+        output.write_bytes(b'other writer')
+        return SaveResult.ok()
+    monkeypatch.setattr(GifEncoder, '_save_gif', race)
+    assert not GifEncoder.save(frames, str(output), overwrite=False).success
+    assert output.read_bytes() == b'other writer'
+    assert list(tmp_path.iterdir()) == [output]
+
+
 def test_gifsicle_only_receives_staged_file(tmp_path, frames, monkeypatch):
     output = tmp_path / 'original.gif'
     output.write_bytes(b'original contents')

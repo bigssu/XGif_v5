@@ -5,6 +5,23 @@ import numpy as np
 import core.capture_backend as cb
 
 
+def test_unavailable_dxgi_desktop_does_not_abort_hardware_detection(monkeypatch, tmp_path):
+    from core.capability_manager import CapabilityManager, SystemCapabilities
+
+    class DesktopDuplicationError(Exception):
+        pass
+
+    def deny_capture():
+        raise DesktopDuplicationError("DuplicateOutput: access denied")
+
+    monkeypatch.setattr(cb, "_create_dxcam_camera", deny_capture)
+    monkeypatch.setattr(cb, "HAS_DXCAM", True)
+    monkeypatch.setattr(cb.DXCamBackend, "_shared_camera", None)
+    caps = SystemCapabilities(has_nvidia_gpu=True)
+    CapabilityManager(str(tmp_path))._detect_capture_backends(caps)
+    assert caps.has_nvidia_gpu and caps.has_dxcam and not caps.dxcam_working
+
+
 class Camera:
     def __init__(self):
         self.is_capturing = False
@@ -80,5 +97,8 @@ def test_late_warmup_leaves_active_recording_alone(monkeypatch):
         assert camera.is_capturing
         assert camera.stops == stops
         assert camera.starts == [(0, 0, 128, 128)]
+        assert not cb.test_capture_backend(warmup, (0, 0, 100, 100))
+        warmup.stop()
+        assert camera.is_capturing and camera.stops == stops
     finally:
         recording.stop()

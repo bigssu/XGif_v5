@@ -4,17 +4,18 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 
 ## 현재 기준
 
-- 출시 후보 버전: `2.2.0`
-- 문서 검증 기준일: `2026-11-17`
+- 출시 후보 버전: `2.2.8`
+- 문서 갱신일: `2026-11-20`
 - 검증 환경: Windows, Python 3.11.9 프로젝트 `.venv`
 - 주요 의존성 floor: `wxPython 4.2.5`, `dxcam 0.3.0`, `PyInstaller 6.20.0`
-- 테스트·패키지 검증: [출시 후보 검증 기록](docs/RELEASE_HARDENING_2026-11-17.md)
+- 이전 2.2.0 후보의 테스트·패키지 검증: [검증 기록](docs/RELEASE_HARDENING_2026-11-17.md)
 - 빌드 참고: `build_optimized.py`가 `XGif.spec`를 빌드 시점에 동적 생성
 - 사내 배포 기준: 코드 서명 없이 PyInstaller/선택적 Inno Setup 산출물을 사용
 
 ## 주요 기능
 
 - **화면 녹화**: GIF 및 MP4 형식으로 화면의 전체 또는 특정 영역 녹화
+- **긴 GIF 녹화**: 원본 프레임은 설정한 메모리 한도와 128 MiB 중 작은 값까지 RAM에 보관하고, 이후에는 Windows 임시 폴더에 기록합니다. 1080p·15 FPS에서 임시 공간은 분당 약 5.2 GiB가 필요합니다. 공간이 부족하면 그때까지 기록한 프레임을 저장할 수 있습니다.
 - **캡처 백엔드**: GDI (기본) 또는 dxcam (DXGI Desktop Duplication, 고성능)
 - **GPU 가속**: NVIDIA GPU 환경에서 CuPy를 이용한 실시간 프레임 처리
 - **하드웨어 인코딩**: NVENC / QSV / AMF 자동 감지
@@ -48,7 +49,7 @@ Windows용 GIF/MP4 화면 녹화 프로그램. GUI와 CLI 모두 지원.
 ```bash
 # 저장소 클론
 git clone https://github.com/bigssu/XGif_v5.git
-cd XGif
+cd XGif_v5
 
 # 가상환경 생성 (Python 3.11)
 py -3.11 -m venv .venv
@@ -77,10 +78,11 @@ py -3.11 -m venv .venv
 
 GUI는 `XGif.exe`, 터미널·자동화는 `XGif-cli.exe`를 사용합니다. CLI 실행 파일은
 도움말·진행 상태·오류와 종료 코드를 콘솔에 전달합니다. 예: `XGif-cli.exe --help`,
-`XGif-cli.exe convert input.gif output.mp4`. MP4 변환과 비디오 불러오기에는
-외부 FFmpeg/FFprobe가 필요하며, 실행 파일에 포함되지 않습니다.
+`XGif-cli.exe convert input.gif output.mp4`. MP4 녹화와 CLI 변환에는 FFmpeg가 필요하고, 편집기에서 비디오를 열 때는 FFprobe도 필요합니다. `XGif-cli.exe doctor --install-ffmpeg`로 두 도구를 설치하거나 복구할 수 있습니다. 자동 설치 위치는 `%LOCALAPPDATA%\XGif\ffmpeg`입니다.
 
-설치본은 CuPy를 EXE 안에 묶지 않고 `%LOCALAPPDATA%\XGif\env` 외부 환경에서 로드합니다. NVIDIA GPU가 있지만 CuPy가 없으면 첫 실행 GPU 감지 또는 GPU 버튼 클릭 시 설치 가이드가 열리며, 시스템 Python 3.11 이상이 있으면 `직접 설치` 버튼으로 해당 외부 환경에 자동 설치할 수 있습니다.
+GPU 가속은 선택 사항입니다. 이번 Windows 설치본은 **CPython 3.11 64비트**용 CuPy를 사용합니다. GPU 설정의 **직접 설치** 또는 `XGif-cli.exe doctor --install-cupy`로 설치할 수 있습니다. 호환되는 기존 환경은 재사용합니다. 새 환경이 필요한 경우 PC에 같은 버전·비트 수의 Python이 있어야 합니다.
+
+`%LOCALAPPDATA%\XGif\env`에 Python 3.12 등 다른 환경이 있으면 그대로 보존하고, 3.11용 패키지는 인접한 `env-cp311-64`에 설치합니다. **재검사**와 `XGif-cli.exe doctor`는 앱에서 CuPy를 불러와 장치 감지와 실제 CUDA 연산을 확인합니다. GUI 진단 로그는 `%APPDATA%\XGif\logs\app.log`에 있습니다.
 
 ## 사용법
 
@@ -95,6 +97,8 @@ GUI는 `XGif.exe`, 터미널·자동화는 `XGif-cli.exe`를 사용합니다. CL
 3. **Stop** 버튼으로 녹화 종료 및 저장
 4. 저장된 GIF를 클릭하면 GIF 에디터가 열림
 5. FPS/품질 드롭다운은 항목 수만큼만 열리며, 프레임 시간/크기/속도 같은 숫자 필드는 필드 안에서 직접 입력 가능
+
+녹화 중에는 일시정지해도 캡처 영역이 고정됩니다. 영역을 바꾸려면 현재 녹화를 마친 뒤 다음 녹화의 테두리를 이동하세요.
 
 ### CLI 모드
 
@@ -128,6 +132,8 @@ python main.py convert input.mp4 -F gif --resize 480x320
 ```
 
 ### CLI 녹화 중 키 조작
+
+`-d`에는 일시정지 시간을 제외한 녹화 시간을 지정합니다. 인코딩에 실패하면 CLI가 복구 폴더 위치를 출력합니다. 복구가 완료된 폴더에서 `recovery.txt`의 FFmpeg 명령을 실행하면 `video.bgr`과 함께 보존된 마이크 음성으로 결과 파일을 만들 수 있습니다.
 
 | 키 | 동작 |
 |----|------|

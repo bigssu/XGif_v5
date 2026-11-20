@@ -4,6 +4,7 @@ CropDialog - 이미지 자르기 다이얼로그 (wxPython 버전)
 간소화 버전: 스핀박스로 좌표 입력
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 from typing import TYPE_CHECKING, Tuple
 from ..style_constants_wx import Colors, ThemedDialog
 from ui.i18n import tr
@@ -26,26 +27,27 @@ class CropDialog(ThemedDialog):
 
     def _setup_ui(self):
         """UI 초기화"""
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 
         # 현재 크기 표시
-        self._info_label = wx.StaticText(self, label="")
+        self._info_label = wx.StaticText(body, label="")
         self._info_label.SetForegroundColour(Colors.TEXT_MUTED)
         main_sizer.Add(self._info_label, 0, wx.ALL, 20)
 
         # 크롭 영역 그룹
-        crop_box = wx.StaticBox(self, label=tr("crop_area"))
+        crop_box = wx.StaticBox(body, label=tr("crop_area"))
         crop_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         crop_sizer = wx.StaticBoxSizer(crop_box, wx.VERTICAL)
         crop_sizer.AddSpacer(10)
 
         # X 좌표
         x_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        x_label = wx.StaticText(self, label="X:")
+        x_label = wx.StaticText(body, label="X:")
         x_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         x_sizer.Add(x_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-        self._x_spin = wx.SpinCtrl(self, min=0, max=10000, initial=0)
+        self._x_spin = wx.SpinCtrl(body, min=0, max=10000, initial=0)
         self._x_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._x_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         x_sizer.Add(self._x_spin, 1)
@@ -53,10 +55,10 @@ class CropDialog(ThemedDialog):
 
         # Y 좌표
         y_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        y_label = wx.StaticText(self, label="Y:")
+        y_label = wx.StaticText(body, label="Y:")
         y_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         y_sizer.Add(y_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-        self._y_spin = wx.SpinCtrl(self, min=0, max=10000, initial=0)
+        self._y_spin = wx.SpinCtrl(body, min=0, max=10000, initial=0)
         self._y_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._y_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         y_sizer.Add(self._y_spin, 1)
@@ -64,10 +66,10 @@ class CropDialog(ThemedDialog):
 
         # 너비
         w_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        w_label = wx.StaticText(self, label=tr("common_width_label"))
+        w_label = wx.StaticText(body, label=tr("common_width_label"))
         w_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         w_sizer.Add(w_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-        self._w_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._w_spin = wx.SpinCtrl(body, min=1, max=10000, initial=100)
         self._w_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._w_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         w_sizer.Add(self._w_spin, 1)
@@ -75,10 +77,10 @@ class CropDialog(ThemedDialog):
 
         # 높이
         h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        h_label = wx.StaticText(self, label=tr("common_height_label"))
+        h_label = wx.StaticText(body, label=tr("common_height_label"))
         h_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         h_sizer.Add(h_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
-        self._h_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._h_spin = wx.SpinCtrl(body, min=1, max=10000, initial=100)
         self._h_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._h_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         h_sizer.Add(self._h_spin, 1)
@@ -88,7 +90,7 @@ class CropDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 프리셋 버튼
-        preset_box = wx.StaticBox(self, label=tr("resize_size_presets"))
+        preset_box = wx.StaticBox(body, label=tr("resize_size_presets"))
         preset_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preset_sizer = wx.StaticBoxSizer(preset_box, wx.VERTICAL)
         preset_sizer.AddSpacer(10)
@@ -100,7 +102,7 @@ class CropDialog(ThemedDialog):
             ("half", "crop_preset_center_half"),
             ("3q", "crop_preset_center_3q"),
         ]:
-            btn = wx.Button(self, label=tr(label_key))
+            btn = wx.Button(body, label=tr(label_key))
             btn.SetBackgroundColour(Colors.BORDER)
             btn.SetForegroundColour(Colors.TEXT_PRIMARY)
             btn.Bind(wx.EVT_BUTTON, lambda e, pid=preset_id: self._apply_preset(pid))
@@ -127,9 +129,8 @@ class CropDialog(ThemedDialog):
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 20)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def _load_current_size(self):
         """현재 크기 로드"""

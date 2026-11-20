@@ -231,7 +231,7 @@ class ResizeToolbar(InlineToolbarBase):
             # snapshot 없으면 이미 원본 상태 → 복원 불필요
             if self._original_images:
                 self._restore_original_images_with_size()
-            self._finish_apply()
+            self._finish_apply(keep_history=True)
             return
 
         # 실제 변경이 있을 때만 lazy snapshot

@@ -4,6 +4,7 @@ StickerDialog - 스티커/도형 추가 다이얼로그 (wxPython 버전)
 PyQt6 QDialog를 wx.Dialog로 마이그레이션
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 import math
 from PIL import Image, ImageDraw
 from typing import TYPE_CHECKING, Optional
@@ -61,6 +62,7 @@ class StickerDialog(ThemedDialog):
 
     def _setup_ui(self):
         """UI 초기화"""
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         main_sizer.AddSpacer(15)
 
@@ -68,7 +70,7 @@ class StickerDialog(ThemedDialog):
         preview_sizer = wx.BoxSizer(wx.VERTICAL)
         preview_sizer.AddSpacer(15)
 
-        self._preview_label = wx.StaticBitmap(self)
+        self._preview_label = wx.StaticBitmap(body)
         self._preview_label.SetMinSize((300, 300))
         self._preview_label.SetBackgroundColour(Colors.BG_SECONDARY)
         preview_sizer.Add(self._preview_label, 1, wx.EXPAND)
@@ -80,7 +82,7 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(15)
 
         # 도형 선택
-        shape_box = wx.StaticBox(self, label=tr("sticker_choose_shape"))
+        shape_box = wx.StaticBox(body, label=tr("sticker_choose_shape"))
         shape_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         shape_sizer = wx.StaticBoxSizer(shape_box, wx.VERTICAL)
         shape_sizer.AddSpacer(10)
@@ -97,7 +99,7 @@ class StickerDialog(ThemedDialog):
         ]
 
         for name, shape_type in shapes:
-            btn = ShapeButton(self, name, shape_type)
+            btn = ShapeButton(body, name, shape_type)
             btn.Bind(wx.EVT_BUTTON, self._on_shape_clicked)
             shape_grid.Add(btn, 0, wx.EXPAND)
             self._shape_buttons.append(btn)
@@ -110,18 +112,18 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(10)
 
         # 크기/위치
-        pos_box = wx.StaticBox(self, label=tr("sticker_size_pos"))
+        pos_box = wx.StaticBox(body, label=tr("sticker_size_pos"))
         pos_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         pos_sizer = wx.StaticBoxSizer(pos_box, wx.VERTICAL)
         pos_sizer.AddSpacer(10)
 
         # 위치
         pos_row = wx.BoxSizer(wx.HORIZONTAL)
-        x_label = wx.StaticText(self, label="X:")
+        x_label = wx.StaticText(body, label="X:")
         x_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         pos_row.Add(x_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._x_spin = wx.SpinCtrl(self, min=0, max=10000, initial=50)
+        self._x_spin = wx.SpinCtrl(body, min=0, max=10000, initial=50)
         self._x_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._x_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._x_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
@@ -129,11 +131,11 @@ class StickerDialog(ThemedDialog):
 
         pos_row.AddSpacer(10)
 
-        y_label = wx.StaticText(self, label="Y:")
+        y_label = wx.StaticText(body, label="Y:")
         y_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         pos_row.Add(y_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._y_spin = wx.SpinCtrl(self, min=0, max=10000, initial=50)
+        self._y_spin = wx.SpinCtrl(body, min=0, max=10000, initial=50)
         self._y_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._y_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._y_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
@@ -143,11 +145,11 @@ class StickerDialog(ThemedDialog):
 
         # 크기
         size_row = wx.BoxSizer(wx.HORIZONTAL)
-        w_label = wx.StaticText(self, label=tr("common_width_label"))
+        w_label = wx.StaticText(body, label=tr("common_width_label"))
         w_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_row.Add(w_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._width_spin = wx.SpinCtrl(self, min=10, max=1000, initial=100)
+        self._width_spin = wx.SpinCtrl(body, min=10, max=1000, initial=100)
         self._width_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._width_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._width_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
@@ -155,11 +157,11 @@ class StickerDialog(ThemedDialog):
 
         size_row.AddSpacer(10)
 
-        h_label = wx.StaticText(self, label=tr("common_height_label"))
+        h_label = wx.StaticText(body, label=tr("common_height_label"))
         h_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_row.Add(h_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._height_spin = wx.SpinCtrl(self, min=10, max=1000, initial=100)
+        self._height_spin = wx.SpinCtrl(body, min=10, max=1000, initial=100)
         self._height_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._height_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._height_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
@@ -171,20 +173,20 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(10)
 
         # 색상 설정
-        color_box = wx.StaticBox(self, label=tr("sticker_color"))
+        color_box = wx.StaticBox(body, label=tr("sticker_color"))
         color_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_sizer = wx.StaticBoxSizer(color_box, wx.VERTICAL)
         color_sizer.AddSpacer(10)
 
         # 채우기 색상
         fill_row = wx.BoxSizer(wx.HORIZONTAL)
-        self._fill_check = wx.CheckBox(self, label=tr("sticker_fill"))
+        self._fill_check = wx.CheckBox(body, label=tr("sticker_fill"))
         self._fill_check.SetValue(True)
         self._fill_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._fill_check.Bind(wx.EVT_CHECKBOX, self._on_setting_changed)
         fill_row.Add(self._fill_check, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._fill_color_btn = wx.ColourPickerCtrl(self, colour=self._fill_color)
+        self._fill_color_btn = wx.ColourPickerCtrl(body, colour=self._fill_color)
         self._fill_color_btn.Bind(wx.EVT_COLOURPICKER_CHANGED, self._on_fill_color_changed)
         fill_row.Add(self._fill_color_btn, 0)
 
@@ -193,17 +195,17 @@ class StickerDialog(ThemedDialog):
 
         # 테두리
         stroke_row = wx.BoxSizer(wx.HORIZONTAL)
-        self._stroke_check = wx.CheckBox(self, label=tr("sticker_stroke"))
+        self._stroke_check = wx.CheckBox(body, label=tr("sticker_stroke"))
         self._stroke_check.SetValue(True)
         self._stroke_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._stroke_check.Bind(wx.EVT_CHECKBOX, self._on_setting_changed)
         stroke_row.Add(self._stroke_check, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._stroke_color_btn = wx.ColourPickerCtrl(self, colour=self._stroke_color)
+        self._stroke_color_btn = wx.ColourPickerCtrl(body, colour=self._stroke_color)
         self._stroke_color_btn.Bind(wx.EVT_COLOURPICKER_CHANGED, self._on_stroke_color_changed)
         stroke_row.Add(self._stroke_color_btn, 0, wx.RIGHT, 10)
 
-        self._stroke_width_spin = wx.SpinCtrl(self, min=1, max=20, initial=2)
+        self._stroke_width_spin = wx.SpinCtrl(body, min=1, max=20, initial=2)
         self._stroke_width_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._stroke_width_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._stroke_width_spin.Bind(wx.EVT_SPINCTRL, self._on_setting_changed)
@@ -214,17 +216,17 @@ class StickerDialog(ThemedDialog):
 
         # 투명도
         opacity_row = wx.BoxSizer(wx.HORIZONTAL)
-        opacity_label = wx.StaticText(self, label=tr("sticker_opacity"))
+        opacity_label = wx.StaticText(body, label=tr("sticker_opacity"))
         opacity_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         opacity_row.Add(opacity_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._opacity_slider = wx.Slider(self, value=100, minValue=0, maxValue=100,
+        self._opacity_slider = wx.Slider(body, value=100, minValue=0, maxValue=100,
                                         style=wx.SL_HORIZONTAL)
         self._opacity_slider.SetBackgroundColour(Colors.BG_PRIMARY)
         self._opacity_slider.Bind(wx.EVT_SLIDER, self._on_setting_changed)
         opacity_row.Add(self._opacity_slider, 1)
 
-        self._opacity_label = wx.StaticText(self, label="100%")
+        self._opacity_label = wx.StaticText(body, label="100%")
         self._opacity_label.SetMinSize((40, -1))
         self._opacity_label.SetForegroundColour(Colors.TEXT_MUTED)
         opacity_row.Add(self._opacity_label, 0, wx.LEFT, 10)
@@ -235,11 +237,11 @@ class StickerDialog(ThemedDialog):
         settings_sizer.AddSpacer(10)
 
         # 적용 대상
-        target_box = wx.StaticBox(self, label=tr("apply_to"))
+        target_box = wx.StaticBox(body, label=tr("apply_to"))
         target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
 
-        self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
+        self._target_combo = wx.ComboBox(body, style=wx.CB_READONLY,
                                         choices=[tr("target_current_only"), tr("target_selected_full"), tr("target_all_full")])
         self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
         self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
@@ -265,12 +267,11 @@ class StickerDialog(ThemedDialog):
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
-        settings_sizer.Add(button_sizer, 0, wx.EXPAND)
         settings_sizer.AddSpacer(15)
 
         main_sizer.Add(settings_sizer, 1, wx.EXPAND | wx.RIGHT, 15)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def _load_current_frame(self):
         """현재 프레임 로드"""
@@ -281,7 +282,7 @@ class StickerDialog(ThemedDialog):
 
             current_frame = getattr(frames, 'current_frame', None)
             if current_frame:
-                self._original_image = current_frame.image.copy()
+                self._original_image = current_frame.copy_image()
 
                 self._x_spin.SetMax(current_frame.width)
                 self._y_spin.SetMax(current_frame.height)

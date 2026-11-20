@@ -31,7 +31,8 @@ class FrameCollection:
         self._frames: List[Frame] = []
         self._current_index: int = 0
         self._selected_indices: Set[int] = set()
-        self._loop_count: int = 0  # 0 = 무한 반복
+        self.default_image: Optional[Frame] = None  # APNG poster, outside the animation timeline
+        self._loop_count: Optional[int] = 0  # 0 = 무한 반복
         self._lazy_load_enabled: bool = False  # 대용량 GIF를 위한 lazy loading
         self._lock = threading.RLock()  # 재진입 가능한 락 (스레드 안전성)
 
@@ -57,18 +58,33 @@ class FrameCollection:
 
     def delete_frames(self, indices: List[int]) -> List[Frame]:
         """여러 프레임 삭제"""
-        # 역순으로 정렬하여 인덱스 문제 방지
-        sorted_indices = sorted(indices, reverse=True)
+        removed = {idx for idx in indices if self._is_valid_index(idx)}
+        if not removed:
+            return []
+        kept = []
         deleted = []
-        for idx in sorted_indices:
-            frame = self.delete_frame(idx)
-            if frame:
+        selection = set()
+        current = self._current_index
+        for idx, frame in enumerate(self._frames):
+            if idx in removed:
                 deleted.append(frame)
+                if idx < self._current_index:
+                    current -= 1
+            else:
+                if idx in self._selected_indices:
+                    selection.add(len(kept))
+                kept.append(frame)
+        self._frames = kept
+        self._selected_indices = selection
+        self._current_index = min(current, max(0, len(kept) - 1))
+        deleted.reverse()
         return deleted
 
     def clear(self) -> None:
         """모든 프레임 삭제"""
         self._frames.clear()
+        self.default_image = None
+        self._loop_count = 0
         self._current_index = 0
         self._selected_indices.clear()
 
@@ -327,7 +343,9 @@ class FrameCollection:
 
     @current_index.setter
     def current_index(self, value: int) -> None:
-        if self._is_valid_index(value):
+        if self._is_valid_index(value) and value != self._current_index:
+            if self.lazy_load_enabled and self.current_frame is not None:
+                self.current_frame.unload_image()
             self._current_index = value
 
     @property
@@ -337,24 +355,24 @@ class FrameCollection:
     def next_frame(self) -> bool:
         """다음 프레임으로 이동"""
         if self._current_index < len(self._frames) - 1:
-            self._current_index += 1
+            self.current_index += 1
             return True
         return False
 
     def previous_frame(self) -> bool:
         """이전 프레임으로 이동"""
         if self._current_index > 0:
-            self._current_index -= 1
+            self.current_index -= 1
             return True
         return False
 
     def go_to_first(self) -> None:
         """첫 프레임으로 이동"""
-        self._current_index = 0
+        self.current_index = 0
 
     def go_to_last(self) -> None:
         """마지막 프레임으로 이동"""
-        self._current_index = max(0, len(self._frames) - 1)
+        self.current_index = max(0, len(self._frames) - 1)
 
     # === 선택 관리 ===
     @property
@@ -576,12 +594,12 @@ class FrameCollection:
     def scale_delays(self, factor: float) -> None:
         """모든 딜레이에 배율 적용"""
         for frame in self._frames:
-            frame.delay_ms = int(frame.delay_ms * factor)
+            frame.duration_ms *= factor
 
     @property
-    def total_duration(self) -> int:
+    def total_duration(self) -> float:
         """총 재생 시간 (밀리초)"""
-        return sum(f.delay_ms for f in self._frames)
+        return sum(f.duration_ms for f in self._frames)
 
     # === 메타데이터 ===
     @property
@@ -604,12 +622,12 @@ class FrameCollection:
         return (self.width, self.height)
 
     @property
-    def loop_count(self) -> int:
+    def loop_count(self) -> Optional[int]:
         return self._loop_count
 
     @loop_count.setter
-    def loop_count(self, value: int) -> None:
-        self._loop_count = max(0, value)
+    def loop_count(self, value: Optional[int]) -> None:
+        self._loop_count = None if value is None else max(0, value)
 
     # === 유틸리티 ===
     def _is_valid_index(self, index: int) -> bool:
@@ -622,7 +640,9 @@ class FrameCollection:
             for idx in self._selected_indices
         }
 
-        if self._current_index >= len(self._frames):
+        if self._current_index > deleted_index:
+            self._current_index -= 1
+        elif self._current_index >= len(self._frames):
             self._current_index = max(0, len(self._frames) - 1)
 
     def _update_indices_after_insert(self, inserted_index: int) -> None:
@@ -641,6 +661,8 @@ class FrameCollection:
             collection.add_frame(frame.clone())
         collection._current_index = self._current_index
         collection._loop_count = self._loop_count
+        if self.default_image is not None:
+            collection.default_image = self.default_image.clone()
         collection._selected_indices = self._selected_indices.copy()
         collection._lazy_load_enabled = self._lazy_load_enabled
         return collection
@@ -714,7 +736,7 @@ class FrameCollection:
 
         for i in range(start, end):
             if not self._frames[i].is_loaded:
-                _ = self._frames[i].image  # 로드 트리거
+                self._frames[i].display_image()  # 로드 트리거
                 loaded += 1
 
         return loaded
@@ -946,12 +968,12 @@ class FrameCollection:
         for frame in self._frames:
             if frame is None:
                 continue
-            mode = frame.image.mode if frame.is_loaded else None
+            mode = frame.display_image().mode if frame.is_loaded else None
             # is_loaded 가 False (압축 상태) 면 디코드해서 mode 확인 — 비용이 있으므로
             # 첫 비-P 프레임을 찾으면 즉시 반환.
             if mode is None:
                 try:
-                    mode = frame.image.mode
+                    mode = frame.display_image().mode
                 except Exception:
                     continue
             if mode != 'P':

@@ -617,7 +617,7 @@ class CanvasWidget(wx.Panel):
 
             # 프레임을 PIL Image로 가져오기
             if pil_image is None:
-                pil_image = frame.image
+                pil_image = frame.display_image()
             if not pil_image:
                 return
 

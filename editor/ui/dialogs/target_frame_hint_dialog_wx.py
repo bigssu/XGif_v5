@@ -5,6 +5,7 @@ TargetFrameHintDialog - 대상 프레임 선택 안내 팝업 (wxPython 버전)
 "다음 부터 안보기" 체크 시 이후에는 표시하지 않음.
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 from ..style_constants_wx import Colors, ThemedDialog
 from ui.i18n import tr
 
@@ -44,11 +45,12 @@ class TargetFrameHintDialog(ThemedDialog):
 
     def _setup_ui(self):
         """UI 초기화"""
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 
         # 안내 메시지
-        msg_label = wx.StaticText(self, label=self._tr("target_frame_hint_message"))
+        msg_label = wx.StaticText(body, label=self._tr("target_frame_hint_message"))
         msg_label.SetForegroundColour(Colors.TEXT_PRIMARY)
         msg_label.Wrap(400)
         font = msg_label.GetFont()
@@ -59,7 +61,7 @@ class TargetFrameHintDialog(ThemedDialog):
         main_sizer.AddStretchSpacer()
 
         # "다음부터 이 안내를 표시하지 않음" 체크박스
-        self._dont_show_checkbox = wx.CheckBox(self, label=self._tr("dont_show_again"))
+        self._dont_show_checkbox = wx.CheckBox(body, label=self._tr("dont_show_again"))
         self._dont_show_checkbox.SetForegroundColour(Colors.TEXT_SECONDARY)
         main_sizer.Add(self._dont_show_checkbox, 0, wx.LEFT | wx.BOTTOM, 20)
 
@@ -74,9 +76,8 @@ class TargetFrameHintDialog(ThemedDialog):
         ok_btn.Bind(wx.EVT_BUTTON, self._on_accept)
         button_sizer.Add(ok_btn, 0, wx.ALL, 5)
 
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 20)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def _on_accept(self, event):
         """확인 버튼 클릭"""

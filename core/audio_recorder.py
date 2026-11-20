@@ -65,9 +65,11 @@ def derive_audio_buffer_limit_mb(memory_limit_mb: object) -> int:
 
 
 # 오디오 라이브러리 (선택적)
+_STREAM_ERRORS = (OSError, RuntimeError, ValueError)
 try:
     import sounddevice as sd
     import soundfile as sf
+    _STREAM_ERRORS += (sd.PortAudioError,)
     HAS_AUDIO = True
 except ImportError:
     HAS_AUDIO = False
@@ -118,7 +120,6 @@ class AudioRecorder:
 
         # loopback 디바이스 ID
         self._loopback_device = None
-        self._mic_device = None
         if HAS_AUDIO:
             self._find_devices()
         self.last_start_result = AudioStartResult(
@@ -166,19 +167,8 @@ class AudioRecorder:
                     self.system_channels = self._safe_channels(device, 2)
                     break
 
-            # 마이크 디바이스 찾기 (기본 입력 장치)
-            try:
-                default_input = sd.query_devices(kind='input')
-                if default_input:
-                    self._mic_device = default_input['index']
-                    self.mic_sample_rate = int(default_input.get('default_samplerate', 44100))
-                    self.mic_channels = self._safe_channels(default_input, 2)
-            except Exception:
-                pass
-
         except Exception:
             self._loopback_device = None
-            self._mic_device = None
 
     def set_record_mic(self, enabled: bool):
         """마이크 오디오 녹음 설정"""
@@ -303,14 +293,15 @@ class AudioRecorder:
                     self.system_sample_rate = sr
                     self.system_channels = ch
                     system_started = True
-                except (OSError, RuntimeError) as e:
+                except _STREAM_ERRORS as e:
                     logger.warning(f"시스템 오디오 스트림 시작 실패 (loopback): {e}")
-                    self._cleanup_streams()
+                    self._close_stream(self._system_stream)
+                    self._system_stream = None
                     last_error = str(e)
 
             if self.record_mic:
                 try:
-                    dev = sd.query_devices(self._mic_device) if self._mic_device is not None else sd.query_devices(kind='input')
+                    dev = sd.query_devices(kind='input')
                     ch = self._safe_channels(dev, 2)
                     sr = int(dev.get('default_samplerate', 44100))
                     self._mic_stream = sd.InputStream(
@@ -318,14 +309,15 @@ class AudioRecorder:
                         channels=ch,
                         callback=self._mic_audio_callback,
                         dtype='float32',
-                        device=self._mic_device,
+                        device=dev.get('index'),
                     )
                     self._mic_stream.start()
                     self.mic_sample_rate = sr
                     self.mic_channels = ch
                     mic_started = True
-                except (OSError, RuntimeError) as e:
+                except _STREAM_ERRORS as e:
                     logger.warning(f"마이크 오디오 스트림 시작 실패: {e}")
+                    self._close_stream(self._mic_stream)
                     self._mic_stream = None
                     last_error = str(e)
 
@@ -333,7 +325,8 @@ class AudioRecorder:
             if self._system_stream is None and self._mic_stream is None:
                 logger.error("오디오 스트림을 시작할 수 없습니다")
                 self.recording = False
-                self._cleanup_streams()
+                with self._lock:
+                    self._clear_audio_buffers_locked()
                 self.last_start_result = AudioStartResult(
                     system_requested=system_requested,
                     mic_requested=mic_requested,
@@ -362,23 +355,20 @@ class AudioRecorder:
             )
             return self.last_start_result
 
+    @staticmethod
+    def _close_stream(stream):
+        if stream is not None:
+            with contextlib.suppress(Exception):
+                stream.stop()
+            with contextlib.suppress(Exception):
+                stream.close()
+
     def _cleanup_streams(self):
         """오디오 스트림 정리 (내부 헬퍼)"""
-        if self._system_stream is not None:
-            try:
-                self._system_stream.stop()
-                self._system_stream.close()
-            except Exception:
-                pass
-            self._system_stream = None
-
-        if self._mic_stream is not None:
-            try:
-                self._mic_stream.stop()
-                self._mic_stream.close()
-            except Exception:
-                pass
-            self._mic_stream = None
+        self._close_stream(self._system_stream)
+        self._system_stream = None
+        self._close_stream(self._mic_stream)
+        self._mic_stream = None
 
     def stop(self) -> Optional[str]:
         """
@@ -426,12 +416,18 @@ class AudioRecorder:
 
             # 임시 WAV 파일로 저장 (보안: mkstemp 사용)
             fd, self._temp_file = tempfile.mkstemp(suffix='.wav', prefix='giffy_audio_')
-            os.close(fd)  # soundfile이 파일을 직접 열기 때문에 fd 닫음
-            sf.write(self._temp_file, audio_array, sample_rate)
-
+            try:
+                os.close(fd)  # soundfile이 파일을 직접 열기 때문에 fd 닫음
+                sf.write(self._temp_file, audio_array, sample_rate)
+            except (OSError, RuntimeError, ValueError):
+                # Keep ownership for cleanup() if Windows still holds the file open.
+                with contextlib.suppress(OSError):
+                    os.unlink(self._temp_file)
+                    self._temp_file = None
+                raise
             return self._temp_file
 
-        except (IOError, OSError, ValueError) as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error(f"오디오 저장 실패: {e}")
             return None
 

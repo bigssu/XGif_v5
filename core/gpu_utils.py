@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .dependency_checker import DependencyState, DependencyStatus
+
 logger = logging.getLogger(__name__)
 
 # pynvml 사용 가능 여부
@@ -31,7 +33,7 @@ _gpu_lock = threading.Lock()
 _pynvml_initialized = False
 
 # CuPy 사용 가능 여부 (지연 로딩)
-_cupy_available = None  # None = 아직 확인 안 함
+_cupy_status: Optional[DependencyStatus] = None
 _cp = None
 
 
@@ -83,52 +85,24 @@ def _init_pynvml() -> bool:
 
 _cupy_check_lock = threading.Lock()
 
-def _check_cupy():
-    """CuPy 사용 가능 여부를 안전하게 확인 (지연 로딩, 스레드 안전)"""
-    global _cupy_available, _cp
-
-    if _cupy_available is not None:
-        return _cupy_available
-
+def get_cupy_status() -> DependencyStatus:
+    """Cache the operational probe until installation or an explicit recheck."""
+    global _cupy_status, _cp
     with _cupy_check_lock:
-        # 이중 체크 (Double-checked locking)
-        if _cupy_available is not None:
-            return _cupy_available
-
-        _cupy_available = False
-
-        try:
-            # frozen 앱에서 시스템 site-packages 경로 추가
-            from .utils import ensure_system_site_packages
-            ensure_system_site_packages()
-        except Exception:
-            pass
-
-        try:
-            # 경고 메시지 억제
+        if _cupy_status is None:
+            from .dependency_checker import check_cupy
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                import cupy as cp
+                _cupy_status = check_cupy()
+            if _cupy_status.state == DependencyState.INSTALLED:
+                import cupy
+                _cp = cupy
+                logger.info("CuPy %s initialized", _cupy_status.installed_version)
+        return _cupy_status
 
-                # GPU 디바이스 확인
-                device_count = cp.cuda.runtime.getDeviceCount()
-                if device_count <= 0:
-                    logger.info("No CUDA devices found")
-                    return False
 
-                # CuPy 사용 가능으로 설정 (메모리 테스트 제거 - 느려서)
-                _cupy_available = True
-                _cp = cp
-                logger.info(f"CuPy initialized successfully with {device_count} device(s)")
-
-        except ImportError as e:
-            logger.info("CuPy not available: %s", e)
-        except (RuntimeError, OSError, AttributeError) as e:
-            logger.info("CuPy initialization failed: %s", e)
-        except Exception as e:
-            logger.info("CuPy unexpected error: %s", e)
-
-        return _cupy_available
+def _check_cupy() -> bool:
+    return get_cupy_status().state == DependencyState.INSTALLED
 
 
 def reset_gpu_cache(reset_cupy: bool = True) -> None:
@@ -136,13 +110,13 @@ def reset_gpu_cache(reset_cupy: bool = True) -> None:
 
     CuPy를 런타임에 설치한 뒤 재검사할 때 기존 실패 캐시가 남지 않게 한다.
     """
-    global _gpu_info, _cupy_available, _cp
+    global _gpu_info, _cupy_status, _cp
 
     with _gpu_lock:
         _gpu_info = None
     if reset_cupy:
         with _cupy_check_lock:
-            _cupy_available = None
+            _cupy_status = None
             _cp = None
 
 

@@ -25,6 +25,57 @@ def test_legacy_settings_write_failure_preserves_existing_file(tmp_path, monkeyp
         setattr(window, name, SimpleNamespace(GetValue=lambda: False))
     for name in ['backend_combo', 'encoder_combo', 'codec_combo', 'memory_limit_combo', 'lang_combo']:
         setattr(window, name, SimpleNamespace(GetSelection=lambda: 0))
+    window.memory_limit_combo.GetClientData = lambda idx: "1024"
     assert SettingsDialog.save_settings(window) is False
+    window.trans.set_language.assert_not_called()
     assert target.read_bytes() == original
     assert list(target.parent.iterdir()) == [target]
+
+
+def test_failed_or_cancelled_dialog_keeps_recorder_settings(tmp_path, monkeypatch):
+    import wx
+    from core.settings import AppSettings
+
+    app = wx.App.Get() or wx.App(False)
+    monkeypatch.setenv('APPDATA', str(tmp_path))
+    live = AppSettings(skip_cupy_check='true')
+    dialog = SettingsDialog(None, live)
+    try:
+        dialog._on_reset_dep_flags(None)
+        assert live.skip_cupy_check == 'true'
+        dialog.watermark_cb.SetValue(True)
+        with monkeypatch.context() as patch:
+            patch.setattr(AppSettings, 'save', Mock(side_effect=PermissionError()))
+            assert not dialog.save_settings()
+        assert live.watermark == 'false'
+        assert dialog.save_settings()
+        assert AppSettings.load().watermark == 'true'
+        assert AppSettings.load().skip_cupy_check == 'false'
+    finally:
+        dialog.Destroy()
+        app.Yield()
+
+
+def test_custom_memory_limit_survives_gui_language_and_unrelated_save(tmp_path, monkeypatch):
+    import wx
+    from cli.config import set_config_value
+    from core.settings import AppSettings
+
+    app = wx.App.Get() or wx.App(False)
+    monkeypatch.setenv('APPDATA', str(tmp_path))
+    assert set_config_value('memory_limit_mb', '256')
+    dialog = SettingsDialog(None, AppSettings.load())
+    try:
+        assert '256' in dialog.memory_limit_combo.GetStringSelection()
+        dialog.retranslateUi()
+        assert '256' in dialog.memory_limit_combo.GetStringSelection()
+        dialog.watermark_cb.SetValue(True)
+        assert dialog.save_settings()
+        saved = AppSettings.load()
+        assert saved.memory_limit_mb == '256' and saved.watermark == 'true'
+        dialog.memory_limit_combo.SetSelection(1)
+        assert dialog.save_settings()
+        assert AppSettings.load().memory_limit_mb == '2048'
+    finally:
+        dialog.Destroy()
+        app.Yield()

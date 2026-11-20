@@ -5,6 +5,7 @@ SaveDialog (wxPython) - 양자화 설정 및 실시간 프리뷰가 있는 저�
 다이얼로그를 구현합니다.
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 import contextlib
 from PIL import Image
 from typing import Optional, Dict, List
@@ -12,7 +13,17 @@ from pathlib import Path
 
 from .style_constants_wx import Colors, ThemedDialog
 from ui.design_system import CommandButton
+from ui.i18n import tr
 from ..core.editor_gif_encoder import GifEncoder, EncoderSettings, QuantizationMethod
+
+
+def confirm_output_path(parent, file_path) -> Optional[bool]:
+    """Return overwrite permission for the final path, or None on cancellation."""
+    if not Path(file_path).exists():
+        return False
+    reply = wx.MessageBox(tr("replace_recording_file", path=file_path),
+                          tr("confirm"), wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, parent)
+    return True if reply == wx.YES else None
 
 
 class SaveDialog(ThemedDialog):
@@ -84,6 +95,7 @@ class SaveDialog(ThemedDialog):
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._main_window = main_window
+        self.overwrite = False
 
         # 타이머 초기화
         self._preview_timer = wx.Timer(self)
@@ -93,7 +105,7 @@ class SaveDialog(ThemedDialog):
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_window_destroy)
 
         # 상태 변수 초기화
-        self._settings = EncoderSettings()
+        self._settings = EncoderSettings(loop_count=main_window.frames.loop_count)
         self._file_path: Optional[str] = None
         self._preview_zoom: float = 1.0
         self._original_preview_bitmap: Optional[wx.Bitmap] = None
@@ -114,12 +126,16 @@ class SaveDialog(ThemedDialog):
         self._init_preview_slider()
 
         # 초기 프리뷰 로딩 (지연 실행)
-        wx.CallLater(self.INITIAL_PREVIEW_DELAY_MS, self._update_preview_fast)
-        wx.CallLater(self.QUANTIZED_PREVIEW_DELAY_MS, self._enable_quantized_preview)
+        self._initial_previews = (
+            wx.CallLater(self.INITIAL_PREVIEW_DELAY_MS, self._update_preview_fast),
+            wx.CallLater(self.QUANTIZED_PREVIEW_DELAY_MS, self._enable_quantized_preview),
+        )
 
         # 다이얼로그 크기 설정: preview/settings panes can now compress on smaller screens.
         self.SetSize((860, 560))
-        self.SetMinSize((720, 520))
+        display_index = wx.Display.GetFromWindow(self)
+        area = wx.Display(max(0, display_index)).GetClientArea()
+        self.SetMinSize((min(720, max(1, area.width - 40)), min(520, max(1, area.height - 40))))
         self.CenterOnParent()
 
     @staticmethod
@@ -142,15 +158,16 @@ class SaveDialog(ThemedDialog):
         self.SetBackgroundColour(self.COLOR_DARK_BG)
         self.SetForegroundColour(self.COLOR_WHITE)
 
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         # === 왼쪽: 프리뷰 영역 ===
-        preview_box = wx.StaticBox(self, label=self._get_translation("save_dialog_preview", "Preview"))
+        preview_box = wx.StaticBox(body, label=self._get_translation("save_dialog_preview", "Preview"))
         preview_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preview_sizer = wx.StaticBoxSizer(preview_box, wx.VERTICAL)
 
         # 프리뷰 이미지 패널
-        self._preview_panel = wx.Panel(self, size=(self.PREVIEW_WIDTH, self.PREVIEW_HEIGHT))
+        self._preview_panel = wx.Panel(body, size=(self.PREVIEW_WIDTH, self.PREVIEW_HEIGHT))
         self._preview_panel.SetBackgroundColour(self.COLOR_PREVIEW_BG)
         self._preview_panel.SetMinSize((360, 240))
 
@@ -164,13 +181,13 @@ class SaveDialog(ThemedDialog):
 
         # Zoom 버튼 영역
         zoom_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        zoom_label = wx.StaticText(self, label=self._get_translation("save_dialog_zoom", "Zoom:"))
+        zoom_label = wx.StaticText(body, label=self._get_translation("save_dialog_zoom", "Zoom:"))
         zoom_label.SetForegroundColour(self.COLOR_LABEL)
         zoom_sizer.Add(zoom_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         # Zoom 버튼들
         for zoom in self.ZOOM_LEVELS:
-            btn = wx.ToggleButton(self, label=f"{zoom}x", size=(72, 36))
+            btn = wx.ToggleButton(body, label=f"{zoom}x", size=(72, 36))
             btn.SetBackgroundColour(self.COLOR_BUTTON_BG)
             btn.SetForegroundColour(self.COLOR_WHITE)
             if zoom == 1.0:
@@ -184,15 +201,15 @@ class SaveDialog(ThemedDialog):
 
         # 프리뷰 프레임 슬라이더
         frame_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        frame_label = wx.StaticText(self, label=self._get_translation("save_dialog_frame", "Frame:"))
+        frame_label = wx.StaticText(body, label=self._get_translation("save_dialog_frame", "Frame:"))
         frame_label.SetForegroundColour(self.COLOR_LABEL)
         frame_sizer.Add(frame_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._preview_frame_slider = wx.Slider(self, minValue=0, maxValue=100, value=0, style=wx.SL_HORIZONTAL)
+        self._preview_frame_slider = wx.Slider(body, minValue=0, maxValue=100, value=0, style=wx.SL_HORIZONTAL)
         self._preview_frame_slider.Bind(wx.EVT_SLIDER, self._on_preview_frame_changed)
         frame_sizer.Add(self._preview_frame_slider, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._preview_frame_label = wx.StaticText(self, label="0/0")
+        self._preview_frame_label = wx.StaticText(body, label="0/0")
         self._preview_frame_label.SetMinSize((60, -1))
         self._preview_frame_label.SetForegroundColour(self.COLOR_LABEL)
         frame_sizer.Add(self._preview_frame_label, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -200,7 +217,7 @@ class SaveDialog(ThemedDialog):
         preview_sizer.Add(frame_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 프리뷰 정보
-        self._preview_info = wx.StaticText(self, label=self._get_translation("save_dialog_preview_info", "Original vs Compressed Preview"))
+        self._preview_info = wx.StaticText(body, label=self._get_translation("save_dialog_preview_info", "Original vs Compressed Preview"))
         self._preview_info.SetForegroundColour(self.COLOR_LABEL)
         preview_sizer.Add(self._preview_info, 0, wx.ALL | wx.ALIGN_CENTER, 5)
 
@@ -210,18 +227,18 @@ class SaveDialog(ThemedDialog):
         settings_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # 양자화 방법 선택
-        quant_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quantization", "Quantization Algorithm"))
+        quant_box = wx.StaticBox(body, label=self._get_translation("save_dialog_quantization", "Quantization Algorithm"))
         quant_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         quant_sizer = wx.StaticBoxSizer(quant_box, wx.VERTICAL)
 
-        self._quant_combo = wx.ComboBox(self, style=wx.CB_READONLY, size=(200, -1))
+        self._quant_combo = wx.ComboBox(body, style=wx.CB_READONLY, size=(200, -1))
         self._populate_quant_combo()
         self._quant_combo.SetBackgroundColour(Colors.BG_TERTIARY)
         self._quant_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
         quant_sizer.Add(self._quant_combo, 0, wx.ALL, 5)
 
         # 알고리즘 설명
-        self._quant_desc = wx.StaticText(self, label=self._get_translation("save_dialog_quant_desc", "PIL default quantization algorithm"))
+        self._quant_desc = wx.StaticText(body, label=self._get_translation("save_dialog_quant_desc", "PIL default quantization algorithm"))
         self._quant_desc.SetForegroundColour(self.COLOR_SUBTEXT)
         self._quant_desc.Wrap(300)
         quant_sizer.Add(self._quant_desc, 0, wx.ALL, 5)
@@ -229,20 +246,20 @@ class SaveDialog(ThemedDialog):
         settings_sizer.Add(quant_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 품질 설정
-        quality_box = wx.StaticBox(self, label=self._get_translation("save_dialog_quality", "Quality Settings"))
+        quality_box = wx.StaticBox(body, label=self._get_translation("save_dialog_quality", "Quality Settings"))
         quality_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         quality_sizer = wx.StaticBoxSizer(quality_box, wx.VERTICAL)
 
         # 색상 수
         colors_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        colors_label = wx.StaticText(self, label=self._get_translation("save_dialog_colors", "Number of Colors"))
+        colors_label = wx.StaticText(body, label=self._get_translation("save_dialog_colors", "Number of Colors"))
         colors_label.SetForegroundColour(self.COLOR_LABEL)
         colors_sizer.Add(colors_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._colors_slider = wx.Slider(self, minValue=2, maxValue=256, value=256, style=wx.SL_HORIZONTAL)
+        self._colors_slider = wx.Slider(body, minValue=2, maxValue=256, value=256, style=wx.SL_HORIZONTAL)
         colors_sizer.Add(self._colors_slider, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        self._colors_label = wx.StaticText(self, label="256")
+        self._colors_label = wx.StaticText(body, label="256")
         self._colors_label.SetMinSize((40, -1))
         self._colors_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         colors_sizer.Add(self._colors_label, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -250,13 +267,13 @@ class SaveDialog(ThemedDialog):
         quality_sizer.Add(colors_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 디더링
-        self._dither_check = wx.CheckBox(self, label=self._get_translation("save_dialog_dither", "Use Dithering"))
+        self._dither_check = wx.CheckBox(body, label=self._get_translation("save_dialog_dither", "Use Dithering"))
         self._dither_check.SetValue(True)
         self._dither_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         quality_sizer.Add(self._dither_check, 0, wx.ALL, 5)
 
         # 최적화
-        self._optimize_check = wx.CheckBox(self, label=self._get_translation("save_dialog_optimize", "Optimize File Size"))
+        self._optimize_check = wx.CheckBox(body, label=self._get_translation("save_dialog_optimize", "Optimize File Size"))
         self._optimize_check.SetValue(True)
         self._optimize_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         quality_sizer.Add(self._optimize_check, 0, wx.ALL, 5)
@@ -264,19 +281,19 @@ class SaveDialog(ThemedDialog):
         settings_sizer.Add(quality_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # 파일 크기 예상
-        size_box = wx.StaticBox(self, label=self._get_translation("save_dialog_result", "Expected Result"))
+        size_box = wx.StaticBox(body, label=self._get_translation("save_dialog_result", "Expected Result"))
         size_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         size_sizer = wx.StaticBoxSizer(size_box, wx.VERTICAL)
 
         size_text = self._get_translation("save_dialog_size", "Estimated Size:")
         self._size_label = wx.StaticText(
-            self,
+            body,
             label=f"{size_text} {self._get_translation('save_dialog_calculating', 'Calculating...')}",
         )
         self._size_label.SetForegroundColour(self.COLOR_SIZE_TEXT)
         size_sizer.Add(self._size_label, 0, wx.ALL, 5)
 
-        self._comparison_label = wx.StaticText(self, label="")
+        self._comparison_label = wx.StaticText(body, label="")
         self._comparison_label.SetForegroundColour(self.COLOR_SUBTEXT)
         self._comparison_label.Wrap(300)
         size_sizer.Add(self._comparison_label, 0, wx.ALL, 5)
@@ -311,11 +328,10 @@ class SaveDialog(ThemedDialog):
         self._cancel_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CANCEL))
         button_sizer.Add(self._cancel_btn, 1, wx.ALL, 5)
 
-        settings_sizer.Add(button_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         main_sizer.Add(settings_sizer, 1, wx.ALL | wx.EXPAND, 10)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def _populate_quant_combo(self):
         """양자화 콤보박스 항목 채우기"""
@@ -573,11 +589,11 @@ class SaveDialog(ThemedDialog):
 
             frame_index = max(0, min(self._preview_frame_index, frame_count - 1))
             preview_frame = frames.get_frame(frame_index)
-            if not preview_frame or not hasattr(preview_frame, 'image') or preview_frame.image is None:
+            if preview_frame is None:
                 return
 
             # 원본 프레임만 빠르게 표시
-            original_img = preview_frame.image.copy()
+            original_img = preview_frame.copy_image()
             if original_img.mode != 'RGBA':
                 original_img = original_img.convert('RGBA')
 
@@ -619,7 +635,7 @@ class SaveDialog(ThemedDialog):
 
             frame_index = max(0, min(self._preview_frame_index, frame_count - 1))
             preview_frame = frames.get_frame(frame_index)
-            if not preview_frame or not hasattr(preview_frame, 'image') or preview_frame.image is None:
+            if preview_frame is None:
                 return
 
             # 설정 업데이트
@@ -629,7 +645,7 @@ class SaveDialog(ThemedDialog):
             preview_img = GifEncoder.create_preview(preview_frame, self._settings)
 
             if preview_img is None:
-                preview_img = preview_frame.image.copy()
+                preview_img = preview_frame.copy_image()
                 if preview_img.mode != 'RGBA':
                     preview_img = preview_img.convert('RGBA')
 
@@ -638,7 +654,7 @@ class SaveDialog(ThemedDialog):
 
             if preview_bitmap is None or not preview_bitmap.IsOk():
                 # 원본 프레임 이미지 사용
-                original_img = preview_frame.image.copy()
+                original_img = preview_frame.copy_image()
                 if original_img.mode != 'RGBA':
                     original_img = original_img.convert('RGBA')
                 preview_bitmap = self._pil_to_bitmap(original_img)
@@ -675,7 +691,7 @@ class SaveDialog(ThemedDialog):
             )
             # 에러 발생 시 원본 프레임 이미지 표시 시도
             try:
-                original_img = preview_frame.image.copy()
+                original_img = preview_frame.copy_image()
                 if original_img.mode != 'RGBA':
                     original_img = original_img.convert('RGBA')
                 preview_bitmap = self._pil_to_bitmap(original_img)
@@ -749,7 +765,7 @@ class SaveDialog(ThemedDialog):
             self._get_translation("save_dialog_file_title", "Save Animation"),
             defaultDir=start_dir,
             wildcard=wildcard,
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
+            style=wx.FD_SAVE
         )
 
         if dlg.ShowModal() == wx.ID_OK:
@@ -765,6 +781,11 @@ class SaveDialog(ThemedDialog):
                     file_path += ".png"
                 else:
                     file_path += ".gif"
+            overwrite = confirm_output_path(self, file_path)
+            if overwrite is None:
+                dlg.Destroy()
+                return
+            self.overwrite = overwrite
 
             self._file_path = file_path
             # 경로 저장
@@ -826,14 +847,18 @@ class SaveDialog(ThemedDialog):
     def _on_window_destroy(self, event):
         """윈도우 파괴 이벤트 — 타이머 안전 정리"""
         if event.GetEventObject() is self:
-            self._preview_timer.Stop()
-            self._size_timer.Stop()
+            self._stop_timers()
         event.Skip()
+
+    def _stop_timers(self):
+        self._preview_timer.Stop()
+        self._size_timer.Stop()
+        for preview in self._initial_previews:
+            preview.Stop()
 
     def Destroy(self):
         """다이얼로그 닫힐 때 리소스 정리"""
-        self._preview_timer.Stop()
-        self._size_timer.Stop()
+        self._stop_timers()
         # 프리뷰 리소스 해제
         self._original_preview_bitmap = None
         super().Destroy()

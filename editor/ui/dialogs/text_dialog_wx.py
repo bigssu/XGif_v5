@@ -2,6 +2,7 @@
 TextDialog - 텍스트 추가 다이얼로그 (wxPython 버전)
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 from typing import TYPE_CHECKING, Tuple
 
 from ..style_constants_wx import Colors, ThemedDialog
@@ -24,16 +25,17 @@ class TextDialog(ThemedDialog):
 
     def _setup_ui(self):
         """UI 초기화"""
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 
         # 텍스트 입력
-        text_box = wx.StaticBox(self, label=tr("text_box"))
+        text_box = wx.StaticBox(body, label=tr("text_box"))
         text_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         text_sizer = wx.StaticBoxSizer(text_box, wx.VERTICAL)
         text_sizer.AddSpacer(10)
 
-        self._text_ctrl = wx.TextCtrl(self, style=wx.TE_MULTILINE, size=(-1, 100))
+        self._text_ctrl = wx.TextCtrl(body, style=wx.TE_MULTILINE, size=(-1, 100))
         self._text_ctrl.SetBackgroundColour(Colors.BG_TERTIARY)
         self._text_ctrl.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._text_ctrl.SetValue(tr("text_dialog_placeholder"))
@@ -43,18 +45,18 @@ class TextDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 폰트 설정
-        font_box = wx.StaticBox(self, label=tr("text_font"))
+        font_box = wx.StaticBox(body, label=tr("text_font"))
         font_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         font_sizer = wx.StaticBoxSizer(font_box, wx.VERTICAL)
         font_sizer.AddSpacer(10)
 
         # 폰트 크기
         size_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        size_label = wx.StaticText(self, label=tr("common_size_label"))
+        size_label = wx.StaticText(body, label=tr("common_size_label"))
         size_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_sizer.Add(size_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._size_spin = wx.SpinCtrl(self, min=8, max=200, initial=32)
+        self._size_spin = wx.SpinCtrl(body, min=8, max=200, initial=32)
         self._size_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._size_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         size_sizer.Add(self._size_spin, 0)
@@ -63,11 +65,11 @@ class TextDialog(ThemedDialog):
 
         # 폰트 스타일
         style_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._bold_check = wx.CheckBox(self, label=tr("text_bold"))
+        self._bold_check = wx.CheckBox(body, label=tr("text_bold"))
         self._bold_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         style_sizer.Add(self._bold_check, 0, wx.ALL, 5)
 
-        self._italic_check = wx.CheckBox(self, label=tr("text_italic"))
+        self._italic_check = wx.CheckBox(body, label=tr("text_italic"))
         self._italic_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         style_sizer.Add(self._italic_check, 0, wx.ALL, 5)
 
@@ -77,32 +79,32 @@ class TextDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 색상 설정
-        color_box = wx.StaticBox(self, label=tr("text_dialog_color"))
+        color_box = wx.StaticBox(body, label=tr("text_dialog_color"))
         color_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         color_sizer = wx.StaticBoxSizer(color_box, wx.VERTICAL)
         color_sizer.AddSpacer(10)
 
         # 텍스트 색상
         text_color_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        text_color_label = wx.StaticText(self, label=tr("text_color_label"))
+        text_color_label = wx.StaticText(body, label=tr("text_color_label"))
         text_color_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         text_color_sizer.Add(text_color_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._text_color_btn = wx.ColourPickerCtrl(self, colour=self._text_color)
+        self._text_color_btn = wx.ColourPickerCtrl(body, colour=self._text_color)
         text_color_sizer.Add(self._text_color_btn, 0)
 
         color_sizer.Add(text_color_sizer, 0, wx.ALL, 10)
 
         # 배경 색상
         bg_color_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        bg_color_label = wx.StaticText(self, label=tr("text_bg_label"))
+        bg_color_label = wx.StaticText(body, label=tr("text_bg_label"))
         bg_color_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         bg_color_sizer.Add(bg_color_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._bg_color_btn = wx.ColourPickerCtrl(self, colour=wx.Colour(0, 0, 0))
+        self._bg_color_btn = wx.ColourPickerCtrl(body, colour=wx.Colour(0, 0, 0))
         bg_color_sizer.Add(self._bg_color_btn, 0)
 
-        self._bg_transparent_check = wx.CheckBox(self, label=tr("text_transparent"))
+        self._bg_transparent_check = wx.CheckBox(body, label=tr("text_transparent"))
         self._bg_transparent_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         self._bg_transparent_check.SetValue(True)
         bg_color_sizer.Add(self._bg_transparent_check, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, 10)
@@ -129,9 +131,8 @@ class TextDialog(ThemedDialog):
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 20)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def get_text(self) -> str:
         """텍스트 반환"""

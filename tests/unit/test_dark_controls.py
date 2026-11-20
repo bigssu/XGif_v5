@@ -461,3 +461,78 @@ def test_entry_points_use_dark_mode_helper(entry_point):
     # 매직 넘버 직접 호출은 헬퍼 한 곳으로 모이지 않으면 DRY 위반
     assert 'SetOption("msw.dark-mode"' not in source, \
         f"{entry_point} 가 wx.SystemOptions 매직 넘버를 직접 호출"
+
+
+def test_owner_drawn_fields_measure_font_and_keep_arrow_clear(monkeypatch):
+    import numpy as np
+
+    from ui.dark_controls import DarkSelect, DarkSpinCtrlDouble
+    from ui.design_system import CommandButton
+
+    _ensure_wx_app()
+    frame = wx.Frame(None)
+    try:
+        label = "GPU 가속 재검사"
+        button = CommandButton(frame, label=label, icon_type="gpu", size=(40, 20))
+        select = DarkSelect(frame, size=(100, 26))
+        spin = DarkSpinCtrlDouble(frame, size=(40, 26), min=-1000, max=1000)
+        font = wx.Font(24, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
+        for control in (button, select, spin):
+            control.SetFont(font)
+            assert control.GetMinSize().height >= control.GetTextExtent("Ag한")[1]
+        assert button.GetMinSize().width >= button.GetTextExtent(label)[0] + 18 + 6
+        spin.SetDigits(4)
+        assert spin.GetMinSize().width >= spin.GetTextExtent("-1000.0000")[0] + 32
+
+        select.SetSize(select.GetMinSize())
+        w, h = select.GetClientSize()
+        target = wx.Bitmap(w, h)
+        dc = wx.MemoryDC(target)
+        monkeypatch.setattr(wx, "PaintDC", lambda _: dc)
+
+        def render(value):
+            select.SetValue(value)
+            select._on_paint(None)
+            image = select._cached_bmp.ConvertToImage()
+            return np.frombuffer(image.GetData(), dtype=np.uint8).reshape(h, w, 3)
+
+        empty = render("")
+        full = render("다른 모니터의 긴 캡처 영역 이름")
+        assert np.any(empty[:, 8:w-24] != full[:, 8:w-24])
+        np.testing.assert_array_equal(empty[:, w-24:], full[:, w-24:])
+        dc.SelectObject(wx.NullBitmap)
+    finally:
+        frame.Destroy()
+
+
+def test_popup_opens_above_the_control_at_monitor_edge(monkeypatch):
+    from ui.dark_controls import DarkSelect, _DarkSelectPopup
+
+    _ensure_wx_app()
+    frame = wx.Frame(None)
+    try:
+        combo = DarkSelect(frame, choices=[str(i) for i in range(10)], size=(100, 26))
+        popup = _DarkSelectPopup(combo)
+        monkeypatch.setattr(popup, "Popup", lambda _: None)
+        monkeypatch.setattr(combo, "ClientToScreen", lambda pos: wx.Point(450, 260 + pos[1]))
+
+        class Display:
+            def __init__(self, index):
+                assert index == 0
+
+            @staticmethod
+            def GetFromWindow(_window):
+                return 0
+
+            def GetClientArea(self):
+                return wx.Rect(100, 100, 400, 200)
+
+        monkeypatch.setattr(wx, "Display", Display)
+        popup.popup_below_owner()
+        rect = popup.GetRect()
+        assert rect.x + rect.width == 500
+        assert rect.y + rect.height == 260
+        assert rect.y >= 100
+        popup.Destroy()
+    finally:
+        frame.Destroy()

@@ -150,7 +150,7 @@ class PencilToolbar(InlineToolbarBase):
             else:
                 self._apply_normal(paths, target_indices)
 
-            self._main_window._is_modified = True
+            self._main_window._mark_untracked_edit()
             super()._on_apply(event)
 
         except Exception as e:

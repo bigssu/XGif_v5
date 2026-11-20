@@ -3,7 +3,6 @@ import contextlib
 import os
 import subprocess
 import sys
-import json
 import re
 import venv
 import shutil
@@ -12,7 +11,6 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = PROJECT_DIR
 BUILD_VENV = os.path.join(PROJECT_DIR, "build_venv")
 DOT_VENV = os.path.join(PROJECT_DIR, ".venv")
-REQ_MINIMAL = os.path.join(PROJECT_DIR, "requirements_minimal.txt")
 MAIN_SCRIPT = os.path.join(PROJECT_DIR, "main.py")
 PYINSTALLER_MIN_VERSION = "6.20.0"
 PYINSTALLER_SPEC = f"pyinstaller>={PYINSTALLER_MIN_VERSION},<7.0.0"
@@ -32,23 +30,6 @@ def _get_pip_exe(venv_dir):
     return os.path.join(venv_dir, "bin", "pip")
 
 
-def _parse_requirements(req_file):
-    """Parse requirements file and return list of (name, min_version_or_None)."""
-    requirements = []
-    with open(req_file, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            # Match: package_name>=version or just package_name
-            m = re.match(r'^([A-Za-z0-9_.-]+)\s*(?:>=\s*([0-9][0-9.]*))?\s*', line)
-            if m:
-                name = m.group(1).lower()
-                version = m.group(2)  # None if no version specified
-                requirements.append((name, version))
-    return requirements
-
-
 def _version_tuple(version_str):
     """Convert version string to tuple for comparison."""
     parts = []
@@ -58,86 +39,6 @@ def _version_tuple(version_str):
         except ValueError:
             parts.append(0)
     return tuple(parts)
-
-
-def check_dependencies(python_exe, req_file=None):
-    """Check if all required packages are installed in the given Python environment.
-
-    Returns:
-        (all_ok, missing, found) where:
-        - all_ok: bool - True if all dependencies are satisfied
-        - missing: list of (name, required_version) tuples
-        - found: list of (name, installed_version) tuples
-    """
-    if req_file is None:
-        req_file = REQ_MINIMAL
-
-    requirements = _parse_requirements(req_file)
-
-    # Get installed packages via pip list --format=json
-    try:
-        result = subprocess.run(
-            [python_exe, "-m", "pip", "list", "--format=json"],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode != 0:
-            return False, [(name, ver) for name, ver in requirements], []
-        installed_raw = json.loads(result.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-        return False, [(name, ver) for name, ver in requirements], []
-
-    # Build lookup: lowercase name -> version
-    installed = {}
-    for pkg in installed_raw:
-        installed[pkg["name"].lower()] = pkg["version"]
-
-    missing = []
-    found = []
-
-    print("\n=== Dependency Check ===")
-    for req_name, req_version in requirements:
-        # pip normalizes names: underscores become hyphens
-        lookup_names = [req_name, req_name.replace("-", "_"), req_name.replace("_", "-")]
-
-        inst_version = None
-        for lookup in lookup_names:
-            if lookup in installed:
-                inst_version = installed[lookup]
-                break
-
-        if inst_version is None:
-            print(f"  [MISSING] {req_name}")
-            missing.append((req_name, req_version))
-        elif req_version and _version_tuple(inst_version) < _version_tuple(req_version):
-            print(f"  [OLD]     {req_name} {inst_version} (need >={req_version})")
-            missing.append((req_name, req_version))
-        else:
-            print(f"  [OK]      {req_name} {inst_version}")
-            found.append((req_name, inst_version))
-
-    total = len(requirements)
-    print(f"\n  Found: {len(found)}/{total}, Missing: {len(missing)}")
-
-    all_ok = len(missing) == 0
-    return all_ok, missing, found
-
-
-def install_missing_only(pip_exe, missing):
-    """Install only the missing packages."""
-    if not missing:
-        return
-
-    # Build pip install args: "name>=version" or just "name"
-    specs = []
-    for name, version in missing:
-        if version:
-            specs.append(f"{name}>={version}")
-        else:
-            specs.append(name)
-
-    print(f"\nInstalling {len(specs)} missing package(s)...")
-    print(f"  pip install {' '.join(specs)}")
-    subprocess.run([pip_exe, "install"] + specs, check=True)
 
 
 def _is_valid_venv(venv_dir):
@@ -160,60 +61,18 @@ def setup_venv(reuse_project_venv=True, clean_build_venv=False):
     """Build를 위한 가상환경 구축 (기존 venv 재사용 우선)"""
     global BUILD_VENV
 
-    # Strategy 1: Try reusing existing .venv
     if reuse_project_venv and _is_valid_venv(DOT_VENV):
-        print(f"\nFound existing .venv at {DOT_VENV}")
-        python_exe = _get_python_exe(DOT_VENV)
-        all_ok, missing, found = check_dependencies(python_exe)
+        BUILD_VENV = DOT_VENV
+    else:
+        BUILD_VENV = os.path.join(PROJECT_DIR, "build_venv")
+        if clean_build_venv or not _is_valid_venv(BUILD_VENV):
+            if os.path.exists(BUILD_VENV):
+                shutil.rmtree(BUILD_VENV)
+            venv.create(BUILD_VENV, with_pip=True)
 
-        if all_ok:
-            print("\nReusing .venv — all dependencies satisfied!")
-            BUILD_VENV = DOT_VENV
-            return
-        else:
-            print(f"\n.venv has {len(missing)} missing package(s), installing...")
-            pip_exe = _get_pip_exe(DOT_VENV)
-            install_missing_only(pip_exe, missing)
-            BUILD_VENV = DOT_VENV
-            return
-
-    if clean_build_venv and os.path.exists(BUILD_VENV):
-        print(f"\nRemoving build_venv for clean build: {BUILD_VENV}")
-        shutil.rmtree(BUILD_VENV)
-
-    # Strategy 2: Try reusing existing build_venv
-    if _is_valid_venv(BUILD_VENV):
-        print(f"\nFound existing build_venv at {BUILD_VENV}")
-        python_exe = _get_python_exe(BUILD_VENV)
-        all_ok, missing, found = check_dependencies(python_exe)
-
-        if all_ok:
-            print("\nReusing build_venv — all dependencies satisfied!")
-            return
-        else:
-            print(f"\nbuild_venv has {len(missing)} missing package(s), installing...")
-            pip_exe = _get_pip_exe(BUILD_VENV)
-            install_missing_only(pip_exe, missing)
-            return
-
-    # Strategy 3: Create fresh build_venv
-    print("\nNo usable venv found. Creating clean virtual environment for build...")
-    BUILD_VENV = os.path.join(PROJECT_DIR, "build_venv")
-
-    if os.path.exists(BUILD_VENV):
-        print(f"Removing broken venv: {BUILD_VENV}")
-        shutil.rmtree(BUILD_VENV)
-
-    venv.create(BUILD_VENV, with_pip=True)
-
-    pip_exe = _get_pip_exe(BUILD_VENV)
-
-    # pip upgrade (optional, non-fatal)
-    with contextlib.suppress(Exception):
-        subprocess.run([pip_exe, "install", "--upgrade", "pip"], check=False)
-
-    print("Installing all dependencies...")
-    subprocess.run([pip_exe, "install", "-r", REQ_MINIMAL], check=True)
+    python_exe = _get_python_exe(BUILD_VENV)
+    requirements = os.path.join(PROJECT_DIR, "requirements.txt")
+    subprocess.run([python_exe, "-m", "pip", "install", "-r", requirements], check=True)
 
 
 def _ensure_build_tool(tool_name, pip_packages, min_version=None):
@@ -246,10 +105,12 @@ def run_nuitka_build():
     nuitka_cmd = [
         python_exe, "-m", "nuitka",
         "--standalone",
-        "--enable-plugin=wx",
         "--follow-imports",
         "--include-module=dxcam.processor._numpy_kernels",
-        "--windows-disable-console",
+        f"--include-data-dir={os.path.join(PROJECT_DIR, 'resources')}=resources",
+        f"--include-data-files={os.path.join(PROJECT_DIR, 'requirements.txt')}=requirements.txt",
+        f"--include-data-files={os.path.join(PROJECT_DIR, 'requirements-gpu.txt')}=requirements-gpu.txt",
+        "--windows-console-mode=disable",
         f"--output-dir={os.path.join(PROJECT_DIR, 'dist_optimized')}",
         "--output-filename=XGif.exe",
         "--onefile", # 필요 시 단일 파일 빌드 (더 느리지만 배포 용이)
@@ -260,9 +121,9 @@ def run_nuitka_build():
 
     print("Starting Nuitka build process... (This may take a while)")
     subprocess.run(nuitka_cmd, check=True)
-    cli_cmd = [arg.replace('--output-filename=XGif.exe', '--output-filename=XGif-cli.exe')
-               for arg in nuitka_cmd if arg != '--windows-disable-console']
-    cli_cmd.insert(-1, '--windows-console-mode=force')
+    cli_options = {'--output-filename=XGif.exe': '--output-filename=XGif-cli.exe',
+                   '--windows-console-mode=disable': '--windows-console-mode=force'}
+    cli_cmd = [cli_options.get(arg, arg) for arg in nuitka_cmd]
     subprocess.run(cli_cmd, check=True)
 
 
@@ -404,7 +265,6 @@ def _generate_spec_file(icon_ico, version_file, onefile=False, use_upx=False, sp
 
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 import os
-from PyInstaller.utils.hooks import copy_metadata, collect_submodules
 
 # 제외할 바이너리 패턴
 EXCLUDE_BINARIES = [
@@ -424,7 +284,7 @@ a = Analysis(
     pathex=[r'{PROJECT_ROOT}'],
     binaries=[
 {vcrt_lines}    ],
-    datas=[(r'{resources_data}', 'resources'), (r'{requirements_txt}', '.'){requirements_gpu_data}] + copy_metadata('imageio'),
+    datas=[(r'{resources_data}', 'resources'), (r'{requirements_txt}', '.'){requirements_gpu_data}],
     hiddenimports=[
         # dxcam loads its compiled color-conversion kernel through import_module.
         'dxcam.processor._numpy_kernels',
@@ -859,22 +719,18 @@ if __name__ == "__main__":
             'echo ----------------------------------------',
             'echo --- CuPy Env Check --- >> "%LOGFILE%"',
             '',
-            'set "CUPY_ENV=%LOCALAPPDATA%\\XGif\\env"',
-            'if exist "!CUPY_ENV!\\Scripts\\python.exe" (',
-            '    echo   [OK] External env found: !CUPY_ENV!',
-            '    echo   [OK] External env: !CUPY_ENV! >> "%LOGFILE%"',
-            '    for /f "tokens=*" %%v in (\'""!CUPY_ENV!\\Scripts\\python.exe"" -c "import cupy; print(cupy.__version__)" 2^>nul\') do (',
-            '        echo   [OK] CuPy %%v installed',
-            '        echo   [OK] CuPy %%v >> "%LOGFILE%"',
-            '    )',
+            'if exist "%~dp0XGif-cli.exe" (',
+            '    "%~dp0XGif-cli.exe" doctor >> "%LOGFILE%" 2>&1',
             '    if errorlevel 1 (',
-            '        echo   [INFO] CuPy not installed in external env',
-            '        echo   [INFO] CuPy not in env >> "%LOGFILE%"',
+            '        echo   [WARN] XGif diagnostics failed. See %LOGFILE%',
+            '        set /a WARN+=1',
+            '    ) else (',
+            '        echo   GPU runtime diagnostics saved to %LOGFILE%',
             '    )',
-            '    set /a PASS+=1',
+            '    echo   To install GPU support, run: XGif-cli.exe doctor --install-cupy',
             ') else (',
-            '    echo   [INFO] External env not created yet (install CuPy via app)',
-            '    echo   [INFO] External env not found >> "%LOGFILE%"',
+            '    echo   [WARN] XGif-cli.exe missing >> "%LOGFILE%"',
+            '    set /a WARN+=1',
             ')',
             'echo.',
             '',

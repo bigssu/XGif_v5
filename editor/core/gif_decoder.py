@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional, List, Callable
 from pathlib import Path
 from dataclasses import dataclass
-from PIL import Image
+from PIL import Image, PngImagePlugin, __version__ as pillow_version
 import glob
 import os
 import math
@@ -14,6 +14,20 @@ import time
 
 from .frame import Frame
 from .frame_collection import FrameCollection
+
+
+def _load_animation_frame(image: Image.Image) -> None:
+    # Pillow 13.0.0 blends into the buffer it later uses for PREVIOUS disposal.
+    # Preserve that canvas for this decoder instance (python-pillow/Pillow#10400).
+    if (pillow_version == "13.0.0" and isinstance(image, PngImagePlugin.PngImageFile)
+            and image.info.get("disposal") == PngImagePlugin.Disposal.OP_PREVIOUS
+            and image.info.get("blend") == PngImagePlugin.Blend.OP_OVER
+            and image._prev_im is not None):
+        previous = image._prev_im.copy()
+        image.load()
+        image._prev_im = previous
+    else:
+        image.load()
 
 
 @dataclass
@@ -46,7 +60,7 @@ class GifInfo:
 class GifDecoder:
     """GIF/이미지/비디오 파일 디코딩 클래스"""
 
-    SUPPORTED_EXTENSIONS = {'.gif', '.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tiff'}
+    SUPPORTED_EXTENSIONS = {'.gif', '.apng', '.png', '.jpg', '.jpeg', '.bmp', '.webp', '.tiff'}
     VIDEO_EXTENSIONS = {'.mp4', '.avi', '.webm', '.mov', '.mkv', '.wmv', '.flv', '.m4v'}
 
     @classmethod
@@ -95,13 +109,11 @@ class GifDecoder:
 
         try:
             check()
-            if ext == '.gif':
-                result = cls._load_gif(path, progress_callback=progress)
-            elif ext in cls.VIDEO_EXTENSIONS:
+            if ext in cls.VIDEO_EXTENSIONS:
                 return cls._load_video(path, video_fps, video_max_frames, progress_callback,
                                        cancel_event, timeout)
             elif ext in cls.SUPPORTED_EXTENSIONS:
-                result = cls._load_image(path)
+                result = cls._load_image(path, progress)
             else:
                 return LoadResult.error(f"지원하지 않는 파일 형식입니다: {ext}")
             check()
@@ -144,123 +156,42 @@ class GifDecoder:
             return LoadResult.error(f"비디오 로드 실패: {str(e)}")
 
     @classmethod
-    def _load_gif(cls, path: Path,
-                  progress_callback: Optional[Callable[[int, int], None]] = None
-                  ) -> LoadResult:
-        """GIF 파일 로드.
-
-        Args:
-            path: GIF 파일 경로
-            progress_callback: 진행률 콜백 (current, total). 비동기 워커에서 호출 시
-                ProgressDialog 갱신용. 콜백 내부에서 `InterruptedError` 를 던지면
-                로드를 취소하고 빈 결과를 반환.
-        """
+    def _load_image(cls, path: Path, progress_callback) -> LoadResult:
+        """Read every timed frame before making the document available for editing."""
         try:
-            # 파일 존재 확인
-            if not path.exists():
-                return LoadResult.error(f"파일을 찾을 수 없습니다: {path}")
-
-            # 파일 크기 확인 (너무 큰 파일 방지)
-            file_size_mb = path.stat().st_size / (1024 * 1024)
-            if file_size_mb > 500:  # 500MB 이상이면 경고
-                return LoadResult.error(f"파일이 너무 큽니다 ({file_size_mb:.1f}MB). 최대 500MB까지 지원합니다.")
+            if path.suffix.lower() == '.gif':
+                if path.stat().st_size > 500 * 1024 * 1024:
+                    return LoadResult.error("GIF 파일은 최대 500MB까지 지원합니다.")
+                with path.open('rb') as stream:
+                    stream.seek(-1, os.SEEK_END)
+                    if stream.read(1) != b';':
+                        return LoadResult.error("GIF 종료 표시가 없습니다. 파일이 손상되었을 수 있습니다.")
 
             collection = FrameCollection()
-
-            # PIL로 메타데이터 읽기
-            try:
-                with Image.open(path) as img:
-                    # 이미지 형식 확인
-                    if img.format != 'GIF':
-                        return LoadResult.error(f"GIF 파일이 아닙니다: {img.format}")
-
-                    # 루프 카운트
-                    loop_count = img.info.get('loop', 0)
-                    collection.loop_count = loop_count
-
-                    # 진행률 계산용 총 프레임 수 (Pillow 9.1+ 의 n_frames). 정확히
-                    # 모르면 max_frames 로 폴백 — 콜백의 분모가 큰 값이 되지만
-                    # 사용자 경험은 양호 (느린 GIF 도 진행률이 점진적으로 100% 에 근접).
-                    max_frames = 10000  # 최대 프레임 수 제한 (메모리 보호)
-                    try:
-                        total_frames = int(getattr(img, 'n_frames', max_frames))
-                    except Exception:
-                        total_frames = max_frames
-
-                    # 각 프레임 처리
-                    frame_index = 0
-
-                    try:
-                        while frame_index < max_frames:
-                            try:
-                                img.seek(frame_index)
-                            except EOFError:
-                                break  # 모든 프레임 처리 완료
-
-                            # 딜레이 가져오기 (밀리초)
-                            delay = img.info.get('duration', 100)
-                            if delay <= 0:
-                                delay = 100
-
-                            # PIL 이 디스포잘 처리 후 결정한 mode 그대로 사용 — P (인덱스
-                            # 컬러) 면 메모리 1/4 절약. 합성 필요한 케이스에서 PIL 이
-                            # 자동으로 RGBA 변환하므로 안전. Frame.__init__ 의
-                            # _PRESERVED_MODES 화이트리스트가 추가 검증.
-                            try:
-                                frame_img = img.copy()
-                                frame = Frame(frame_img, delay)
-                                collection.add_frame(frame)
-                            except Exception:
-                                # 개별 프레임 변환 실패 시 건너뛰기
-                                frame_index += 1
-                                continue
-
-                            frame_index += 1
-                            # 취소/제한시간 예외는 부분 성공으로 처리하지 않습니다.
-                            if progress_callback is not None:
-                                progress_callback(frame_index, total_frames)
-                    except EOFError:
-                        pass  # 모든 프레임 처리 완료
-                    except (InterruptedError, TimeoutError):
-                        raise
-                    except Exception as e:
-                        # 프레임 읽기 중 오류 발생
-                        if collection.is_empty:
-                            return LoadResult.error(f"프레임 읽기 실패: {str(e)}")
-            except (InterruptedError, TimeoutError):
-                raise
-            except Exception as e:
-                return LoadResult.error(f"GIF 파일 열기 실패: {str(e)}")
-
-            if collection.is_empty:
-                return LoadResult.error("GIF 파일에서 프레임을 추출할 수 없습니다")
-
+            with Image.open(path) as img:
+                if path.suffix.lower() == '.gif' and img.format != 'GIF':
+                    return LoadResult.error(f"GIF 파일이 아닙니다: {img.format}")
+                has_poster = img.format == 'PNG' and img.info.get('default_image', False)
+                start = int(has_poster)
+                total = getattr(img, 'n_frames', 1) - start
+                if not 1 <= total <= 10000:
+                    return LoadResult.error(f"이미지 프레임 수 {total:,}개는 지원 범위(1~10,000개)를 벗어납니다.")
+                collection.loop_count = img.info.get('loop', None if img.format == 'GIF' else 0)
+                if has_poster:
+                    collection.default_image = Frame(img.copy())
+                for current in range(total):
+                    img.seek(start + current)
+                    _load_animation_frame(img)
+                    delay = img.info.get('duration', 100)
+                    collection.add_frame(Frame(img.copy(), delay))
+                    progress_callback(current + 1, total)
             return LoadResult.ok(collection)
-
-        except MemoryError:
-            return LoadResult.error("메모리 부족으로 파일을 로드할 수 없습니다")
         except (InterruptedError, TimeoutError):
             raise
-        except Exception as e:
-            return LoadResult.error(f"GIF 로드 실패: {str(e)}")
-
-    @classmethod
-    def _load_image(cls, path: Path) -> LoadResult:
-        """단일 이미지 파일 로드 — Frame 이 mode 보존 여부 결정"""
-        try:
-            collection = FrameCollection()
-
-            with Image.open(path) as img:
-                # mode 보존: Frame.__init__ 의 _PRESERVED_MODES 화이트리스트가 P/RGB 등
-                # 메모리 효율적 mode 를 유지한다. with-block 종료 전 load 필요.
-                img.load()
-                frame = Frame(img.copy(), 100)
-                collection.add_frame(frame)
-
-            return LoadResult.ok(collection)
-
-        except Exception as e:
-            return LoadResult.error(f"이미지 로드 실패: {str(e)}")
+        except MemoryError:
+            return LoadResult.error("메모리 부족으로 파일을 로드할 수 없습니다")
+        except Exception as exc:
+            return LoadResult.error(f"이미지 로드 실패: {exc}")
 
     @classmethod
     def load_image_sequence(cls, file_paths: List[str],
@@ -276,8 +207,8 @@ class GifDecoder:
                         img.load()
                         frame = Frame(img.copy(), default_delay)
                         collection.add_frame(frame)
-                except Exception:
-                    pass
+                except (OSError, ValueError) as exc:
+                    return LoadResult.error(f"이미지 시퀀스 로드 실패: {path}: {exc}")
 
             if collection.is_empty:
                 return LoadResult.error("이미지를 로드할 수 없습니다")
@@ -383,9 +314,9 @@ class GifDecoder:
     def get_file_filter(cls) -> str:
         """파일 대화상자용 필터 문자열"""
         return (
-            "모든 지원 파일 (*.gif *.png *.jpg *.mp4 *.avi *.webm *.mov);;"
+            "모든 지원 파일 (*.gif *.apng *.png *.jpg *.jpeg *.bmp *.webp *.tiff *.mp4 *.avi *.webm *.mov *.mkv *.wmv *.flv *.m4v);;"
             "GIF 파일 (*.gif);;"
-            "이미지 파일 (*.png *.jpg *.jpeg *.bmp *.webp);;"
-            "비디오 파일 (*.mp4 *.avi *.webm *.mov *.mkv);;"
+            "이미지 파일 (*.apng *.png *.jpg *.jpeg *.bmp *.webp *.tiff);;"
+            "비디오 파일 (*.mp4 *.avi *.webm *.mov *.mkv *.wmv *.flv *.m4v);;"
             "모든 파일 (*.*)"
         )

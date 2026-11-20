@@ -153,15 +153,19 @@ class TestCLIParser:
         assert args.cursor is False
 
 
-@pytest.mark.parametrize("action", ["set", "reset"])
-def test_config_command_reports_save_failure_without_overwriting(tmp_path, monkeypatch, capsys, action):
+def test_config_command_recovers_corruption_only_on_explicit_reset(tmp_path, monkeypatch, capsys):
     from types import SimpleNamespace
     import cli.config as module
     path = tmp_path / "config.ini"
     original = b"not an ini file"
     path.write_bytes(original)
     monkeypatch.setattr(module, "get_config_path", lambda: str(path))
-    result = module.handle_config_command(SimpleNamespace(config_action=action, key="language", value="en"))
+    result = module.handle_config_command(SimpleNamespace(config_action="set", key="language", value="en"))
     assert result != 0
     assert path.read_bytes() == original
     assert capsys.readouterr().err
+    assert module.handle_config_command(SimpleNamespace(config_action="reset")) == 0
+    assert module.load_config() == module.DEFAULT_SETTINGS
+    assert path.read_bytes() != original
+    backup, = tmp_path.glob("config.ini.corrupt-*.bak")
+    assert backup.read_bytes() == original

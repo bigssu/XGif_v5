@@ -44,55 +44,35 @@ def test_ui_cupy_dialog_uses_shared_policy(monkeypatch):
     assert dependency_dialogs._get_cupy_packages() == ()
 
 
-def test_frozen_cupy_guide_targets_external_xgif_env():
+def test_frozen_cupy_guide_quotes_same_commands_it_runs(tmp_path, monkeypatch):
+    import cupy_env
     from ui import dependency_dialogs
 
-    command = dependency_dialogs._format_frozen_cupy_install_commands(
-        r"C:\Python311\python.exe",
-        r"C:\Users\me\AppData\Local\XGif\env",
-        cupy_policy.CUDA13_CUPY_PACKAGES,
-        requirements_path=r"C:\Temp\requirements-gpu.txt",
-        use_requirements=True,
-    )
+    target = tmp_path / "user's folder" / "env"
+    monkeypatch.setattr(cupy_env, "find_compatible_python", lambda: r"C:\Python311\python.exe")
+    commands = cupy_env.frozen_install_commands(cupy_policy.CUDA13_CUPY_PACKAGES, env_dir=target)
+    assert commands[0] == [r"C:\Python311\python.exe", "-m", "venv", str(target)]
+    assert commands[-1][0] == str(target / "Scripts" / "python.exe")
+    assert list(cupy_policy.CUDA13_CUPY_PACKAGES)[0] in commands[-1]
 
-    assert r'"C:\Python311\python.exe" -m venv "C:\Users\me\AppData\Local\XGif\env"' in command
-    assert r'"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe" -m pip install --upgrade "pip>=24.0"' in command
-    assert r'"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe" -m pip install -r "C:\Temp\requirements-gpu.txt"' in command
+    text = dependency_dialogs._format_powershell_commands(commands)
+    assert "user''s folder" in text
+    assert "New-Item" in text and "if ($LASTEXITCODE -ne 0)" in text
+    assert "'cupy-cuda13x[ctk]==14.0.1'" in text
+    assert "_MEI" not in text
 
 
-def test_frozen_direct_cupy_install_uses_external_env_commands():
+def test_packaged_cupy_guide_invokes_sibling_cli_with_live_plan(tmp_path, monkeypatch):
     from ui import dependency_dialogs
 
-    commands = dependency_dialogs._build_direct_cupy_install_commands(
-        is_frozen=True,
-        system_python=r"C:\Python311\python.exe",
-        external_env_dir=r"C:\Users\me\AppData\Local\XGif\env",
-        cupy_packages=cupy_policy.CUDA13_CUPY_PACKAGES,
-        use_requirements=True,
-        requirements_path=r"C:\Temp\requirements-gpu.txt",
-    )
-
-    assert commands == [
-        [r"C:\Python311\python.exe", "-m", "venv", r"C:\Users\me\AppData\Local\XGif\env"],
-        [
-            r"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe",
-            "-m",
-            "pip",
-            "install",
-            "--upgrade",
-            "pip>=24.0",
-            "--quiet",
-        ],
-        [
-            r"C:\Users\me\AppData\Local\XGif\env\Scripts\python.exe",
-            "-m",
-            "pip",
-            "install",
-            "-r",
-            r"C:\Temp\requirements-gpu.txt",
-            "--no-cache-dir",
-        ],
-    ]
+    directory = tmp_path / "user's apps"
+    directory.mkdir()
+    cli = directory / "XGif-cli.exe"
+    cli.touch()
+    monkeypatch.setattr(sys, "executable", str(directory / "XGif.exe"))
+    text = dependency_dialogs._format_powershell_commands([["stale", "-m", "venv", "old-env"]])
+    quoted_cli = str(cli).replace("'", "''")
+    assert text == f"& '{quoted_cli}' doctor --install-cupy"
 
 
 def test_direct_cupy_install_requires_post_install_verification(monkeypatch):
@@ -213,4 +193,6 @@ def _load_bootstrapper_installer(monkeypatch):
 
     monkeypatch.setattr(deps_installer, "_stream_run", fake_stream_run)
     monkeypatch.setattr(deps_installer, "log_and_ui", lambda _message: None)
+    monkeypatch.setattr(deps_installer.paths, "get_venv_dir", lambda: Path("test-env"))
+    monkeypatch.setattr(deps_installer.paths, "is_compatible_venv", lambda _path: True)
     return deps_installer, commands

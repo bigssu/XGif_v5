@@ -5,6 +5,13 @@ import os
 import sys
 from pathlib import Path
 
+if not getattr(sys, "frozen", False):
+    project_dir = str(Path(__file__).resolve().parents[1])
+    if project_dir not in sys.path:
+        sys.path.insert(0, project_dir)
+
+import cupy_env
+
 APP_NAME = "XGif_Bootstrapper"
 
 def get_localappdata() -> Path:
@@ -58,13 +65,15 @@ _TARGET = get_target_dir()
 PY311_DIR   = str(_TARGET / "python311")
 PY311_EXE   = str(_TARGET / "python311" / "python.exe")
 
-# venv: XGif 앱이 %LOCALAPPDATA%\XGif\env 에서 CuPy를 찾으므로 동일 경로 사용
-_XGIF_ENV   = get_localappdata() / "XGif" / "env"
-VENV_DIR    = str(_XGIF_ENV)
-VENV_PYTHON = str(_XGIF_ENV / "Scripts" / "python.exe")
+def get_venv_dir() -> Path:
+    return cupy_env.select_cupy_env(version=(3, 11), bits=64)
+
+
+def is_compatible_venv(directory: Path) -> bool:
+    return cupy_env.env_matches_runtime(directory, version=(3, 11), bits=64)
 
 # ffmpeg: XGif 앱이 {exe_dir}/ffmpeg/ffmpeg.exe 를 찾으므로 bin/ 없이 플래튼
-FFMPEG_DIR  = str(_TARGET / "ffmpeg")
-FFMPEG_EXE  = str(_TARGET / "ffmpeg" / "ffmpeg.exe")
+FFMPEG_DIR  = str(get_localappdata() / "XGif" / "ffmpeg")
+FFMPEG_EXE  = str(Path(FFMPEG_DIR) / "ffmpeg.exe")
 
 TEMP_DIR    = str(get_temp_dir())

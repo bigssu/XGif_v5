@@ -114,13 +114,15 @@ class ReduceToolbar(InlineToolbarBase):
             if hasattr(self._main_window, '_refresh_all'):
                 self._main_window._refresh_all()
         else:
-            runner(
+            applied = runner(
                 title_key="prog_reduce_title",
                 description=f"프레임 줄이기 ({keep_every_n}개마다 1개 유지)",
                 work_fn=_work,
                 no_undo_msg_key="msg_reduce_no_undo",
                 error_key="msg_frame_reduce_error",
             )
+            if not applied:
+                return
 
         if hasattr(self._main_window, '_is_modified'):
             self._main_window._is_modified = True

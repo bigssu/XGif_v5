@@ -34,6 +34,7 @@ from .capture_backend import (
     _start_backend_with_fallback,
 )
 # HDR 모니터 대응 (톤 매핑)
+from .recording_frames import RecordingFrames
 from .hdr_utils import apply_hdr_correction_adaptive
 
 # P1-1 분리: CaptureThread 와 드로잉 헬퍼는 capture_worker 에서 가져온다.
@@ -125,7 +126,13 @@ class ScreenRecorder:
         self._recording_start_time: Optional[float] = None
         self._recording_end_time: Optional[float] = None
         self.actual_fps: Optional[float] = None
-        self.frames: List[np.ndarray] = []
+        self.frames: list[np.ndarray] | RecordingFrames = []
+        self._frame_budget_bytes: int | None = None
+        self._spill_to_disk = False
+        self.storage_stop_reason: str | None = None
+        self._stopped_lock = threading.Lock()
+        self._stopped_notified = False
+        self._abandon_drain = threading.Event()
 
         # 마우스 클릭 감지
         self._click_lock = threading.Lock()
@@ -145,6 +152,7 @@ class ScreenRecorder:
         # P0-1/P1-3: 워커 종료 직전에 스냅샷; _capture_thread_ref 참조 보관 대신 값만 보존
         self._last_dropped_frames: int = 0
         self._frame_buffer: Optional[np.ndarray] = None
+        self._preview_slot: list[np.ndarray | None] | None = None
 
         # 스레드용 이벤트 (P1-2: shm_* → frame_* 리네임)
         self._thread_frame_ready_event: Optional[threading.Event] = None
@@ -228,6 +236,10 @@ class ScreenRecorder:
 
         NOTE: 백그라운드 스레드에서 호출될 수 있음. wx.CallAfter() 사용 권장.
         """
+        with self._stopped_lock:
+            if self._stopped_notified:
+                return
+            self._stopped_notified = True
         if self._recording_stopped_callback:
             try:
                 self._recording_stopped_callback()
@@ -257,8 +269,6 @@ class ScreenRecorder:
             self._thread_pause_event.clear()
         if self._thread_frame_consumed_event:
             self._thread_frame_consumed_event.set()
-        if self._thread_frame_ready_event:
-            self._thread_frame_ready_event.set()
 
         self._emit_error_occurred(error_msg)
 
@@ -381,7 +391,9 @@ class ScreenRecorder:
                 )
 
             try:
-                time.sleep(0.1)
+                # GDI reads the desktop during grab(); only a streaming backend needs time to fill a frame.
+                if backend.get_name() != "gdi":
+                    time.sleep(0.1)
                 frame = backend.grab()
             finally:
                 backend.stop()
@@ -403,6 +415,16 @@ class ScreenRecorder:
         except (RuntimeError, ValueError, OSError) as exc:
             logger.error(f"캡처 에러: {exc}")
             return None
+
+    def configure_frame_storage(self, *, memory_limit_mb: int, spill_to_disk: bool) -> None:
+        """Configure the retained frame budget for the next recording."""
+        if self.is_recording:
+            raise RuntimeError("Cannot reconfigure storage during recording")
+        budget = int(memory_limit_mb * 1024 * 1024)
+        if budget <= 0:
+            raise ValueError("Frame memory budget must be positive")
+        self._frame_budget_bytes = budget
+        self._spill_to_disk = spill_to_disk
 
     def start_recording(self):
         """녹화 시작 (스레드 기반 - 즉시 시작)"""
@@ -456,8 +478,15 @@ class ScreenRecorder:
         self._recording_end_time = None
         self.actual_fps = None
 
+        self.storage_stop_reason = None
+        self._abandon_drain = threading.Event()
+        with self._stopped_lock:
+            self._stopped_notified = False
         try:
-            self.frames = []
+            self.frames = (
+                RecordingFrames(self._frame_budget_bytes)
+                if self._spill_to_disk and self._frame_budget_bytes is not None else []
+            )
 
             # 영역 설정
             x, y, w, h = self.region
@@ -494,8 +523,16 @@ class ScreenRecorder:
                 self.is_recording = False
                 return
 
+            if (not self._spill_to_disk and self._frame_budget_bytes is not None
+                    and frame_size > self._frame_budget_bytes):
+                self.storage_stop_reason = "메모리 제한 안에 프레임 한 장을 저장할 수 없습니다."
+                self._handle_capture_failure(self.storage_stop_reason)
+                return
+
             # 직접 버퍼 생성 (스레드 간 공유 - 공유 메모리 불필요)
             self._frame_buffer = np.zeros((h, w, 3), dtype=np.uint8)
+            if self._preview_slot is not None:
+                self._preview_slot = [None]
 
             # 스레드용 이벤트 (P1-2: shm_* → frame_* 리네임)
             self._thread_frame_ready_event = threading.Event()
@@ -534,7 +571,8 @@ class ScreenRecorder:
                 on_failed=self._handle_capture_failure,
                 backend_factory=self._backend_factory,
             )
-            self._capture_thread.start()
+            capture_thread = self._capture_thread
+            capture_thread.start()
 
             # 첫 프레임 캡처 대기 (빠른 시작)
             if self._backend_warmed_up:
@@ -544,7 +582,7 @@ class ScreenRecorder:
                 max_wait = 1.0  # 1초
                 logger.info("Backend not pre-warmed, may take longer")
 
-            if self._capture_thread.wait_for_first_frame(timeout=max_wait):
+            if capture_thread.wait_for_first_frame(timeout=max_wait):
                 logger.info("Recording started - first frame captured instantly!")
             else:
                 if not self.is_recording:
@@ -581,7 +619,7 @@ class ScreenRecorder:
             if self._thread_pause_event:
                 self._thread_pause_event.clear()
 
-    def stop_recording(self) -> List[np.ndarray]:
+    def stop_recording(self) -> list[np.ndarray] | RecordingFrames:
         """녹화 중지, 프레임 반환"""
         has_active_threads = (
             (self._capture_thread is not None and self._capture_thread.is_alive()) or
@@ -603,7 +641,8 @@ class ScreenRecorder:
         was_recording = self.is_recording
 
         # 녹화 종료 시간 기록 및 실제 FPS 계산
-        self._recording_end_time = time.perf_counter()
+        if self._recording_end_time is None:
+            self._recording_end_time = time.perf_counter()
         if self._pause_start_time is not None:
             self._paused_duration += self._recording_end_time - self._pause_start_time
             self._pause_start_time = None
@@ -624,18 +663,30 @@ class ScreenRecorder:
 
         # 캡처 스레드 종료 대기
         threads_alive = False
-        if capture_thread:
+        if capture_thread and capture_thread is not threading.current_thread():
             capture_thread.join(timeout=3.0)
             if capture_thread.is_alive():
                 logger.warning("Capture thread did not terminate in time")
                 threads_alive = True
 
         # 수집 스레드 종료 대기
-        if collector_thread:
+        if collector_thread and collector_thread is not threading.current_thread():
             collector_thread.join(timeout=2.0)
             if collector_thread.is_alive():
                 logger.warning("Collector thread did not terminate in time")
                 threads_alive = True
+
+        if threads_alive:
+            # A backend or disk write may be permanently blocked. Publish only
+            # committed frames and keep references needed by the old workers.
+            self._abandon_drain.set()
+            if isinstance(self.frames, RecordingFrames):
+                self.frames.seal()
+            else:
+                self.frames = self.frames.copy()
+            self.storage_stop_reason = (
+                "녹화 종료 대기 시간이 초과되어 저장이 완료된 프레임까지만 유지했습니다."
+            )
 
         if self._recording_start_time is not None and len(self.frames) > 0:
             elapsed = self._recording_end_time - self._recording_start_time - self._paused_duration
@@ -683,8 +734,9 @@ class ScreenRecorder:
     def _frame_collector_loop_threaded(self):
         """프레임 수집 루프 (스레드 기반 버전)."""
         frame_count = 0
-        consecutive_errors = 0
-        max_consecutive_errors = 10
+        frames = self.frames
+        budget = self._frame_budget_bytes
+        abandon = self._abandon_drain
 
         loop_start = time.perf_counter()
         processing_times: deque[float] = deque(maxlen=200)
@@ -707,18 +759,34 @@ class ScreenRecorder:
             logger.error("Collector: Events or buffer not initialized")
             return
 
-        while not stop_event.is_set() or frame_ready_event.is_set():
+        while not abandon.is_set():
+            if stop_event.is_set():
+                # A manual stop can race the producer's final copy. After it
+                # exits, check readiness once more before ending the drain.
+                producer = self._capture_thread
+                done = self.last_error or producer is None or not producer.is_alive()
+                if done and not frame_ready_event.is_set():
+                    break
             # 프레임 이벤트 대기
             if frame_ready_event.wait(timeout=0.05):
                 try:
                     process_start = time.perf_counter()
                     frame_ready_event.clear()
 
-                    # 프레임 복사 (한 번만) - 로컬 캐싱된 버퍼 사용
-                    frame_copy = frame_buffer.copy()
-                    self.frames.append(frame_copy)
+                    if isinstance(frames, RecordingFrames):
+                        frames.append(frame_buffer)
+                    else:
+                        if budget is not None and (len(frames) + 1) * frame_buffer.nbytes > budget:
+                            raise MemoryError("설정한 프레임 메모리 제한에 도달했습니다.")
+                        frames.append(frame_buffer.copy())
+                    if abandon.is_set():
+                        break
+                    preview_slot = self._preview_slot
+                    if preview_slot is not None:
+                        # The worker can reuse its buffer as soon as we acknowledge this frame.
+                        preview_slot[0] = np.frombuffer(frame_buffer.tobytes(), dtype=np.uint8).reshape(frame_buffer.shape)
+                        del preview_slot
                     frame_count += 1
-                    consecutive_errors = 0
 
                     # 처리 완료 알림
                     frame_consumed_event.set()
@@ -740,15 +808,20 @@ class ScreenRecorder:
                             f"avg: {avg_time*1000:.2f}ms, actual FPS: {actual_fps:.1f}"
                         )
 
-                except (ValueError, RuntimeError, MemoryError) as exc:
-                    consecutive_errors += 1
-                    logger.error(f"Collector error ({consecutive_errors}/{max_consecutive_errors}): {exc}")
-                    frame_consumed_event.set()
-
-                    if consecutive_errors >= max_consecutive_errors:
-                        logger.critical("Too many consecutive errors, stopping collector")
-                        self._emit_error_occurred("프레임 수집 중 심각한 오류 발생")
+                except (OSError, MemoryError, ValueError, RuntimeError) as exc:
+                    if abandon.is_set():
                         break
+                    self.storage_stop_reason = f"프레임 저장을 중지했습니다. {exc}"
+                    logger.warning("%s (%d frames retained)", self.storage_stop_reason, len(frames))
+                    self._recording_end_time = time.perf_counter()
+                    self.is_recording = False
+                    self.is_paused = False
+                    stop_event.set()
+                    frame_consumed_event.set()
+                    if not frames:
+                        self.last_error = self.storage_stop_reason
+                    self._emit_recording_stopped()
+                    break
             # wait()가 False 면 그냥 다음 iteration 으로 넘어감.
 
         # 최종 통계
@@ -759,6 +832,19 @@ class ScreenRecorder:
     def clear_frames(self):
         """프레임 버퍼 초기화"""
         self.frames = []
+        if self._preview_slot is not None:
+            self._preview_slot = [None]
+
+    def set_preview_enabled(self, enabled: bool) -> None:
+        if enabled and self._preview_slot is None:
+            self._preview_slot = [None]
+        elif not enabled:
+            self._preview_slot = None
+
+    def get_latest_preview_frame(self) -> np.ndarray | None:
+        """Read the last committed preview without waiting on capture or spool I/O."""
+        slot = self._preview_slot
+        return slot[0] if slot is not None else None
 
     def get_frame_count(self) -> int:
         """현재 프레임 수"""
@@ -766,6 +852,8 @@ class ScreenRecorder:
 
     def get_estimated_size_mb(self) -> float:
         """예상 메모리 사용량 (MB)"""
+        if isinstance(self.frames, RecordingFrames):
+            return self.frames.resident_bytes / (1024 * 1024)
         if not self.frames:
             return 0.0
 

@@ -3,8 +3,8 @@ download_utils.py – Robust HTTP downloader with progress callbacks and retry.
 """
 
 import hashlib
+import http.client
 import os
-import socket
 import ssl
 import time
 import tempfile
@@ -25,30 +25,6 @@ def _get_ssl_context() -> ssl.SSLContext:
         return ssl.create_default_context(cafile=certifi.where())
     except ImportError:
         return ssl.create_default_context()
-
-
-def check_connectivity(timeout: int = 5) -> bool:
-    """
-    인터넷 연결 상태를 빠르게 확인.
-    DNS 해석 + HTTPS HEAD 요청으로 확인한다.
-    """
-    test_hosts = [
-        ("https://www.google.com", "www.google.com"),
-        ("https://pypi.org", "pypi.org"),
-    ]
-    for url, host in test_hosts:
-        try:
-            # 1차: DNS 확인
-            socket.getaddrinfo(host, 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
-            # 2차: HEAD 요청
-            req = urllib.request.Request(url, method="HEAD",
-                                         headers={"User-Agent": "EnvSetupApp/1.0"})
-            ctx = _get_ssl_context()
-            urllib.request.urlopen(req, timeout=timeout, context=ctx)
-            return True
-        except Exception:
-            continue
-    return False
 
 
 def verify_sha256(path: str, expected_hex: str, *, chunk_size: int = CHUNK_SIZE) -> bool:
@@ -134,7 +110,7 @@ def download_file(
             log_and_ui(f"다운로드 완료: {os.path.basename(dest_path)} ({size_mb:.1f} MB)")
             return True
 
-        except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError) as e:
+        except (OSError, http.client.HTTPException, ValueError) as e:
             logger.warning("Download attempt %d failed: %s", attempt, e)
             log_and_ui(f"다운로드 실패 (시도 {attempt}): {e}")
             if attempt < max_retries:

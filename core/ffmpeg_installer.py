@@ -1,10 +1,12 @@
 """
 FFmpeg 자동 다운로드 및 설치 모듈
-프로그램 폴더에 FFmpeg 바이너리를 자동으로 다운로드하여 설치
+사용자 데이터 폴더에 FFmpeg 바이너리를 자동으로 다운로드하여 설치
 """
 
+import http.client
 import os
 import sys
+import subprocess
 import locale
 import zipfile
 import urllib.request
@@ -25,31 +27,28 @@ FFMPEG_DOWNLOAD_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/l
 FFMPEG_DOWNLOAD_URL_ALT = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
 
+def get_ffmpeg_install_dir() -> Path:
+    """Persistent user-writable destination, including for packaged apps."""
+    return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "XGif" / "ffmpeg"
+
+
+def _has_ffmpeg_pair(directory: Path) -> bool:
+    return all((directory / name).is_file() for name in ("ffmpeg.exe", "ffprobe.exe"))
+
+
 def get_ffmpeg_dir() -> Path:
-    """FFmpeg 설치 디렉토리 반환"""
-    # 프로그램 폴더 내 ffmpeg 디렉토리
-    if getattr(sys, 'frozen', False):
-        # PyInstaller로 패키징된 경우
-        # --onefile 모드: sys._MEIPASS에 임시 디렉토리 경로가 있음
-        if hasattr(sys, '_MEIPASS'):
-            # 임시 디렉토리에서 ffmpeg 폴더 찾기
-            meipass_dir = Path(sys._MEIPASS)
-            bundled_ffmpeg = meipass_dir / 'ffmpeg'
-            if bundled_ffmpeg.exists():
-                return bundled_ffmpeg
-
-        # --onedir 모드 또는 실행 파일과 같은 위치
-        base_dir = Path(sys.executable).parent
-        bundled_ffmpeg = base_dir / 'ffmpeg'
-        if bundled_ffmpeg.exists():
-            return bundled_ffmpeg
-
-        # 기본값: 실행 파일과 같은 위치
-        return base_dir / 'ffmpeg'
+    """Prefer complete installations while retaining legacy binary discovery."""
+    candidates = [get_ffmpeg_install_dir()]
+    if getattr(sys, "frozen", False):
+        if hasattr(sys, "_MEIPASS"):
+            candidates.append(Path(sys._MEIPASS) / "ffmpeg")
+        candidates.append(Path(sys.executable).parent / "ffmpeg")
     else:
-        # 일반 Python 실행
-        base_dir = Path(__file__).parent.parent
-        return base_dir / 'ffmpeg'
+        candidates.append(Path(__file__).resolve().parents[1] / "ffmpeg")
+    for directory in candidates:
+        if _has_ffmpeg_pair(directory):
+            return directory
+    return next((d for d in candidates if (d / "ffmpeg.exe").is_file()), candidates[0])
 
 
 def get_ffmpeg_path() -> str:
@@ -61,7 +60,7 @@ def get_ffmpeg_path() -> str:
 
 def is_ffmpeg_installed() -> bool:
     """로컬 FFmpeg 설치 여부 확인"""
-    return all((get_ffmpeg_dir() / name).is_file() for name in ('ffmpeg.exe', 'ffprobe.exe'))
+    return _has_ffmpeg_pair(get_ffmpeg_dir())
 
 
 def check_system_ffmpeg() -> str:
@@ -139,52 +138,38 @@ class FFmpegDownloader(threading.Thread):
 
     def _download_and_install(self):
         """FFmpeg 다운로드 및 설치"""
-        ffmpeg_dir = get_ffmpeg_dir()
+        ffmpeg_dir = get_ffmpeg_install_dir()
         ffmpeg_dir.mkdir(parents=True, exist_ok=True)
 
-        # 임시 파일로 다운로드
-        temp_dir = tempfile.mkdtemp(prefix='giffy_ffmpeg_')
-        zip_path = os.path.join(temp_dir, 'ffmpeg.zip')
-
-        try:
-            self._safe_callback(self._status_callback, "FFmpeg 다운로드 중...")
-
-            # 다운로드 (진행률 콜백 포함)
-            success = self._download_file(FFMPEG_DOWNLOAD_URL, zip_path)
-
-            if not success and not self._cancelled:
-                # 대체 URL 시도
-                self._safe_callback(self._status_callback, "대체 서버에서 다운로드 시도 중...")
-                success = self._download_file(FFMPEG_DOWNLOAD_URL_ALT, zip_path)
-
-            if not success or self._cancelled:
-                self._safe_callback(self._finished_callback, False, "다운로드 취소됨")
-                return
-
-            # 다운로드 파일 무결성 검증
-            self._safe_callback(self._status_callback, "파일 무결성 검증 중...")
-            if not self._verify_zip_integrity(zip_path):
-                self._safe_callback(self._finished_callback, False,
-                                    "다운로드 파일이 손상되었습니다. 다시 시도하세요.")
-                return
-
-            self._safe_callback(self._status_callback, "압축 해제 중...")
-
-            # ZIP 압축 해제 및 ffmpeg.exe 추출
-            self._extract_ffmpeg(zip_path, ffmpeg_dir)
-
-            # 설치 확인
-            if is_ffmpeg_installed():
-                logger.info("FFmpeg 설치 완료: %s", get_ffmpeg_path())
+        message = "FFmpeg 다운로드 실패"
+        with tempfile.TemporaryDirectory(prefix="xgif_ffmpeg_") as temp_dir:
+            zip_path = os.path.join(temp_dir, "ffmpeg.zip")
+            for url in (FFMPEG_DOWNLOAD_URL, FFMPEG_DOWNLOAD_URL_ALT):
+                if self._cancelled:
+                    break
+                self._safe_callback(self._status_callback, "FFmpeg 다운로드 중..." if url == FFMPEG_DOWNLOAD_URL
+                                    else "대체 서버에서 다운로드 시도 중...")
+                if not self._download_file(url, zip_path):
+                    continue
+                if self._cancelled:
+                    break
+                self._safe_callback(self._status_callback, "파일 무결성 검증 중...")
+                if not self._verify_zip_integrity(zip_path):
+                    message = "FFmpeg 다운로드 파일 검증 실패"
+                    continue
+                try:
+                    self._extract_ffmpeg(zip_path, ffmpeg_dir)
+                except (ValueError, zipfile.BadZipFile) as exc:
+                    logger.warning("Unusable FFmpeg package from %s: %s", url, exc)
+                    message = f"FFmpeg 파일 검증 실패: {exc}"
+                    continue
+                except OSError:
+                    if self._cancelled:
+                        break
+                    raise
                 self._safe_callback(self._finished_callback, True, "FFmpeg 설치 완료")
-            else:
-                logger.error("FFmpeg 설치 실패: ffmpeg.exe not found at %s", get_ffmpeg_path())
-                self._safe_callback(self._finished_callback, False, "FFmpeg 설치 실패: 파일을 찾을 수 없음")
-
-        finally:
-            # 임시 파일 정리
-            with contextlib.suppress(Exception):
-                shutil.rmtree(temp_dir)
+                return
+        self._safe_callback(self._finished_callback, False, "다운로드 취소됨" if self._cancelled else message)
 
     def _download_file(self, url: str, dest_path: str) -> bool:
         """파일 다운로드 (진행률 표시, 전체 타임아웃 300초)"""
@@ -242,7 +227,7 @@ class FFmpegDownloader(threading.Thread):
             os.replace(temp_path, dest_path)
             return True
 
-        except (urllib.error.URLError, IOError, OSError) as e:
+        except (OSError, http.client.HTTPException, ValueError) as e:
             logger.error(f"다운로드 에러: {e}")
             return False
         finally:
@@ -276,6 +261,18 @@ class FFmpegDownloader(threading.Thread):
         except (zipfile.BadZipFile, OSError) as e:
             logger.warning("FFmpeg ZIP integrity check failed: %s", e)
             return False
+
+    @staticmethod
+    def _check_staged_tool(path: Path):
+        try:
+            result = subprocess.run(
+                [str(path), "-version"], capture_output=True, timeout=10,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(f"{path.name} 실행 실패: {exc}") from exc
+        if result.returncode or not result.stdout.lower().startswith(f"{path.stem} version ".encode()):
+            raise ValueError(f"{path.name} 버전 확인 실패")
 
     def _extract_ffmpeg(self, zip_path: str, dest_dir: Path):
         """Stage both tools before replacing them, restoring backups on failure."""
@@ -311,6 +308,10 @@ class FFmpegDownloader(threading.Thread):
                     if (staging / executable).stat().st_size != info.file_size:
                         raise OSError(f"Extracted size mismatch: {executable}")
 
+            for executable in targets:
+                if self._cancelled:
+                    raise OSError("설치 취소됨")
+                self._check_staged_tool(staging / executable)
             for executable in targets:
                 existing = dest_dir / executable
                 if existing.exists():
@@ -356,6 +357,19 @@ class FFmpegManager:
         return None
 
     @staticmethod
+    def get_ffmpeg_tools() -> tuple[str | None, str | None]:
+        ffmpeg = FFmpegManager.get_ffmpeg_executable()
+        if ffmpeg:
+            sibling = Path(ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')
+            probe = str(sibling) if sibling.is_file() else shutil.which('ffprobe')
+            if probe:
+                return ffmpeg, probe
+            directory = get_ffmpeg_dir()
+            if _has_ffmpeg_pair(directory):
+                return str(directory / 'ffmpeg.exe'), str(directory / 'ffprobe.exe')
+        return ffmpeg, None
+
+    @staticmethod
     def get_ffmpeg_env() -> dict:
         """FFmpeg 실행을 위한 환경 변수 딕셔너리 반환
 
@@ -397,4 +411,4 @@ class FFmpegManager:
     @staticmethod
     def needs_installation() -> bool:
         """설치가 필요한지 확인"""
-        return not FFmpegManager.is_available()
+        return FFmpegManager.get_ffmpeg_tools()[1] is None

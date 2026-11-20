@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import paths
+from cupy_env import CUPY_DEVICE_PROBE
 from logging_setup import log_and_ui, get_logger
 
 SUBPROCESS_TIMEOUT = 30  # seconds
@@ -30,6 +31,7 @@ def _run(cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT, cwd=None):
             cmd,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=timeout,
             cwd=cwd,
             env=env,
@@ -102,20 +104,14 @@ def check_pip() -> tuple[bool, str]:
 # ──────────────────────────────────────────────────────────────────
 def check_venv() -> tuple[bool, str]:
     log_and_ui("가상 환경 확인 중…")
-    if not os.path.isfile(paths.VENV_PYTHON):
-        return False, "env 폴더 없음"
-    rc, out, err = _run([paths.VENV_PYTHON, "--version"])
+    env_dir = paths.get_venv_dir()
+    if not paths.is_compatible_venv(env_dir):
+        return False, f"Python 3.11 64비트 가상 환경 필요: {env_dir}"
+    python = str(env_dir / "Scripts" / "python.exe")
+    rc, out, _ = _run([python, "-I", "-m", "pip", "--version"])
     if rc == 0:
-        ver = out.strip() or err.strip()
-        log_and_ui(f"venv Python 확인: {ver}")
-
-        # Also check pip inside venv
-        rc2, out2, _ = _run([paths.VENV_PYTHON, "-m", "pip", "--version"])
-        if rc2 == 0:
-            pip_ver = out2.strip().split()[1] if out2.strip() else "?"
-            return True, f"pip {pip_ver}"
-        return False, "venv pip 없음"
-    return False, "venv python 실행 실패"
+        return True, out.strip()
+    return False, "venv pip 없음"
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -133,41 +129,46 @@ def check_cupy() -> tuple[bool, str]:
         log_and_ui("NVIDIA GPU가 감지되지 않아 CuPy를 건너뜁니다.")
         return True, "GPU 미사용 (Skip)"
 
-    # 2. venv 확인
-    if not os.path.isfile(paths.VENV_PYTHON):
-        return False, "venv 먼저 설치 필요"
+    env_dir = paths.get_venv_dir()
+    if not paths.is_compatible_venv(env_dir):
+        return False, f"Python 3.11 64비트 가상 환경 필요: {env_dir}"
 
-    # 3. CuPy import 확인
-    rc, out, err = _run(
-        [
-            paths.VENV_PYTHON, "-c",
-            "import cupy; print('cupy ok'); print(cupy.cuda.runtime.getDeviceCount())",
-        ],
-        timeout=60,
-    )
-    if rc == 0 and "cupy ok" in out:
-        lines = out.strip().splitlines()
-        devices = lines[-1] if len(lines) > 1 else "?"
-        log_and_ui(f"CuPy 정상 – GPU 장치 수: {devices}")
-        return True, f"GPU {devices}개"
+    rc, out, err = _run([
+        str(env_dir / "Scripts" / "python.exe"), "-I", "-c",
+        CUPY_DEVICE_PROBE,
+    ], timeout=60)
+    if rc == 0 and out.strip().isdigit():
+        count = int(out.strip())
+        if count > 0:
+            log_and_ui(f"CuPy 정상 – GPU 장치 수: {count}")
+            return True, f"GPU {count}개"
+        return False, "사용 가능한 CUDA 장치가 없습니다."
 
-    detail = (err or out or "import 실패").strip()[:120]
+    detail = (err.strip() or out.strip() or "import 실패").splitlines()[-1]
     log_and_ui(f"CuPy 검증 실패: {detail}")
-    return False, "import 실패"
+    return False, detail[:160]
 
 
 # ──────────────────────────────────────────────────────────────────
 #  FFmpeg
 # ──────────────────────────────────────────────────────────────────
-def check_ffmpeg() -> tuple[bool, str]:
+def check_ffmpeg(directory=None) -> tuple[bool, str]:
     log_and_ui("FFmpeg 확인 중…")
-    if not os.path.isfile(paths.FFMPEG_EXE):
-        return False, "ffmpeg.exe 없음"
-    rc, out, err = _run([paths.FFMPEG_EXE, "-version"])
-    if rc == 0:
-        first_line = out.strip().splitlines()[0] if out.strip() else "ok"
-        m = re.search(r"ffmpeg version\s+(\S+)", first_line)
-        ver = m.group(1) if m else "ok"
-        log_and_ui(f"FFmpeg 확인: {ver}")
-        return True, ver
-    return False, "실행 실패"
+    if directory is None:
+        directory = paths.FFMPEG_DIR
+        legacy = paths.get_target_dir() / "ffmpeg"
+        names = ("ffmpeg.exe", "ffprobe.exe")
+        current_complete = all(os.path.isfile(os.path.join(directory, name)) for name in names)
+        if not current_complete and all((legacy / name).is_file() for name in names):
+            directory = legacy
+    details = []
+    for name in ("ffmpeg", "ffprobe"):
+        executable = os.path.join(directory, f"{name}.exe")
+        if not os.path.isfile(executable):
+            return False, f"{name}.exe 없음"
+        rc, out, _ = _run([executable, "-version"])
+        if rc != 0:
+            return False, f"{name}.exe 실행 실패"
+        match = re.search(rf"{name} version\s+(\S+)", out)
+        details.append(f"{name} {match.group(1) if match else 'ok'}")
+    return True, ", ".join(details)

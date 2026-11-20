@@ -259,24 +259,21 @@ class CropToolbar(InlineToolbarBase):
             super()._on_apply(event)
             return
 
-        # 4. 모든 프레임에 적용
-        for _i, frame in enumerate(self.frames):
-            if hasattr(frame, 'crop'):
+        def crop(progress):
+            frames = self.frames
+            if frames.default_image is not None:
+                frames.default_image.crop(x, y, w, h)
+            for index, frame in enumerate(frames, 1):
                 frame.crop(x, y, w, h)
+                if index % 8 == 0 or index == len(frames):
+                    progress(index, len(frames))
 
-        # 5. 수정 플래그 설정
-        if hasattr(self._main_window, '_is_modified'):
-            self._main_window._is_modified = True
-
-        # 6. 캔버스 업데이트
-        self._safe_canvas_update()
-
-        # 7. 정보 바 업데이트
-        if hasattr(self._main_window, '_update_info_bar'):
-            self._main_window._update_info_bar()
-
-        # 8. 부모 클래스 _on_apply 호출 (이벤트 발생)
-        super()._on_apply(event)
+        applied = self._main_window._run_undoable_with_progress(
+            title_key="crop_dialog_title", description=self._main_window._translations.tr("crop_dialog_title"),
+            work_fn=crop,
+        )
+        if applied:
+            super()._on_apply(event)
 
     def _on_cancel(self, event):
         """취소"""

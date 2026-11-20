@@ -483,7 +483,7 @@ class FrameListWidget(wx.Panel):
             frame = frames[row]
             if frame:
                 frame.delay_ms = ms
-                self._main_window._is_modified = True
+                self._main_window._mark_untracked_edit()
 
                 # 이벤트 발생
                 evt = FrameDelayChangedEvent(row, ms)
@@ -619,10 +619,8 @@ class FrameListWidget(wx.Panel):
 
         if current_memory_mb > 100:
             try:
-                for row in reversed(selected_rows):
-                    if 0 <= row < frames.frame_count:
-                        frames.delete_frame(row)
-                self._main_window._is_modified = True
+                frames.delete_frames(selected_rows)
+                self._main_window._mark_untracked_edit()
                 self._main_window._refresh_all()
                 if translations:
                     wx.MessageBox(
@@ -662,9 +660,7 @@ class FrameListWidget(wx.Panel):
             def execute():
                 try:
                     frames = self._main_window.frames
-                    for row in reversed(selected_rows_copy):
-                        if 0 <= row < frames.frame_count:
-                            frames.delete_frame(row)
+                    frames.delete_frames(selected_rows_copy)
                     self._main_window._refresh_all()
                 except Exception as e:
                     _t = getattr(self._main_window, '_translations', None)
@@ -716,13 +712,7 @@ class FrameListWidget(wx.Panel):
         if not selected_rows:
             return
 
-        frames = self._main_window.frames
-        frames.duplicate_frame(selected_rows[0])
-
-        self._main_window._is_modified = True
-        self.refresh()
-        if hasattr(self._main_window, '_update_info_bar'):
-            self._main_window._update_info_bar()
+        self._main_window._duplicate_frame(selected_rows[0])
 
     def _set_selected_delay(self, delay_ms: int):
         """선택한 프레임들의 딜레이 설정"""
@@ -743,7 +733,7 @@ class FrameListWidget(wx.Panel):
                 except (IndexError, AttributeError):
                     pass
 
-        self._main_window._is_modified = True
+        self._main_window._mark_untracked_edit()
         self.refresh()
         if hasattr(self._main_window, '_update_info_bar'):
             self._main_window._update_info_bar()

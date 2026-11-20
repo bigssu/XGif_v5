@@ -4,6 +4,7 @@
 """
 
 import os
+import site
 import sys
 import logging
 import shutil
@@ -11,12 +12,23 @@ import stat
 import time
 import gc
 import subprocess
+from threading import Lock
 from typing import Tuple, Optional
 import numpy as np
 from PIL import ImageFont
 import contextlib
 
 logger = logging.getLogger(__name__)
+
+
+def publish_output(staged, destination, *, overwrite=True):
+    """Publish a complete sibling file atomically. The caller cleans up the staging path."""
+    if overwrite:
+        os.replace(staged, destination)
+    elif os.name == 'nt':
+        os.rename(staged, destination)  # Windows rename refuses an existing destination.
+    else:
+        os.link(staged, destination)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -32,107 +44,59 @@ def get_resource_path(relative_path: str) -> str:
     return os.path.join(base, relative_path)
 
 
-def _get_external_env_site_packages() -> str:
-    """외부 venv의 site-packages 경로 반환.
-
-    순환 import 방지를 위해 bootstrap 모듈에 의존하지 않고 직접 계산.
-    """
-    base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(base, "XGif", "env", "Lib", "site-packages")
+_cupy_path_lock = Lock()
+_cupy_dll_handles = {}
 
 
 def ensure_system_site_packages():
-    """외부 venv의 site-packages를 sys.path에 추가.
-
-    %LOCALAPPDATA%\\XGif\\env 에 설치된 패키지(CuPy 등)를
-    현재 프로세스에서 import 할 수 있게 합니다.
-    """
-    _log = logging.getLogger(__name__)
-
-    if getattr(sys, '_xgif_site_packages_added', False):
+    """Make the matching external CuPy environment visible to the frozen runtime."""
+    if not getattr(sys, "frozen", False):
         return
 
-    site_pkg = _get_external_env_site_packages()
-    if not os.path.isdir(site_pkg):
-        _log.debug("[site-packages] external env not found: %s", site_pkg)
+    from cupy_env import env_matches_runtime, legacy_env_dir, select_cupy_env
+
+    env_dir = select_cupy_env()
+    if not env_matches_runtime(env_dir):
+        existing = env_dir if env_dir.exists() else legacy_env_dir()
+        if existing.exists():
+            version = f"{sys.version_info.major}.{sys.version_info.minor}"
+            bits = 64 if sys.maxsize > 2**32 else 32
+            configured = ""
+            with contextlib.suppress(OSError, UnicodeError):
+                for line in (existing / "pyvenv.cfg").read_text(encoding="utf-8").splitlines():
+                    key, _, value = line.partition("=")
+                    if key.strip() in {"version", "version_info"}:
+                        configured = f" (configured Python {value.strip()})"
+                        break
+            raise RuntimeError(f"Incompatible or unusable CuPy environment: {existing}{configured}\n"
+                               f"XGif requires CPython {version} ({bits}-bit).")
         return
 
-    added = []
-    if site_pkg not in sys.path:
-        sys.path.insert(0, site_pkg)
-        added.append(site_pkg)
-
-    # venv의 DLLs 디렉토리도 추가 (CUDA DLL 등)
-    env_dir = os.path.dirname(os.path.dirname(site_pkg))  # env/Lib/site-packages -> env
-    for sub in ("DLLs", "Scripts", "Lib"):
-        p = os.path.join(env_dir, sub)
-        if os.path.isdir(p) and p not in sys.path:
-            sys.path.append(p)
-            added.append(p)
-
-    # Windows DLL 검색 경로 추가 (CUDA DLL 로딩에 필수)
-    # sys.path는 .pyd import에만 영향, DLL은 os.add_dll_directory() + PATH 필요
-    if sys.platform == 'win32':
-        dll_dirs = [
-            os.path.join(env_dir, "DLLs"),
-            os.path.join(env_dir, "Scripts"),
-            os.path.join(env_dir, "Library", "bin"),
-            site_pkg,  # cupy .pyd와 같은 위치의 DLL
-        ]
-        # nvidia-* 패키지의 CUDA DLL 경로
-        nvidia_dir = os.path.join(site_pkg, "nvidia")
-        if os.path.isdir(nvidia_dir):
-            for pkg_name in os.listdir(nvidia_dir):
-                for sub in ("lib", "bin"):
-                    d = os.path.join(nvidia_dir, pkg_name, sub)
-                    if os.path.isdir(d):
-                        dll_dirs.append(d)
-        # cupy 패키지 내부 DLL (.data/lib 등)
-        cupy_dir = os.path.join(site_pkg, "cupy")
-        if os.path.isdir(cupy_dir):
-            dll_dirs.append(cupy_dir)
-            for sub in (".data", ".libs", "_core", "cuda"):
-                d = os.path.join(cupy_dir, sub)
-                if os.path.isdir(d):
-                    dll_dirs.append(d)
-                    # 1단계 하위도 탐색
-                    for child in os.listdir(d):
-                        cd = os.path.join(d, child)
-                        if os.path.isdir(cd):
-                            dll_dirs.append(cd)
-
-        # os.add_dll_directory() (Python 3.8+)
-        if hasattr(os, 'add_dll_directory'):
-            for d in dll_dirs:
-                if os.path.isdir(d):
-                    with contextlib.suppress(OSError):
-                        os.add_dll_directory(d)
-
-        # PATH 환경변수에도 추가 (일부 DLL 로더가 PATH를 사용)
-        path_additions = [d for d in dll_dirs if os.path.isdir(d)]
-        if path_additions:
-            os.environ['PATH'] = os.pathsep.join(path_additions) + os.pathsep + os.environ.get('PATH', '')
-
-    sys._xgif_site_packages_added = True
-
-    if added:
-        _log.info("[site-packages] added %d paths from external env: %s", len(added), added)
-        _patch_frozen_numpy_path([site_pkg], _log)
-    else:
-        _log.debug("[site-packages] external env paths already in sys.path")
-
-
-def _patch_frozen_numpy_path(site_dirs, _log):
-    """frozen numpy에 외부 venv numpy 경로를 추가 (numpy.testing 등 접근 가능하게)"""
-    try:
-        import numpy
-        for sp in site_dirs:
-            np_dir = os.path.join(sp, 'numpy')
-            if os.path.isdir(np_dir) and np_dir not in numpy.__path__:
-                numpy.__path__.append(np_dir)
-                _log.debug("[site-packages] patched numpy.__path__ += %s", np_dir)
-    except Exception:
-        pass
+    site_pkg = env_dir / "Lib" / "site-packages"
+    if not site_pkg.is_dir():
+        return
+    with _cupy_path_lock:
+        if str(site_pkg) not in sys.path:
+            sys.path.append(str(site_pkg))
+            logger.info("CuPy external site-packages: %s", site_pkg)
+        # cuda-pathfinder locates wheel DLLs and headers using site.getsitepackages().
+        if str(env_dir) not in site.PREFIXES:
+            site.PREFIXES.append(str(env_dir))
+        # Frozen NumPy omits optional Python subpackages used by CuPy.
+        numpy_dir = site_pkg / "numpy"
+        if numpy_dir.is_dir() and str(numpy_dir) not in np.__path__:
+            np.__path__.append(str(numpy_dir))
+        if hasattr(os, "add_dll_directory"):
+            paths = [env_dir / "DLLs", env_dir / "Library" / "bin", site_pkg]
+            for pattern in ("nvidia/*/bin", "nvidia/*/bin/x86_64", "nvidia/*/lib",
+                            "cupy/.data/lib", "cupy/.data/bin", "cupy/.libs", "cupy/_core", "cupy/cuda"):
+                paths.extend(site_pkg.glob(pattern))
+            for path in paths:
+                if path.is_dir() and path not in _cupy_dll_handles:
+                    try:
+                        _cupy_dll_handles[path] = os.add_dll_directory(str(path))
+                    except OSError as exc:
+                        logger.warning("Could not register CuPy DLL directory %s: %s", path, exc)
 
 
 # ═══════════════════════════════════════════════════════════════

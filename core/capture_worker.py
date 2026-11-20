@@ -292,6 +292,12 @@ class CaptureThread(threading.Thread):
 
                 # 첫 프레임은 즉시 캡처 시도 (타이밍 무시)
                 if current_time >= next_capture_time or not first_frame_captured:
+                    # Reserve space before grabbing. Slow storage throttles capture
+                    # without keeping a second pending frame or dropping a grab.
+                    if not self.frame_consumed_event.wait(timeout=0.05):
+                        continue
+                    if self.stop_event.is_set():
+                        break
                     t0 = time.perf_counter()
                     frame = backend.grab()
                     t1 = time.perf_counter()
@@ -302,7 +308,6 @@ class CaptureThread(threading.Thread):
                         if not first_frame_captured:
                             first_frame_captured = True
                             next_capture_time = current_time
-                            self._first_frame_ready.set()
                             logger.info("[CaptureThread] First frame captured - recording active!")
 
                         # HDR 보정: 사용자가 수동으로 켤 때만 적용 (적응형).
@@ -353,38 +358,35 @@ class CaptureThread(threading.Thread):
                             )
 
                         # 공유 버퍼에 쓰기
-                        if self.frame_consumed_event.wait(timeout=0.5):
-                            self.frame_consumed_event.clear()
-                            if frame.shape == self.frame_buffer.shape:
-                                np.copyto(self.frame_buffer, frame)
-                                consecutive_shape_mismatch = 0
-                                self.frame_ready_event.set()
-                                self.frame_count += 1
-                            else:
-                                # P2-2: 이전엔 warning 으로 조용히 drop 만 증가시켜 장시간
-                                # silently 녹화가 망가지는 실패가 가능했다. error 로 격상
-                                # + 연속 10회 mismatch 시 _notify_failed 로 사용자에게 표면화.
-                                consecutive_shape_mismatch += 1
-                                logger.error(
-                                    "[CaptureThread] Frame shape mismatch "
-                                    f"(consecutive={consecutive_shape_mismatch}): "
-                                    f"{frame.shape} vs buffer {self.frame_buffer.shape}"
-                                )
-                                self.dropped_frames += 1
-                                self.frame_consumed_event.set()
-                                if consecutive_shape_mismatch >= SHAPE_MISMATCH_THRESHOLD:
-                                    err_msg = (
-                                        f"프레임 shape 불일치가 {SHAPE_MISMATCH_THRESHOLD}회 연속 발생 "
-                                        f"({frame.shape} ≠ {self.frame_buffer.shape}). 녹화 중단 권장."
-                                    )
-                                    logger.critical(f"[CaptureThread] {err_msg}")
-                                    _notify_failed(err_msg)
-                                    return
-                                continue
+                        self.frame_consumed_event.clear()
+                        if frame.shape == self.frame_buffer.shape:
+                            np.copyto(self.frame_buffer, frame)
+                            consecutive_shape_mismatch = 0
+                            self.frame_ready_event.set()
+                            self.frame_count += 1
+                            if self.frame_count == 1:
+                                self._first_frame_ready.set()
                         else:
+                            # P2-2: 이전엔 warning 으로 조용히 drop 만 증가시켜 장시간
+                            # silently 녹화가 망가지는 실패가 가능했다. error 로 격상
+                            # + 연속 10회 mismatch 시 _notify_failed 로 사용자에게 표면화.
+                            consecutive_shape_mismatch += 1
+                            logger.error(
+                                "[CaptureThread] Frame shape mismatch "
+                                f"(consecutive={consecutive_shape_mismatch}): "
+                                f"{frame.shape} vs buffer {self.frame_buffer.shape}"
+                            )
                             self.dropped_frames += 1
-                            if self.dropped_frames % 10 == 0:
-                                logger.warning(f"[CaptureThread] Dropped {self.dropped_frames} frames (backpressure)")
+                            self.frame_consumed_event.set()
+                            if consecutive_shape_mismatch >= SHAPE_MISMATCH_THRESHOLD:
+                                err_msg = (
+                                    f"프레임 shape 불일치가 {SHAPE_MISMATCH_THRESHOLD}회 연속 발생 "
+                                    f"({frame.shape} ≠ {self.frame_buffer.shape}). 녹화 중단 권장."
+                                )
+                                logger.critical(f"[CaptureThread] {err_msg}")
+                                _notify_failed(err_msg)
+                                return
+                            continue
                     else:
                         # 프레임 없음 (화면 변화 없음 등) — 첫 프레임 전에는 재시도
                         if not first_frame_captured:
@@ -411,11 +413,6 @@ class CaptureThread(threading.Thread):
         except Exception as exc:
             logger.exception(f"[CaptureThread] Fatal error: {exc}")
             _notify_failed(f"녹화 캡처 오류: {exc}")
-            # 수집 스레드가 대기 중일 수 있으므로 이벤트 해제
-            try:
-                self.frame_ready_event.set()
-            except Exception as set_exc:
-                logger.debug(f"[CaptureThread] frame_ready_event.set() after fatal error failed: {set_exc}")
         finally:
             logger.debug("[CaptureThread] Cleaning up resources...")
 

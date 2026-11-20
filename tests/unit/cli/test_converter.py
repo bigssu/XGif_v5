@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from cli import EXIT_RUNTIME_ERROR, EXIT_SUCCESS
+from cli import EXIT_RUNTIME_ERROR, EXIT_SUCCESS, EXIT_USER_ERROR
 from cli.converter import run_convert
 from cli.main import build_parser
 from core.ffmpeg_installer import FFmpegManager
@@ -19,6 +19,21 @@ def convert_args(tmp_path, monkeypatch):
     monkeypatch.setattr(GifEncoder, '__init__', lambda self: None)
     monkeypatch.setattr(GifEncoder, '_get_best_encoder', lambda *args: 'libx264')
     return build_parser().parse_args(['convert', str(source), str(tmp_path / 'output.gif'), '-y'])
+
+
+def test_gif_metadata_read_failure_preserves_existing_output(convert_args, monkeypatch):
+    from PIL import Image
+
+    Image.new('RGB', (4, 4)).save(convert_args.input)
+    destination = Path(convert_args.conv_output)
+    destination.write_bytes(b'original')
+
+    def reject_image(*args, **kwargs):
+        raise Image.DecompressionBombError('Image exceeds the pixel limit')
+
+    monkeypatch.setattr(Image, 'open', reject_image)
+    assert run_convert(convert_args) == EXIT_RUNTIME_ERROR
+    assert destination.read_bytes() == b'original'
 
 
 @pytest.mark.parametrize('failure', ['exit', 'timeout', 'spawn', 'empty', 'commit'])
@@ -42,6 +57,101 @@ def test_conversion_failure_preserves_destination(convert_args, monkeypatch, fai
     assert run_convert(convert_args) == EXIT_RUNTIME_ERROR
     assert destination.read_bytes() == b'original'
     assert sorted(p.name for p in destination.parent.iterdir()) == ['input.gif', 'output.gif']
+
+
+def test_output_created_during_conversion_survives(convert_args, monkeypatch):
+    destination = Path(convert_args.conv_output)
+    convert_args.overwrite = False
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        if len(calls) == 1:
+            destination.write_bytes(b'finished by another process')
+        Path(cmd[-1]).write_bytes(b'converted')
+        return subprocess.CompletedProcess(cmd, 0, stderr='')
+
+    monkeypatch.setattr(subprocess, 'run', run)
+    assert run_convert(convert_args) == EXIT_USER_ERROR
+    assert destination.read_bytes() == b'finished by another process'
+    assert len(calls) == 2
+    assert not Path(calls[0][-1]).exists()
+    assert sorted(p.name for p in destination.parent.iterdir()) == ['input.gif', 'output.gif']
+
+
+def test_real_gif_two_pass_preserves_frames_timing_and_size(tmp_path):
+    from PIL import Image
+
+    if not FFmpegManager.get_ffmpeg_executable():
+        pytest.skip('FFmpeg not installed')
+    source = tmp_path / 'source.gif'
+    dest = tmp_path / 'resized.gif'
+    colors = ['red', 'blue', 'green']
+    frames = [Image.new('RGB', (64, 32), color) for color in colors]
+    frames[0].save(source, save_all=True, append_images=frames[1:], duration=100, loop=0)
+    args = build_parser().parse_args(['convert', str(source), str(dest), '--resize', '32x16', '--fps', '10'])
+    assert run_convert(args) == EXIT_SUCCESS
+    with Image.open(dest) as out:
+        assert out.n_frames == 3 and out.size == (32, 16)
+        for index, original in enumerate(frames):
+            out.seek(index)
+            assert out.convert('RGB').getpixel((0, 0)) == original.getpixel((0, 0))
+            assert out.info['duration'] == 100
+
+
+@pytest.mark.parametrize('rate', [30, 120, 240])
+def test_real_gif_default_rate_keeps_one_second(tmp_path, rate):
+    from PIL import Image, ImageSequence
+
+    ffmpeg = FFmpegManager.get_ffmpeg_executable()
+    if not ffmpeg:
+        pytest.skip('FFmpeg not installed')
+    source, target = tmp_path / 'fast.mp4', tmp_path / 'fast.gif'
+    subprocess.run([ffmpeg, '-v', 'error', '-f', 'lavfi', '-i', f'testsrc2=size=64x64:rate={rate}:duration=1',
+                    '-c:v', 'libx264', str(source)], check=True, timeout=10)
+    assert run_convert(build_parser().parse_args(['convert', str(source), str(target)])) == EXIT_SUCCESS
+    with Image.open(target) as out:
+        delays = [frame.info['duration'] for frame in ImageSequence.Iterator(out)]
+    assert len(delays) == min(rate, 100) and sum(delays) == 1000 and min(delays) >= 10
+
+
+@pytest.mark.parametrize("loop", [None, 0, 2])
+def test_real_gif_default_rate_keeps_variable_frame_durations(tmp_path, loop):
+    from PIL import Image, ImageSequence
+
+    if not FFmpegManager.get_ffmpeg_executable():
+        pytest.skip('FFmpeg not installed')
+    source, target = tmp_path / 'variable.gif', tmp_path / 'roundtrip.gif'
+    frames = [Image.new('RGB', (32, 32), color) for color in ['red', 'blue', 'green']]
+    delays = [100, 200, 4000]
+    frames[0].save(source, save_all=True, append_images=frames[1:], duration=delays,
+                   **({} if loop is None else {"loop": loop}))
+    assert run_convert(build_parser().parse_args(['convert', str(source), str(target)])) == EXIT_SUCCESS
+    with Image.open(target) as out:
+        assert out.info.get('loop') == loop
+        assert [frame.info['duration'] for frame in ImageSequence.Iterator(out)] == delays
+
+
+@pytest.mark.parametrize('resize', [False, True])
+def test_real_mp4_pads_odd_dimensions(tmp_path, resize):
+    import numpy as np
+    from PIL import Image
+
+    ffmpeg = FFmpegManager.get_ffmpeg_executable()
+    if not ffmpeg:
+        pytest.skip('FFmpeg not installed')
+    source, target = tmp_path / 'odd.gif', tmp_path / 'odd.mp4'
+    Image.new('RGB', (31, 29), 'white').save(source)
+    width, height = (15, 13) if resize else (31, 29)
+    cmd = ['convert', str(source), str(target), '--encoder', 'cpu']
+    if resize:
+        cmd.extend(['--resize', f'{width}x{height}'])
+    assert run_convert(build_parser().parse_args(cmd)) == EXIT_SUCCESS
+    pixels = subprocess.check_output([ffmpeg, '-v', 'error', '-i', str(target), '-f', 'rawvideo',
+                                      '-pix_fmt', 'gray', '-'], timeout=10)
+    image = np.frombuffer(pixels, dtype=np.uint8).reshape(height + 1, width + 1)
+    assert image[:height, :width].min() > 200
+    assert image[height, :].max() < 50 and image[:, width].max() < 50
 
 
 @pytest.mark.parametrize('explicit_output', [False, True])

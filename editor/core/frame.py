@@ -9,12 +9,9 @@ from PIL import Image
 import numpy as np
 import weakref
 import io
-import os
-import tempfile
 import threading
 
 from . import editor_gpu_utils as gpu_utils
-import contextlib
 
 
 # 전역 메모리 관리자
@@ -22,25 +19,23 @@ class FrameMemoryManager:
     """프레임 메모리 관리자
 
     현재는 Frame의 등록/해제만 담당하며, 죽은 weakref를 정리합니다.
-    get_swap_path()는 스왑 파일 경로만 반환하며, 디스크 스왑 로직은 미구현입니다.
     """
     _instance = None
+    _instance_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._init_manager()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    manager = super().__new__(cls)
+                    manager._init_manager()
+                    cls._instance = manager
         return cls._instance
 
     def _init_manager(self):
-        import atexit
-        self._loaded_frames: Dict[int, weakref.ref] = {}
+        self._loaded_frames: weakref.WeakValueDictionary[int, Frame] = weakref.WeakValueDictionary()
         self._memory_limit_mb = 1024  # 1GB 기본 제한
-        self._temp_dir = tempfile.mkdtemp(prefix="gifeditor_")
-        self._swap_count = 0
         self._lock = threading.Lock()  # 스레드 안전성을 위한 락
-        # 프로그램 종료 시 임시 디렉토리 자동 정리
-        atexit.register(self.cleanup)
 
     def get_memory_limit_mb(self) -> int:
         """현재 메모리 제한 (MB) 반환"""
@@ -59,33 +54,12 @@ class FrameMemoryManager:
     def register_frame(self, frame_id: int, frame: 'Frame'):
         """프레임 등록 (스레드 안전)"""
         with self._lock:
-            self._loaded_frames[frame_id] = weakref.ref(frame)
-            self._check_memory()
+            self._loaded_frames[frame_id] = frame
 
     def unregister_frame(self, frame_id: int):
         """프레임 등록 해제 (스레드 안전)"""
         with self._lock:
             self._loaded_frames.pop(frame_id, None)
-
-    def _check_memory(self):
-        """죽은 weakref 정리 (락 내부에서 호출됨). 디스크 스왑은 미구현."""
-        # 죽은 참조 정리
-        dead_keys = [k for k, v in self._loaded_frames.items() if v() is None]
-        for k in dead_keys:
-            del self._loaded_frames[k]
-
-    def get_swap_path(self, frame_id: int) -> str:
-        """스왑 파일 경로 반환"""
-        return os.path.join(self._temp_dir, f"frame_{frame_id}.png")
-
-    def cleanup(self):
-        """임시 파일 정리"""
-        import shutil
-        try:
-            if os.path.exists(self._temp_dir):
-                shutil.rmtree(self._temp_dir)
-        except Exception:
-            pass
 
 
 def get_memory_manager() -> FrameMemoryManager:
@@ -111,8 +85,9 @@ class Frame:
     # + 팔레트 ~1KB 로 메모리 ~1/4 절감. pil_to_wx_image 가 자동 RGBA 변환을 수행
     # 하므로 렌더링 경로는 호환 유지.
     _PRESERVED_MODES = frozenset({'P', 'L', 'LA', 'RGB', 'RGBA'})
+    _recording_source = None
 
-    def __init__(self, image: Image.Image, delay_ms: int = 100,
+    def __init__(self, image: Image.Image, delay_ms: float = 100,
                  lazy_load: bool = True, source_path: Optional[str] = None):
         """
         Args:
@@ -148,7 +123,7 @@ class Frame:
             else:
                 self._image = image.copy()
 
-        self._delay_ms = max(10, delay_ms)  # 최소 10ms
+        self._delay_ms = max(0, delay_ms)  # Keep source timing; playback applies its own timer floor.
         self._thumbnail_cache: Dict[int, Image.Image] = {}
 
         # 메모리 관리자에 등록
@@ -185,6 +160,9 @@ class Frame:
 
     def _load_from_source(self) -> Image.Image:
         """원본 파일에서 이미지 로드 — 보존 가능 mode 는 유지"""
+        if self._recording_source is not None:
+            frames, index = self._recording_source
+            return Image.fromarray(frames[index][:, :, ::-1])
         if self._source_path is None:
             raise ValueError("원본 파일 경로가 없습니다")
         img = Image.open(self._source_path)
@@ -200,7 +178,7 @@ class Frame:
 
         if self._image_bytes is not None:
             self._image = self._decompress_image()
-        elif self._source_path is not None:
+        elif self._source_path is not None or self._recording_source is not None:
             self._image = self._load_from_source()
         else:
             raise ValueError("이미지를 로드할 수 없습니다")
@@ -208,7 +186,7 @@ class Frame:
     def unload_image(self):
         """이미지를 메모리에서 해제 (lazy_load 모드에서만)"""
         if self._lazy_load and self._image is not None:
-            if self._image_bytes is None:
+            if self._image_bytes is None and self._recording_source is None:
                 self._compress_image(self._image)
             self._image = None
 
@@ -235,6 +213,14 @@ class Frame:
             bpp = Frame._MODE_BYTES_PER_PIXEL.get(thumb.mode, 4)
             usage += thumb.size[0] * thumb.size[1] * bpp
         return usage
+
+    @classmethod
+    def from_recording(cls, frames, index: int, size: Tuple[int, int], delay_ms: int) -> 'Frame':
+        """Share the recording until this frame is edited or released."""
+        frame = cls(None, delay_ms)
+        frame._recording_source = (frames, index)
+        frame._image_size = size
+        return frame
 
     @classmethod
     def create_empty(cls, width: int, height: int,
@@ -292,8 +278,29 @@ class Frame:
         return self._image_size
 
     @property
-    def delay_ms(self) -> int:
+    def duration_ms(self) -> float:
+        """Original duration, including fractional milliseconds supported by APNG."""
         return self._delay_ms
+
+    @duration_ms.setter
+    def duration_ms(self, value: float):
+        self._delay_ms = max(0, value)
+
+    def has_transparent_pixels(self) -> bool:
+        if self._recording_source is not None:
+            return False  # Captured BGR is always opaque until edited.
+        image = self._image
+        if image is None and self._image_bytes is not None:
+            with Image.open(io.BytesIO(self._image_bytes)) as packed:
+                if not packed.has_transparency_data:
+                    return False
+        if image is None:
+            image = self.copy_image()
+        return image.has_transparency_data and image.convert('RGBA').getchannel('A').getextrema()[0] == 0
+
+    @property
+    def delay_ms(self) -> int:
+        return round(self._delay_ms)
 
     @delay_ms.setter
     def delay_ms(self, value: int):
@@ -301,7 +308,14 @@ class Frame:
 
     @property
     def image(self) -> Image.Image:
-        """PIL Image 객체 반환 (lazy loading 시 자동 로드)"""
+        """Return editable pixels. The caller may mutate the PIL image in place."""
+        image = self.display_image()
+        if image is self._image:
+            self._invalidate_cache()
+        return image
+
+    def display_image(self) -> Image.Image:
+        """Borrow decoded pixels for rendering. Callers must not modify the result."""
         try:
             self._ensure_image_loaded()
             if self._image is None:
@@ -316,6 +330,8 @@ class Frame:
 
     def copy_image(self) -> Image.Image:
         """Return independent pixels without retaining a newly decoded source image."""
+        if self._image is None and self._recording_source is not None:
+            return self._load_from_source()
         was_loaded = self.is_loaded
         try:
             self._ensure_image_loaded()
@@ -603,6 +619,7 @@ class Frame:
         """모든 캐시 무효화 (썸네일, 압축 이미지 등)"""
         self._thumbnail_cache.clear()
         self._image_bytes = None  # 압축 캐시도 무효화
+        self._recording_source = None
 
     def clear_thumbnail_cache(self) -> None:
         """썸네일 캐시만 정리 (메모리 절약)"""
@@ -611,6 +628,9 @@ class Frame:
     # === 복제 ===
     def clone(self) -> 'Frame':
         """Clone current pixels; unloaded frames can share immutable compressed bytes."""
+        if self._recording_source is not None:
+            frames, index = self._recording_source
+            return Frame.from_recording(frames, index, self.size, self.delay_ms)
         if self._image is None and self._image_bytes is not None:
             cloned = Frame(None, self._delay_ms, lazy_load=self._lazy_load)
             cloned._image_bytes = self._image_bytes
@@ -633,8 +653,3 @@ class Frame:
     def __repr__(self) -> str:
         loaded = "loaded" if self.is_loaded else "unloaded"
         return f"Frame({self.width}x{self.height}, {self.delay_ms}ms, {loaded})"
-
-    def __del__(self):
-        """소멸자: 메모리 관리자에서 등록 해제"""
-        with contextlib.suppress(Exception):
-            get_memory_manager().unregister_frame(self._id)

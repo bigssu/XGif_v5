@@ -1,6 +1,7 @@
 """Bounded source residency and independent editor image ownership."""
 import ast
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 import gc
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,7 +10,7 @@ import weakref
 from PIL import Image
 import pytest
 
-from editor.core.frame import Frame
+from editor.core.frame import Frame, get_memory_manager
 from editor.core.frame_collection import FrameCollection
 from editor.core.editor_gif_encoder import EncoderSettings, GifEncoder
 from editor.utils.frame_targeting import snapshot_original_images
@@ -56,6 +57,32 @@ def test_clone_pixels_palette_and_mutations_are_independent(mode):
     assert original.image.getpixel((0, 0)) != copied.image.getpixel((0, 0))
     copied.delay_ms = 99
     assert original.delay_ms == 20
+
+
+def test_memory_registry_drops_weak_entries_without_another_registration():
+    manager = get_memory_manager()
+
+    class Tracked:
+        pass
+
+    item = Tracked()
+    manager.register_frame(-1, item)
+    assert -1 in manager._loaded_frames
+    del item
+    gc.collect()
+    assert -1 not in manager._loaded_frames
+
+
+def test_concurrent_frame_registration_releases_all_weak_entries():
+    manager = get_memory_manager()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        frames = list(pool.map(lambda i: Frame.from_recording(None, i, (10, 10), 20), range(1000)))
+    ids = {frame._id for frame in frames}
+    assert len(ids) == len(frames)
+    assert all(manager._loaded_frames[frame._id] is frame for frame in frames)
+    frames.clear()
+    gc.collect()
+    assert ids.isdisjoint(manager._loaded_frames)
 
 
 def test_dirty_and_source_only_clone_preserve_residency(tmp_path):
@@ -211,3 +238,70 @@ def test_clone_captures_direct_public_image_mutation():
     assert frame.is_loaded
     clone.image.putpixel((0, 0), (0, 255, 0))
     assert frame.image.getpixel((0, 0)) == (0, 0, 255)
+
+
+def test_recording_editor_clone_edits_and_spool_lifetime(tmp_path):
+    import numpy as np
+    from core.recording_frames import RecordingFrames
+
+    source = RecordingFrames(0)
+    source_ref = weakref.ref(source)
+    source.append(np.full((3, 4, 3), (4, 32, 190), dtype=np.uint8))
+    frame = Frame.from_recording(source, 0, (4, 3), 70)
+    clone = frame.clone()
+    del source
+    assert not frame.is_loaded and not clone.is_loaded
+    assert frame.get_thumbnail().getpixel((0, 0)) == (190, 32, 4)
+    assert not frame.is_loaded
+    frames = FrameCollection()
+    frames.add_frame(frame)
+    clone.image.putpixel((0, 0), (1, 2, 3))
+    clone.unload_image()
+    frames.add_frame(clone)
+    path = tmp_path / 'recording.gif'
+    settings = EncoderSettings(use_gifsicle=False, loop_count=2)
+    result = GifEncoder.save(frames, str(path), settings)
+    assert result.success, result.error_message
+    assert GifEncoder.estimate_gif_size(frames, settings) == path.stat().st_size
+    with Image.open(path) as gif:
+        assert gif.info['loop'] == 2 and gif.n_frames == 2
+        for index, pixel in enumerate(((190, 32, 4), (1, 2, 3))):
+            gif.seek(index)
+            assert gif.info['duration'] == 70
+            assert gif.convert('RGB').getpixel((0, 0)) == pixel
+    assert not frame.is_loaded and not clone.is_loaded
+    del frames, frame
+    assert source_ref() is None
+
+
+def test_recording_playback_evicts_to_source_and_clone_preserves_edits():
+    import numpy as np
+    from core.recording_frames import RecordingFrames
+    from editor.core.frame_collection import FrameCollection
+
+    source = RecordingFrames(0)
+    frames = FrameCollection()
+    for index in range(32):
+        source.append(np.full((8, 8, 3), index, dtype=np.uint8))
+        frames.add_frame(Frame.from_recording(source, index, (8, 8), 50))
+    owner = weakref.ref(source)
+    del source
+    for _ in range(2):
+        for index, frame in enumerate(frames):
+            frames.preload_range(index, index)
+            assert frame.display_image().getpixel((0, 0)) == (index,) * 3
+            if index == 7:
+                clone = frame.clone()
+            frame.unload_image()
+            assert frame.get_memory_usage() == 0
+    frames.clear()
+    del frame
+    assert owner() is not None
+    assert clone.display_image().getpixel((0, 0)) == (7, 7, 7)
+    clone.image.putpixel((0, 0), (6, 5, 4))
+    assert owner() is None
+    clone.unload_image()
+    assert clone.display_image().getpixel((0, 0)) == (6, 5, 4)
+    clone.image.putpixel((0, 0), (1, 2, 3))
+    clone.unload_image()
+    assert clone.display_image().getpixel((0, 0)) == (1, 2, 3)

@@ -155,6 +155,7 @@ class HelpDialog(ThemedDialog):
             [
                 tr("help_sec_sc_file_body0", "Ctrl+O    파일 열기"),
                 tr("help_sec_sc_file_body1", "Ctrl+S    저장"),
+                tr("rec_help_save_as", "Ctrl+Shift+S    다른 이름으로 저장"),
                 tr("help_sec_sc_file_body2", "Space     재생 / 일시정지"),
                 tr("help_sec_sc_file_body3", "Left/Right 프레임 이동"),
             ],
@@ -163,21 +164,9 @@ class HelpDialog(ThemedDialog):
             page,
             tr("help_sec_sc_edit_title", "편집"),
             [
-                tr("help_sec_sc_edit_body0", "Ctrl+Z    실행 취소"),
-                tr("help_sec_sc_edit_body1", "Ctrl+Y    다시 실행"),
+                tr("rec_help_duplicate", "Ctrl+D    프레임 복제"),
                 tr("help_sec_sc_edit_body2", "Ctrl+A    전체 프레임 선택"),
                 tr("help_sec_sc_edit_body3", "Delete    선택한 프레임 삭제"),
-            ],
-        )
-        self._add_section(
-            page,
-            tr("help_sec_sc_tools_title", "도구"),
-            [
-                tr("help_sec_sc_tools_body0", "T         텍스트 추가"),
-                tr("help_sec_sc_tools_body1", "P         펜슬 그리기"),
-                tr("help_sec_sc_tools_body2", "C         자르기"),
-                tr("help_sec_sc_tools_body3", "R         크기 조절"),
-                tr("help_sec_sc_tools_body4", "E         필터/효과"),
             ],
         )
         return page

@@ -3,12 +3,56 @@
 from __future__ import annotations
 
 import logging
+import ctypes
+import sys
 from typing import List
 
 import wx
 import contextlib
 
 logger = logging.getLogger(__name__)
+_RECORDER_PROPERTY = "XGif.Recorder.GracefulClose"
+
+
+def register_recorder_window(window) -> None:
+    """Mark only the recorder so a second launch can use its normal close handler."""
+    if sys.platform != "win32":
+        return
+    user32 = ctypes.windll.user32
+    handle = ctypes.c_void_p(window.GetHandle())
+    if not user32.SetPropW(handle, _RECORDER_PROPERTY, ctypes.c_void_p(1)):
+        logger.warning("Could not register the recorder window for restart")
+        return
+
+    def remove_property(event):
+        if event.GetEventObject() is window:
+            user32.RemovePropW(handle, _RECORDER_PROPERTY)
+        event.Skip()
+
+    window.Bind(wx.EVT_WINDOW_DESTROY, remove_property)
+
+
+def request_recorder_close() -> bool:
+    """Ask a visible, enabled recorder to close. Its existing save prompts may veto."""
+    if sys.platform != "win32":
+        return False
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    sent = False
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def find_recorder(hwnd, _):
+        nonlocal sent
+        handle = wintypes.HWND(hwnd)
+        if (user32.GetPropW(handle, _RECORDER_PROPERTY) and user32.IsWindowVisible(handle)
+                and user32.IsWindowEnabled(handle)):
+            sent = bool(user32.PostMessageW(handle, 0x0010, 0, 0))  # WM_CLOSE
+            return False
+        return True
+
+    user32.EnumWindows(find_recorder, 0)
+    return sent
 
 
 def _get_live_top_windows() -> List[wx.Window]:

@@ -21,7 +21,7 @@ def save_config(settings_dict: Dict[str, str]):
     path = get_config_path()
     settings = AppSettings.load(path)
     for key, value in settings_dict.items():
-        settings.set(key, value)
+        settings.set(key, value, force=True)
     settings.save(path)
 
 
@@ -39,7 +39,7 @@ def set_config_value(key: str, value: str) -> bool:
         return False
     path = get_config_path()
     settings = AppSettings.load(path)
-    settings.set(key, value)
+    settings.set(key, value, force=True)
     settings.save(path)
     return True
 
@@ -47,7 +47,8 @@ def set_config_value(key: str, value: str) -> bool:
 def reset_config():
     """모든 설정을 기본값으로 복원"""
     settings = AppSettings()
-    settings.save(get_config_path())
+    settings.reset()
+    settings.save(get_config_path(), recover_invalid=True)
 
 
 def handle_config_command(args) -> int:

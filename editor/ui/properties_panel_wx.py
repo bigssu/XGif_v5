@@ -227,6 +227,6 @@ class PropertiesPanel(ThemedPanel):
             frame.delay_ms = value
 
             if hasattr(self._main_window, '_is_modified'):
-                self._main_window._is_modified = True
+                self._main_window._mark_untracked_edit()
             if hasattr(self._main_window, '_update_info_bar'):
                 self._main_window._update_info_bar()

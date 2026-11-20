@@ -63,7 +63,7 @@ def test_key_dialogs_use_shared_commands_and_responsive_save_layout():
     assert "from ui.design_system import CommandButton" in save_dialog
     assert "SetMinSize((900, 550))" not in save_dialog
     assert "SetMaxSize((self.PREVIEW_WIDTH, self.PREVIEW_HEIGHT))" not in save_dialog
-    assert "SetMinSize((720, 520))" in save_dialog
+    assert "self.SetMinSize((min(720," in save_dialog
     assert "save_dialog_title" in save_dialog
     assert "save_dialog_colors" in save_dialog
 
@@ -120,7 +120,7 @@ def test_editor_window_is_not_hard_pinned_to_1008x840():
     assert "self.SetMinSize((1008, 840))" not in src
     assert "self.SetSize((1008, 840))" not in src
     # A real interaction-floor minimum must exist:
-    assert "self.SetMinSize((880, 620))" in src
+    assert "self.SetMinSize((min(880, max_width), min(620, max_height)))" in src
     # Initial size must be screen-clamped via the shared display pattern:
     assert "wx.Display.GetFromWindow(self)" in src
     assert ".GetClientArea()" in src
@@ -135,13 +135,19 @@ def test_design_system_exposes_form_section_and_row():
 def test_form_section_instantiates_without_error():
     import wx
     from ui.design_system import FormSection
-    app = wx.App()
+    app = _ensure_wx_app()
     frame = wx.Frame(None)
-    sec = FormSection(frame, "Title", "desc")
-    sec.add_row("Label:", wx.TextCtrl(frame))
+    sec = FormSection(frame, "GPU & Encoder", "desc")
+    row = sec.add_row("Width & height:", wx.TextCtrl(frame))
+    assert sec._heading.GetLabelText() == "GPU & Encoder"
+    assert row._label_text.GetLabelText() == "Width & height:"
+    sec.set_title("Capture & edit")
+    row.set_label("X & Y:")
+    assert sec._heading.GetLabelText() == "Capture & edit"
+    assert row._label_text.GetLabelText() == "X & Y:"
     assert sec.GetSizer() is not None
     frame.Destroy()
-    app.Destroy()
+    app.Yield()
 
 
 def test_settings_dialog_uses_form_section_not_staticbox():
@@ -191,6 +197,54 @@ def test_owner_drawn_buttons_recover_from_spurious_leave_events():
         assert "def _is_mouse_over" in source
         assert "inside = self._is_mouse_over()" in source
         assert f"and self.{hover_name}" not in source
+
+
+def test_command_button_keyboard_activation_and_focus_loss():
+    _ensure_wx_app()
+    from ui.design_system import CommandButton
+
+    dialog = wx.Dialog(None)
+    try:
+        command = CommandButton(dialog, label="Install")
+        default = wx.Button(dialog, label="Close")
+        default.SetDefault()
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(command)
+        sizer.Add(default)
+        dialog.SetSizerAndFit(sizer)
+        dialog.Show()
+        command.SetFocus()
+        wx.YieldIfNeeded()
+        assert command.AcceptsFocusFromKeyboard() and command.HasFocus()
+        clicks = []
+        dialog.Bind(wx.EVT_BUTTON, lambda evt: clicks.append(evt.GetEventObject()))
+
+        def press(event_type, key):
+            event = wx.KeyEvent(event_type.typeId)
+            event.SetKeyCode(key)
+            # MSW populates this flag from native key messages. Synthetic events
+            # have no native repeat state and wx exposes no setter for the flag.
+            event.IsAutoRepeat = lambda: False
+            command.ProcessWindowEvent(event)
+
+        for key in (wx.WXK_SPACE, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            press(wx.EVT_KEY_DOWN, key)
+            press(wx.EVT_KEY_DOWN, key)
+            press(wx.EVT_KEY_UP, key)
+            press(wx.EVT_KEY_UP, key)
+        assert clicks == [command] * 3
+
+        press(wx.EVT_KEY_DOWN, wx.WXK_SPACE)
+        press(wx.EVT_KEY_DOWN, wx.WXK_TAB)
+        wx.YieldIfNeeded()
+        assert default.HasFocus()
+        press(wx.EVT_KEY_UP, wx.WXK_SPACE)
+        command.Disable()
+        press(wx.EVT_KEY_DOWN, wx.WXK_RETURN)
+        press(wx.EVT_KEY_UP, wx.WXK_RETURN)
+        assert clicks == [command] * 3
+    finally:
+        dialog.Destroy()
 
 
 def test_editor_i18n_common_keys_present_in_both_locales():

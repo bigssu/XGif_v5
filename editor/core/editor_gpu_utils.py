@@ -18,7 +18,7 @@ import numpy as np
 import os
 import threading
 
-from cupy_policy import cupy_packages_for_driver_version, format_cupy_install_hint
+from cupy_policy import cupy_packages_for_driver_version
 from ..utils.logger import get_logger
 
 # 로거 초기화
@@ -47,60 +47,18 @@ def _check_gpu() -> bool:
         _logger.info(f"GPU 초기화 건너뜀: {_gpu_init_error}")
         return False
 
-    try:
-        from core.utils import ensure_system_site_packages
+    from core.dependency_checker import DependencyState, check_cupy
 
-        ensure_system_site_packages()
-    except Exception:
-        pass
-
-    try:
-        import cupy as cp
-
-        # CUDA 런타임 버전 확인
-        cuda_version = cp.cuda.runtime.runtimeGetVersion()
-        _logger.info(f"CUDA 런타임 버전: {cuda_version // 1000}.{(cuda_version % 1000) // 10}")
-
-        # GPU 장치 수 확인
-        device_count = cp.cuda.runtime.getDeviceCount()
-        if device_count == 0:
-            _gpu_init_error = "사용 가능한 CUDA 장치가 없습니다"
-            _logger.warning(_gpu_init_error)
-            return False
-
-        _logger.info(f"CUDA 장치 발견: {device_count}개")
-
-        # 기본 장치 선택 및 정보 로깅
-        device = cp.cuda.Device()
-        props = cp.cuda.runtime.getDeviceProperties(device.id)
-        device_name = props["name"].decode() if isinstance(props["name"], bytes) else props["name"]
-        total_memory_mb = props["totalGlobalMem"] // (1024 * 1024)
-        compute_cap = f"{props['major']}.{props['minor']}"
-
-        _logger.info(f"GPU 선택됨: {device_name}")
-        _logger.info(f"  - 메모리: {total_memory_mb:,} MB")
-        _logger.info(f"  - Compute Capability: {compute_cap}")
-
-        # GPU 메모리 할당 테스트
-        test_arr = cp.array([1, 2, 3], dtype=cp.float32)
-        result = test_arr.sum()
-        _ = result.get()
-        del test_arr, result
-        cp.get_default_memory_pool().free_all_blocks()
-
-        _cupy_module = cp
-        _logger.info("GPU 초기화 완료 - CuPy 사용 가능")
-        return True
-
-    except ImportError as e:
-        _gpu_init_error = f"CuPy가 설치되지 않음: {str(e)}"
+    status = check_cupy()
+    if status.state != DependencyState.INSTALLED:
+        _gpu_init_error = status.error_message
         _logger.info(f"GPU 가속 사용 불가: {_gpu_init_error}")
-        _logger.info(f"GPU 가속을 사용하려면: {format_cupy_install_hint()}")
         return False
-    except Exception as e:
-        _gpu_init_error = f"GPU 초기화 실패: {str(e)}"
-        _logger.warning(_gpu_init_error)
-        return False
+
+    import cupy
+    _cupy_module = cupy
+    _gpu_init_error = None
+    return True
 
 
 def is_gpu_available() -> bool:

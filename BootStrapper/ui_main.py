@@ -95,10 +95,11 @@ class FlatButton(wx.Control):
         self._cache = None
         self._cache_key = None
 
-        self.SetMinSize(size)
+        self._base_size = self.FromDIP(size)
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.SetCursor(wx.Cursor(wx.CURSOR_HAND))
         self.SetFont(_font(10))
+        self._fit_label()
 
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)
@@ -111,8 +112,15 @@ class FlatButton(wx.Control):
 
     def SetLabel(self, label):
         self._label = label
+        self._fit_label()
         self._cache = None
         self.Refresh()
+
+    def _fit_label(self):
+        width, height = self.GetTextExtent(self._label)
+        self.SetMinSize((max(self._base_size.width, width + self.FromDIP(16)),
+                         max(self._base_size.height, height + self.FromDIP(8))))
+        self.GetParent().Layout()
 
     def GetLabel(self):
         return self._label
@@ -234,7 +242,7 @@ class BootstrapperFrame(wx.Frame):
             style=wx.DEFAULT_FRAME_STYLE | wx.RESIZE_BORDER,
         )
         self.SetBackgroundColour(_BG_PANEL)
-        self.SetMinSize((640, 440))
+        self.SetMinSize(self.FromDIP((640, 440)))
 
         self.logger = logger
         self.paths = paths_module
@@ -299,7 +307,7 @@ class BootstrapperFrame(wx.Frame):
         )
         desc.SetForegroundColour(_TEXT_SECONDARY)
         desc.SetFont(_font(10))
-        desc.Wrap(660)
+        desc.Wrap(self.FromDIP(575))
         root.Add(desc, 0, wx.LEFT | wx.RIGHT, 20)
         root.AddSpacer(12)
 
@@ -448,17 +456,10 @@ class BootstrapperFrame(wx.Frame):
             self._auto_close_timer = None
 
         if event.success:
-            # 필수 항목 중 미설치가 있는지 확인
-            has_missing = False
-            for i, dep in enumerate(self._deps):
-                st = self._list.GetItemText(i, 2)
-                if dep["required"] and st not in (ST_PASS, ST_INSTALL_OK):
-                    has_missing = True
-                    break
-
-            self._all_required_ok = not has_missing
-
-            if has_missing:
+            missing = [dep for i, dep in enumerate(self._deps)
+                       if self._list.GetItemText(i, 2) not in (ST_PASS, ST_INSTALL_OK)]
+            self._all_required_ok = not any(dep["required"] for dep in missing)
+            if any(dep["install_func"] for dep in missing):
                 self._btn_install.SetLabel("설치 시작")
                 self._btn_install.Enable(True)
             else:
@@ -645,17 +646,6 @@ class BootstrapperFrame(wx.Frame):
         try:
             import deps_checker
             import deps_installer
-            from download_utils import check_connectivity
-
-            # 인터넷 연결 확인 (#6)
-            self.logger.info("인터넷 연결 확인 중…")
-            if not check_connectivity():
-                self.logger.warning("인터넷 연결 없음")
-                wx.PostEvent(self, TaskCompleteEvent(
-                    success=False,
-                    error="인터넷에 연결되어 있지 않습니다. 네트워크를 확인한 후 다시 시도하세요.",
-                ))
-                return
 
             failed_items = []
 

@@ -4,6 +4,7 @@ EffectsDialog - 효과/필터 다이얼로그 (wxPython 버전)
 PyQt6 QDialog를 wx.Dialog로 마이그레이션
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 from PIL import Image
 from typing import TYPE_CHECKING, Dict, Any, Optional
 from ...core.image_effects import ImageEffects
@@ -116,6 +117,7 @@ class EffectsDialog(ThemedDialog):
 
     def _setup_ui(self):
         """UI 초기화"""
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
         main_sizer.AddSpacer(15)
 
@@ -123,7 +125,7 @@ class EffectsDialog(ThemedDialog):
         preview_sizer = wx.BoxSizer(wx.VERTICAL)
         preview_sizer.AddSpacer(15)
 
-        self._preview_label = wx.StaticBitmap(self)
+        self._preview_label = wx.StaticBitmap(body)
         self._preview_label.SetMinSize((300, 300))
         self._preview_label.SetBackgroundColour(Colors.BG_SECONDARY)
         preview_sizer.Add(self._preview_label, 1, wx.EXPAND)
@@ -135,7 +137,7 @@ class EffectsDialog(ThemedDialog):
         settings_sizer.AddSpacer(15)
 
         # 탭 위젯
-        tabs = wx.Notebook(self)
+        tabs = wx.Notebook(body)
         tabs.SetBackgroundColour(Colors.BG_PRIMARY)
         tabs.SetForegroundColour(Colors.TEXT_PRIMARY)
 
@@ -210,11 +212,11 @@ class EffectsDialog(ThemedDialog):
         settings_sizer.AddSpacer(10)
 
         # 적용 대상
-        target_box = wx.StaticBox(self, label=tr("apply_to"))
+        target_box = wx.StaticBox(body, label=tr("apply_to"))
         target_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         target_sizer = wx.StaticBoxSizer(target_box, wx.HORIZONTAL)
 
-        self._target_combo = wx.ComboBox(self, style=wx.CB_READONLY,
+        self._target_combo = wx.ComboBox(body, style=wx.CB_READONLY,
                                         choices=[tr("target_current_only"), tr("target_selected_full"), tr("target_all_full")])
         self._target_combo.SetBackgroundColour(Colors.BG_TERTIARY)
         self._target_combo.SetForegroundColour(Colors.TEXT_PRIMARY)
@@ -247,12 +249,11 @@ class EffectsDialog(ThemedDialog):
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
-        settings_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
         settings_sizer.AddSpacer(15)
 
         main_sizer.Add(settings_sizer, 1, wx.EXPAND | wx.RIGHT, 15)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def _load_current_frame(self):
         """현재 프레임 로드"""
@@ -263,7 +264,7 @@ class EffectsDialog(ThemedDialog):
 
             current_frame = getattr(frames, 'current_frame', None)
             if current_frame:
-                self._original_image = current_frame.image.copy()
+                self._original_image = current_frame.copy_image()
                 self._update_preview()
         except Exception:
             pass

@@ -30,7 +30,7 @@ from .style_constants_wx import Colors, Fonts, apply_button_style
 # ── 다이얼로그 (wxPython 버전) ──────────────────────────────
 from .dialogs.target_frame_hint_dialog_wx import TargetFrameHintDialog
 
-from .save_dialog_wx import SaveDialog
+from .save_dialog_wx import SaveDialog, confirm_output_path
 
 # 인라인 툴바 (wxPython 버전) - 개별 임포트
 from .inline_toolbars.speed_toolbar_wx import SpeedToolbar
@@ -334,18 +334,14 @@ class MainWindow(wx.Frame):
         """UI 초기화"""
         self.Freeze()
         self.SetTitle("GIF Editor")
-        # 상호작용이 가능한 최소 크기(작업 영역 플로어). 이 아래로는
-        # 툴바/프레임목록/캔버스가 사용 불가하므로 정당한 최소값.
-        self.SetMinSize((880, 620))
-        # 초기 크기는 선호 크기를 화면 작업영역에 클램프
-        # (ui.theme.ThemedDialog.fit_to_content 와 동일 패턴).
         preferred_w, preferred_h = 1008, 840
         display_idx = wx.Display.GetFromWindow(self)
         display = wx.Display(display_idx if display_idx >= 0 else 0)
         screen = display.GetClientArea()
-        # 화면 작업영역으로 클램프하되 상호작용 최소(880x620) 아래로는 내려가지 않음
-        init_w = max(880, min(preferred_w, screen.width - 40))
-        init_h = max(620, min(preferred_h, screen.height - 40))
+        max_width, max_height = max(1, screen.width - 40), max(1, screen.height - 40)
+        self.SetMinSize((min(880, max_width), min(620, max_height)))
+        init_w = min(preferred_w, max_width)
+        init_h = min(preferred_h, max_height)
         self.SetSize(init_w, init_h)
 
         # 중앙 패널
@@ -625,6 +621,12 @@ class MainWindow(wx.Frame):
 
         # 편집 메뉴
         self._edit_menu = wx.Menu()
+        for redo, command, label, shortcut in [(False, wx.ID_UNDO, "action_undo", "Ctrl+Z"),
+                                               (True, wx.ID_REDO, "action_redo", "Ctrl+Y")]:
+            item = self._edit_menu.Append(command, translations.tr(label) + "\t" + shortcut)
+            self._edit_menu.Bind(wx.EVT_MENU, lambda e, redo=redo: self._apply_history(redo), item)
+            self.Bind(wx.EVT_UPDATE_UI, lambda e, redo=redo: e.Enable(self._history_available(redo)), id=command)
+        self._edit_menu.AppendSeparator()
         action_select_all = self._edit_menu.Append(wx.ID_SELECTALL, translations.tr("action_select_all") + "\tCtrl+A")
         self._edit_menu.Bind(wx.EVT_MENU, lambda e: self._select_all(), action_select_all)
         self._edit_menu.AppendSeparator()
@@ -905,7 +907,7 @@ class MainWindow(wx.Frame):
         if self._save_in_progress:
             return
         self._stop_preview_before_save()
-        if self._current_file_path:
+        if self._current_file_path and not self._is_frame_export(self._current_file_path):
             self._save_to_path(self._current_file_path)
         else:
             self.save_file_as()
@@ -921,7 +923,7 @@ class MainWindow(wx.Frame):
             settings = dlg.get_settings()
 
             if file_path:
-                self._save_to_path_with_settings(file_path, settings)
+                self._save_to_path_with_settings(file_path, settings, overwrite=dlg.overwrite)
                 self._last_directory = os.path.dirname(file_path)
                 self._settings.Write("last_directory", self._last_directory)
 
@@ -939,7 +941,12 @@ class MainWindow(wx.Frame):
         if pending_preview:
             active._update_preview()
 
-    def _save_to_path_with_settings(self, file_path: str, settings: EncoderSettings, close_after_save: bool = False):
+    def _is_frame_export(self, path: str) -> bool:
+        return (Path(path).suffix.lower() in {'.jpg', '.jpeg', '.bmp'} and
+                (self._frames.frame_count > 1 or self._frames.default_image is not None))
+
+    def _save_to_path_with_settings(self, file_path: str, settings: EncoderSettings, close_after_save: bool = False,
+                                    *, overwrite: bool = True):
         """지정된 경로에 설정과 함께 저장 (비동기 처리)"""
         if self._save_in_progress:
             return
@@ -956,7 +963,8 @@ class MainWindow(wx.Frame):
             )
             self._save_file_path = file_path
             self._save_close_after = close_after_save
-            worker = FunctionWorker(lambda: GifEncoder.save(frames.clone(), file_path, settings))
+            self._save_frame_export = self._is_frame_export(file_path)
+            worker = FunctionWorker(lambda: GifEncoder.save(frames.clone(), file_path, settings, overwrite=overwrite))
             worker.signals.connect('finished', self._on_save_finished)
             worker.signals.connect('error', self._on_save_error)
             worker.signals.connect('cancelled', self._on_save_cancelled)
@@ -967,7 +975,7 @@ class MainWindow(wx.Frame):
 
     def _save_to_path(self, file_path: str, close_after_save: bool = False):
         """지정된 경로에 저장 (기본 설정, 비동기 처리)"""
-        settings = EncoderSettings()
+        settings = EncoderSettings(loop_count=self._frames.loop_count)
         self._save_to_path_with_settings(file_path, settings, close_after_save)
 
     def _on_save_finished(self, result):
@@ -992,6 +1000,11 @@ class MainWindow(wx.Frame):
         if not file_path:
             return
 
+        if self._save_frame_export:
+            wx.MessageBox(self._translations.tr("msg_static_export"), self._translations.tr("msg_save_complete"),
+                          wx.OK | wx.ICON_INFORMATION, self)
+            self._open_file_location(file_path)
+            return
         self._current_file_path = file_path
         self._is_modified = False
         self._update_title()
@@ -1359,17 +1372,42 @@ class MainWindow(wx.Frame):
         if hasattr(self, '_frame_list') and self._frame_list:
             self._frame_list.refresh()
 
+    def _mark_untracked_edit(self):
+        """An older snapshot cannot safely undo across an unrecorded edit."""
+        self._undo_manager.clear()
+        self._is_modified = True
+
+    def _history_available(self, redo: bool) -> bool:
+        if self._active_inline_toolbar is not None or self._save_in_progress:
+            return False
+        return self._undo_manager.can_redo if redo else self._undo_manager.can_undo
+
+    def _apply_history(self, redo: bool) -> None:
+        if not self._history_available(redo):
+            return
+        try:
+            changed = self._undo_manager.redo() if redo else self._undo_manager.undo()
+        except Exception as exc:
+            wx.MessageBox(str(exc), self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+            return
+        if changed:
+            self._is_modified = True
+            self._update_title()
+            self._update_info_bar()
+            self._refresh_all()
+
     def _delete_frame(self) -> None:
         """선택된 프레임 삭제"""
         if hasattr(self, '_frame_list') and self._frame_list:
             self._frame_list.delete_selected_frames()
 
-    def _duplicate_frame(self) -> None:
+    def _duplicate_frame(self, index=None) -> None:
         """선택된 프레임 복제"""
         if self._frames.is_empty:
             return
 
-        if not self._frames._is_valid_index(self._frames.current_index):
+        current_idx = self._frames.current_index if index is None else index
+        if not self._frames._is_valid_index(current_idx):
             wx.MessageBox(
                 self._translations.tr("msg_invalid_frame_index"),
                 self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING)
@@ -1379,9 +1417,9 @@ class MainWindow(wx.Frame):
             # 메모리 사용량 체크 (100MB 이상이면 히스토리 저장 건너뛰기)
             current_memory_mb = self._frames.get_memory_usage_mb()
             if current_memory_mb > 100:
-                self._frames.duplicate_frame(self._frames.current_index)
+                self._frames.duplicate_frame(current_idx)
                 self._refresh_all()
-                self._is_modified = True
+                self._mark_untracked_edit()
                 wx.MessageBox(
                     self._translations.tr("msg_dup_no_undo", mb=current_memory_mb),
                     self._translations.tr("common_notice"),
@@ -1391,7 +1429,6 @@ class MainWindow(wx.Frame):
 
             # Undo 등록
             old_frames = self._frames.clone()
-            current_idx = self._frames.current_index
             memory_usage = old_frames.get_memory_usage()
 
             def execute():
@@ -1660,20 +1697,24 @@ class MainWindow(wx.Frame):
             self._add_recent_file(file_path)
         self._settings.Write("last_directory", self._last_directory)
 
-        self._frames = result.frames
-        self._undo_manager.clear()
-        self._current_file_path = None  # 비디오 파일은 원본으로 저장 불가
-        self._is_modified = True  # 변환된 상태이므로 저장 필요
-
-        self._refresh_all()
-        self._update_title()
-        self._update_info_bar()
+        self.open_unsaved_frames(result.frames)
 
         wx.MessageBox(
             self._translations.tr("msg_video_converted_body", count=self._frames.frame_count),
             self._translations.tr("msg_video_converted_title"),
             wx.OK | wx.ICON_INFORMATION
         )
+
+    def open_unsaved_frames(self, frames: FrameCollection) -> None:
+        """녹화·변환 결과를 새 문서로 열어 첫 저장 시 경로를 선택하게 한다."""
+        self._frames = frames
+        self._undo_manager.clear()
+        self._current_file_path = None
+        self._is_modified = True
+        self._index_color_offer_done = False
+        self._refresh_all()
+        self._update_title()
+        self._update_info_bar()
 
     def _on_video_load_error(self, error_msg: str, traceback: str):
         """비디오 로드 에러"""
@@ -1753,7 +1794,7 @@ class MainWindow(wx.Frame):
 
         try:
             self._frames.delete_frames(selected)
-            self._is_modified = True
+            self._mark_untracked_edit()
             self._refresh_all()
         except Exception as e:
             wx.MessageBox(
@@ -1769,7 +1810,7 @@ class MainWindow(wx.Frame):
         no_undo_msg_key: Optional[str] = None,
         error_key: str = "msg_error",
         large_threshold_mb: float = 100.0,
-    ) -> None:
+    ) -> bool:
         """undo 가능한 frame 일괄 작업의 표준 진입점.
 
         - work_fn(progress) 을 background thread (run_with_progress) 에서 실행.
@@ -1779,7 +1820,7 @@ class MainWindow(wx.Frame):
           요청: "프로세스가 오래 걸릴 때 무조건 프로그래시브 바가 나오는 로직").
         """
         if self._frames is None or self._frames.is_empty:
-            return
+            return False
 
         from ..utils.progress import run_with_progress
         from ..core.undo_manager import LambdaAction
@@ -1787,43 +1828,47 @@ class MainWindow(wx.Frame):
         current_memory_mb = self._frames.get_memory_usage_mb()
         large_mode = current_memory_mb > large_threshold_mb
         total = self._frames.frame_count
-        old_count_box = {'count': total}
+        old_frames = None
+        started = False
 
         def _wrapper(progress):
-            cloned = None if large_mode else self._frames.clone()
-            old_count_box['count'] = self._frames.frame_count
+            nonlocal old_frames, started
+            if not large_mode:
+                old_frames = self._frames.clone()
+            started = True
             work_fn(progress)
-            return cloned
 
         try:
-            cloned, cancelled = run_with_progress(
+            _, cancelled = run_with_progress(
                 parent=self,
                 title=self._translations.tr(title_key),
                 work_func=_wrapper,
                 total_hint=max(1, total),
                 can_abort=False,
             )
-        except MemoryError:
-            wx.MessageBox(
-                self._translations.tr("msg_out_of_memory"),
-                self._translations.tr("common_warning"), wx.OK | wx.ICON_WARNING,
-            )
-            return
-        except Exception as e:
-            wx.MessageBox(
-                self._translations.tr(error_key) + f":\n{e}",
-                self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR,
-            )
-            return
-
-        if cancelled:
-            return
+            if cancelled:
+                raise InterruptedError(self._translations.tr("common_cancel"))
+        except Exception as exc:
+            message = (self._translations.tr("msg_out_of_memory") if isinstance(exc, MemoryError)
+                       else self._translations.tr(error_key) + f":\n{exc}")
+            if started:
+                if old_frames is not None:
+                    self._frames = old_frames
+                else:
+                    self._mark_untracked_edit()
+                    message += "\n" + self._translations.tr("msg_batch_partial")
+                self._refresh_all()
+                self._update_title()
+                self._update_info_bar()
+            wx.MessageBox(message, self._translations.tr("msg_error"), wx.OK | wx.ICON_ERROR)
+            return False
 
         self._is_modified = True
 
         if large_mode:
+            self._undo_manager.clear()
             if no_undo_msg_key:
-                removed = old_count_box['count'] - self._frames.frame_count
+                removed = total - self._frames.frame_count
                 with contextlib.suppress(Exception):
                     wx.MessageBox(
                         self._translations.tr(
@@ -1833,10 +1878,9 @@ class MainWindow(wx.Frame):
                         wx.OK | wx.ICON_INFORMATION,
                     )
             self._refresh_all()
-            return
+            return True
 
         # undo 등록 — work_fn 은 thread 에서 이미 실행됐으므로 push_executed.
-        old_frames = cloned
         memory_usage = old_frames.get_memory_usage() if old_frames else 0
 
         def execute():
@@ -1865,6 +1909,7 @@ class MainWindow(wx.Frame):
         action = LambdaAction(description, execute, undo, memory_usage)
         self._undo_manager.push_executed(action)
         self._refresh_all()
+        return True
 
     def _reduce_frames(self):
         """프레임 감소 (매 2번째 프레임만 유지)."""
@@ -1895,7 +1940,7 @@ class MainWindow(wx.Frame):
             return
 
         try:
-            old_delays = [f.delay_ms for f in self._frames]
+            old_delays = [f.duration_ms for f in self._frames]
             factor_str = f"{int(factor * 100)}%"
 
             def execute():
@@ -1912,7 +1957,7 @@ class MainWindow(wx.Frame):
                 try:
                     for i, delay in enumerate(old_delays):
                         if i < self._frames.frame_count:
-                            self._frames[i].delay_ms = delay
+                            self._frames[i].duration_ms = delay
                     self._refresh_all()
                 except Exception as e:
                     wx.MessageBox(
@@ -1956,7 +2001,7 @@ class MainWindow(wx.Frame):
             delay = dlg.GetValue()
 
             try:
-                old_delays = [f.delay_ms for f in self._frames]
+                old_delays = [f.duration_ms for f in self._frames]
 
                 def execute():
                     try:
@@ -1972,7 +2017,7 @@ class MainWindow(wx.Frame):
                     try:
                         for i, old_delay in enumerate(old_delays):
                             if i < self._frames.frame_count:
-                                self._frames[i].delay_ms = old_delay
+                                self._frames[i].duration_ms = old_delay
                         self._refresh_all()
                     except Exception as e:
                         wx.MessageBox(
@@ -2058,13 +2103,17 @@ class MainWindow(wx.Frame):
             self._last_directory,
             "",
             self._translations.tr("dlg_gif_filter"),
-            wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
+            wx.FD_SAVE
         )
 
         if dlg.ShowModal() == wx.ID_OK:
             file_path = dlg.GetPath()
             if not file_path.lower().endswith('.gif'):
                 file_path += '.gif'
+            overwrite = confirm_output_path(self, file_path)
+            if overwrite is None:
+                dlg.Destroy()
+                return
 
             try:
                 # 선택된 프레임으로 새 컬렉션 생성
@@ -2074,7 +2123,7 @@ class MainWindow(wx.Frame):
                 for idx in sorted(selected):
                     if 0 <= idx < len(self._frames._frames):
                         frame = self._frames._frames[idx]
-                        new_frame = Frame(frame.image.copy(), frame.delay_ms)
+                        new_frame = Frame(frame.copy_image(), frame.delay_ms)
                         new_collection.add_frame(new_frame)
 
                 if new_collection.is_empty:
@@ -2096,7 +2145,7 @@ class MainWindow(wx.Frame):
 
                 # 비동기 저장 작업 시작
                 from ..core import get_worker_manager
-                worker = FunctionWorker(GifEncoder.save, new_collection, file_path)
+                worker = FunctionWorker(GifEncoder.save, new_collection, file_path, overwrite=overwrite)
                 worker.signals.connect('finished', self._on_split_gif_finished)
                 worker.signals.connect('error', self._on_split_gif_error)
                 get_worker_manager().start(worker)
@@ -2457,12 +2506,15 @@ class MainWindow(wx.Frame):
         if not gpu_utils.is_gpu_available():
             # CuPy 미설치 + NVIDIA GPU 존재 → 설치 가이드
             init_error = gpu_utils.get_gpu_init_error() or ""
-            if ("CuPy" in init_error or "cupy" in init_error.lower()) and gpu_utils.has_nvidia_gpu_hardware():
+            has_nvidia = gpu_utils.has_nvidia_gpu_hardware()
+            if has_nvidia and "cupy" in init_error.lower():
                 self._offer_cupy_install()
             else:
-                # NVIDIA GPU 없음
+                detail = self._translations.tr("cupy_check_failed", detail=init_error) if has_nvidia else (
+                    self._translations.tr("cupy_guide_no_nvidia")
+                )
                 wx.MessageBox(
-                    self._translations.tr("cupy_guide_no_nvidia"),
+                    detail,
                     self._translations.tr("msg_gpu_info"),
                     wx.OK | wx.ICON_INFORMATION
                 )
@@ -2499,7 +2551,7 @@ class MainWindow(wx.Frame):
     def _offer_cupy_install(self):
         """CuPy 설치 가이드 다이얼로그 표시"""
         from ui.dependency_dialogs import CuPyInstallGuideDialog
-        dlg = CuPyInstallGuideDialog(self)
+        dlg = CuPyInstallGuideDialog(self, gpu_utils.get_gpu_init_error() or "")
         ret = dlg.ShowModal()
         dlg.Destroy()
 
@@ -2598,6 +2650,12 @@ class MainWindow(wx.Frame):
 
         # Ctrl 조합
         if event.ControlDown():
+            if key in (ord('Z'), ord('Y')):
+                if isinstance(wx.Window.FindFocus(), (wx.TextCtrl, wx.ComboBox, wx.SpinCtrl, wx.SpinCtrlDouble)):
+                    event.Skip()
+                else:
+                    self._apply_history(redo=key == ord('Y') or event.ShiftDown())
+                return
             # Ctrl+O: 파일 열기
             if key == ord('O'):
                 self.open_file()
@@ -2862,7 +2920,7 @@ class MainWindow(wx.Frame):
                         "prog_general_msg_detail", current=i + 1, total=n,
                     ))
 
-        self._run_undoable_with_progress(
+        return self._run_undoable_with_progress(
             title_key="prog_rotate_title",
             description=f"프레임 회전 ({angle}도)",
             work_fn=_work,
@@ -3058,9 +3116,9 @@ class MainWindow(wx.Frame):
 
             # 편집 메뉴 항목
             elif "실행 취소" in label or "Undo" in label:
-                item.SetItemLabel(tr("action_undo"))
+                item.SetItemLabel(tr("action_undo") + "\tCtrl+Z")
             elif "다시 실행" in label or "Redo" in label:
-                item.SetItemLabel(tr("action_redo"))
+                item.SetItemLabel(tr("action_redo") + "\tCtrl+Y")
             elif "모두 선택" in label or "Select All" in label:
                 item.SetItemLabel(tr("action_select_all"))
                 item.SetHelp(tr("action_select_all_tooltip"))
@@ -3197,7 +3255,7 @@ class MainWindow(wx.Frame):
             frames_to_add = []
             for frame in result.frames:
                 from ..core import Frame
-                new_frame = Frame(frame.image.copy(), frame.delay_ms)
+                new_frame = Frame(frame.copy_image(), frame.delay_ms)
                 frames_to_add.append(new_frame)
                 added_count += 1
 
@@ -3275,7 +3333,7 @@ class MainWindow(wx.Frame):
             frames_to_insert = []
             for frame in result.frames:
                 from ..core import Frame
-                new_frame = Frame(frame.image.copy(), frame.delay_ms)
+                new_frame = Frame(frame.copy_image(), frame.delay_ms)
                 frames_to_insert.append(new_frame)
                 added_count += 1
 

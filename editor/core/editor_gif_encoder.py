@@ -9,13 +9,13 @@ from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 from PIL import Image
-import io
-import os
 import shutil
 import tempfile
 
 from .frame import Frame
 from .frame_collection import FrameCollection
+from core.gif_encoder import write_palette_gif
+from core.utils import publish_output
 from ..utils.logger import get_logger
 
 # 로거
@@ -58,7 +58,7 @@ class EncoderSettings:
     """인코딩 설정"""
     colors: int = 256                    # 색상 수 (2-256)
     dithering: bool = True               # 디더링 사용
-    loop_count: int = 0                  # 반복 횟수 (0 = 무한)
+    loop_count: Optional[int] = 0                  # 반복 횟수 (0 = 무한)
     optimize: bool = True                # 최적화
     quality: int = 85                    # 품질 (1-100, 높을수록 좋음)
     quantization: QuantizationMethod = QuantizationMethod.ADAPTIVE
@@ -90,7 +90,7 @@ class GifEncoder:
 
     @classmethod
     def save(cls, collection: FrameCollection, file_path: str,
-             settings: Optional[EncoderSettings] = None) -> SaveResult:
+             settings: Optional[EncoderSettings] = None, *, overwrite: bool = True) -> SaveResult:
         """애니메이션 또는 이미지 파일로 저장
 
         지원 형식:
@@ -100,7 +100,7 @@ class GifEncoder:
         - PNG/JPEG/BMP: 현재 프레임만 저장
         """
         if settings is None:
-            settings = EncoderSettings()
+            settings = EncoderSettings(loop_count=collection.loop_count)
 
         if collection.is_empty:
             return SaveResult.error("저장할 프레임이 없습니다")
@@ -109,6 +109,11 @@ class GifEncoder:
         ext = path.suffix.lower()
         if ext not in {'.gif', '.webp', '.apng', '.png', '.jpg', '.jpeg', '.bmp'}:
             return SaveResult.error(f"지원하지 않는 형식입니다: {ext}")
+        if ext in {'.gif', '.webp', '.apng', '.png'}:
+            size = collection[0].size
+            for index, frame in enumerate(collection, 1):
+                if frame.size != size:
+                    return SaveResult.error(f"{index}번째 프레임 크기 {frame.size}가 첫 프레임 크기 {size}와 다릅니다.")
 
         destination = path
         staged_path = None
@@ -121,14 +126,11 @@ class GifEncoder:
                 result = cls._save_gif(collection, path, settings)
             elif ext == '.webp':
                 result = cls._save_webp(collection, path, settings)
-            elif ext == '.apng' or (ext == '.png' and collection.frame_count > 1):
-                # 다중 프레임이면 APNG로 저장
-                if collection.frame_count > 1:
+            elif ext in {'.png', '.apng'}:
+                if collection.frame_count > 1 or collection.default_image is not None:
                     result = cls._save_apng(collection, path, settings)
                 else:
                     result = cls._save_png(collection.current_frame, path)
-            elif ext == '.png':
-                result = cls._save_png(collection.current_frame, path)
             elif ext in {'.jpg', '.jpeg'}:
                 result = cls._save_jpeg(collection.current_frame, path, settings.quality)
             else:
@@ -136,7 +138,7 @@ class GifEncoder:
 
             if result.success:
                 file_size = path.stat().st_size
-                os.replace(path, destination)
+                publish_output(path, destination, overwrite=overwrite)
                 return SaveResult.ok(file_size)
             return result
 
@@ -164,17 +166,22 @@ class GifEncoder:
         return img
 
     @classmethod
-    def _quantize_image(cls, img: Image.Image, settings: EncoderSettings) -> Image.Image:
+    def _quantize_image(cls, img: Image.Image, settings: EncoderSettings, transparent_canvas=False) -> Image.Image:
         """이미지 양자화
 
         모든 양자화 알고리즘에 대해 일관된 처리를 제공합니다.
         프리뷰와 저장이 동일한 결과를 생성하도록 보장합니다.
         """
-        # 원본 모드 저장
+        alpha = None
+        if img.has_transparency_data:
+            img = img.convert('RGBA')
+            alpha = img.getchannel('A')
+            if not transparent_canvas and alpha.getextrema()[0] > 0:
+                alpha = None
 
         # 양자화 방법에 따른 처리
         method = settings.quantization
-        colors = settings.colors
+        colors = settings.colors - 1 if alpha is not None or transparent_canvas else settings.colors
         dither = Image.Dither.FLOYDSTEINBERG if settings.dithering else Image.Dither.NONE
 
         try:
@@ -235,31 +242,30 @@ class GifEncoder:
                 rgb_img = cls._rgba_to_rgb(img)
                 img_p = rgb_img.convert('P', palette=Image.Palette.ADAPTIVE, colors=colors)
 
+        if alpha is not None or transparent_canvas:
+            palette = img_p.getpalette()[:colors * 3]
+            # The last index is reserved for fully transparent pixels.
+            palette.extend([0] * (3 * (colors + 1) - len(palette)))
+            img_p.putpalette(palette)
+            if alpha is not None:
+                img_p.paste(colors, mask=alpha.point([255] + [0] * 255))
+            img_p.info['transparency'] = colors
         return img_p
+
+    @classmethod
+    def _write_gif(cls, output, frames, settings):
+        transparent_canvas = any(frame.has_transparent_pixels() for frame in frames)
+        images = ((cls._quantize_image(frame.copy_image(), settings, transparent_canvas), frame.duration_ms)
+                  for frame in frames)
+        write_palette_gif(output, images, settings.loop_count, settings.optimize, transparent_canvas=transparent_canvas)
+
 
     @classmethod
     def _save_gif(cls, collection: FrameCollection, path: Path,
                   settings: EncoderSettings) -> SaveResult:
         """GIF 파일로 저장 (gifsicle 최적화 포함)"""
         try:
-            # PIL로 GIF 저장
-            images = []
-            durations = []
-
-            for frame in collection:
-                img_p = cls._quantize_image(frame.copy_image(), settings)
-                images.append(img_p)
-                durations.append(frame.delay_ms)
-
-            # 첫 번째 이미지에 나머지 이미지 추가하여 저장
-            images[0].save(
-                str(path),
-                save_all=True,
-                append_images=images[1:] if len(images) > 1 else [],
-                duration=durations,
-                loop=settings.loop_count,
-                optimize=settings.optimize
-            )
+            cls._write_gif(path, collection, settings)
 
             original_size = path.stat().st_size
             final_size = original_size
@@ -396,7 +402,7 @@ class GifEncoder:
                 'save_all': True,
                 'append_images': images[1:] if len(images) > 1 else [],
                 'duration': durations,
-                'loop': settings.loop_count,
+                'loop': 1 if settings.loop_count is None else settings.loop_count,
                 'quality': settings.quality,
                 'method': 4,  # 압축 방법 (0=빠름, 6=최상)
             }
@@ -429,17 +435,24 @@ class GifEncoder:
                 if img.mode != 'RGBA':
                     img = img.convert('RGBA')
                 images.append(img)
-                durations.append(frame.delay_ms)
+                durations.append(frame.duration_ms)
 
-            # APNG 저장
-            images[0].save(
+            poster = collection.default_image
+            first = images[0]
+            if poster is not None:
+                first = poster.copy_image().convert('RGBA')
+                if first.size != images[0].size:
+                    first = first.resize(images[0].size, Image.Resampling.LANCZOS)
+            first.save(
                 str(path),
                 format='PNG',
                 save_all=True,
-                append_images=images[1:] if len(images) > 1 else [],
+                append_images=images if poster is not None else images[1:],
                 duration=durations,
-                loop=settings.loop_count,
-                default_image=False,
+                loop=1 if settings.loop_count is None else settings.loop_count,
+                default_image=poster is not None,
+                disposal=0,
+                blend=0,
             )
 
             file_size = path.stat().st_size
@@ -509,33 +522,10 @@ class GifEncoder:
                 if sample_indices[-1] != frame_count - 1:
                     sample_indices.append(frame_count - 1)  # 마지막 프레임 포함
 
-            images = []
-            durations = []
-
-            for idx in sample_indices:
-                frame = collection.get_frame(idx)
-                if frame:
-                    img_p = cls._quantize_image(frame.copy_image(), settings)
-                    images.append(img_p)
-                    durations.append(frame.delay_ms)
-
-            if not images:
-                return 0
-
-            # 메모리에 저장하여 크기 측정
-            buffer = io.BytesIO()
-            images[0].save(
-                buffer,
-                format='GIF',
-                save_all=True,
-                append_images=images[1:] if len(images) > 1 else [],
-                duration=durations,
-                loop=settings.loop_count,
-                optimize=settings.optimize
-            )
-
-            # 샘플링된 크기를 전체 크기로 추정
-            sample_size = buffer.tell()
+            samples = [collection.get_frame(index) for index in sample_indices]
+            with tempfile.TemporaryFile() as buffer:
+                cls._write_gif(buffer, samples, settings)
+                sample_size = buffer.tell()
             if len(sample_indices) < frame_count:
                 # 샘플 크기를 기반으로 전체 크기 추정
                 # 평균 프레임 크기 * 전체 프레임 수로 추정

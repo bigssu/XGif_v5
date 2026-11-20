@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import shutil
 import subprocess
 import tempfile
 import threading
@@ -107,11 +106,9 @@ class VideoDecoder:
     def _ffmpeg_tools(cls):
         from core.ffmpeg_installer import FFmpegManager
 
-        ffmpeg = FFmpegManager.get_ffmpeg_executable()
+        ffmpeg, ffprobe = FFmpegManager.get_ffmpeg_tools()
         if not ffmpeg:
             raise FileNotFoundError("FFmpeg가 설치되어 있지 않습니다")
-        sibling = Path(ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')
-        ffprobe = str(sibling) if sibling.is_file() else shutil.which('ffprobe')
         if not ffprobe:
             raise FileNotFoundError("FFprobe가 설치되어 있지 않습니다")
         return ffmpeg, ffprobe

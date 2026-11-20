@@ -1,9 +1,5 @@
 @echo off
-REM XGif Bootstrapper Build Script
-echo XGif Bootstrapper Building...
-
-pyinstaller --noconfirm --clean --onedir --windowed --name "XGif_Bootstrapper" --paths .. --add-data "..\requirements-gpu.txt;." --collect-all wx app_entry.py
-
-echo.
-echo Done! Check dist\XGif_Bootstrapper\ folder
-pause
+setlocal
+cd /d "%~dp0" || exit /b 1
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name "XGif_Bootstrapper" --paths .. --add-data "..\requirements-gpu.txt;." --collect-all wx app_entry.py
+exit /b %errorlevel%

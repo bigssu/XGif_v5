@@ -3,12 +3,90 @@ import subprocess
 import sys
 import threading
 import time
+import wave
 
 import numpy as np
 import pytest
 from PIL import Image
 
 from core.gif_encoder import GifEncoder
+
+
+@pytest.mark.parametrize('preferred, codec, expected', [
+    ('qsv', 'h264', 'h264_qsv'), ('amf', 'h265', 'hevc_amf'),
+    ('nvenc', 'h265', 'hevc_nvenc'), ('cpu', 'h264', 'libx264'),
+])
+def test_explicit_encoder_is_never_auto_selected(monkeypatch, preferred, codec, expected):
+    encoder = GifEncoder.__new__(GifEncoder)
+    encoder.set_preferred_encoder(preferred)
+    monkeypatch.setattr(encoder, '_test_encoder', lambda name: False)
+    monkeypatch.setattr(encoder, 'detect_available_encoders', lambda: pytest.fail('Unexpected auto selection'))
+    assert encoder._get_best_encoder(codec) == expected
+
+
+@pytest.mark.parametrize('audio_seconds', [0.25, 2])
+def test_mp4_audio_ends_at_video_boundary(tmp_path, audio_seconds):
+    encoder = GifEncoder()
+    if not encoder.is_ffmpeg_available():
+        pytest.skip('FFmpeg not installed')
+    encoder.set_preferred_encoder('cpu')
+    wav = tmp_path / 'mic.wav'
+    with wave.open(str(wav), 'wb') as stream:
+        stream.setparams((1, 2, 48000, 0, 'NONE', 'not compressed'))
+        samples = np.arange(round(audio_seconds * 48000))
+        stream.writeframes((8000 * np.sin(samples * (2 * np.pi * 440 / 48000))).astype('<i2').tobytes())
+    frames = [np.full((32, 32, 3), 20 * i, dtype=np.uint8) for i in range(10)]
+    output = tmp_path / 'mic.mp4'
+    assert encoder.encode_mp4(frames, 10, str(output), str(wav))
+
+    cmd = [encoder._ffmpeg_path, '-v', 'error', '-i', str(output)]
+    pixels = subprocess.check_output([*cmd, '-map', '0:v:0', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], timeout=10)
+    decoded = np.frombuffer(pixels, dtype=np.uint8).reshape(-1, 32, 32)
+    assert len(decoded) == len(frames) and abs(float(decoded[-1].mean()) - 180) < 3
+    sound = subprocess.check_output([*cmd, '-map', '0:a:0', '-f', 's16le', '-'], timeout=10)
+    pcm = np.frombuffer(sound, dtype='<i2')
+    assert 48000 <= len(pcm) < 48000 + 2048  # AAC packets can include a final padded block.
+    assert max(pcm[2000:8000]) > 5000
+    if audio_seconds < 1:
+        assert max(abs(pcm[30000:40000])) < 5
+
+
+@pytest.mark.parametrize(('width', 'height'), [(65, 64), (64, 65), (65, 65)])
+def test_mp4_recording_preserves_last_source_row_and_column(tmp_path, width, height):
+    encoder = GifEncoder()
+    if not encoder.is_ffmpeg_available():
+        pytest.skip('FFmpeg not installed')
+    encoder.set_preferred_encoder('cpu')
+    source = np.zeros((height, width, 3), dtype=np.uint8)
+    source[-1, :, :] = 255
+    source[:, -1, :] = 255
+    target = tmp_path / 'border.mp4'
+    assert encoder.encode_mp4([source], 10, str(target))
+    pixels = subprocess.check_output([encoder._ffmpeg_path, '-v', 'error', '-i', str(target),
+                                      '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], timeout=10)
+    decoded = np.frombuffer(pixels, dtype=np.uint8).reshape(height + height % 2, width + width % 2)
+    assert decoded[height - 1, :width].min() > 200
+    assert decoded[:height, width - 1].min() > 200
+    if height % 2:
+        assert decoded[-1].max() < 50
+    if width % 2:
+        assert decoded[:, -1].max() < 50
+
+
+def test_odd_mp4_uses_same_colors_as_black_padded_bgr_input(tmp_path):
+    encoder = GifEncoder()
+    if not encoder.is_ffmpeg_available():
+        pytest.skip('FFmpeg not installed')
+    encoder.set_preferred_encoder('cpu')
+    source = np.random.default_rng(2).integers(0, 256, (65, 65, 3), dtype=np.uint8)
+    padded = np.pad(source, ((0, 1), (0, 1), (0, 0)))
+    decoded = []
+    for name, frame in [('odd', source), ('even', padded)]:
+        target = tmp_path / f'{name}.mp4'
+        assert encoder.encode_mp4([frame], 10, str(target))
+        decoded.append(subprocess.check_output([encoder._ffmpeg_path, '-v', 'error', '-i', str(target),
+                                                '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-'], timeout=10))
+    assert decoded[0] == decoded[1]
 
 
 @pytest.fixture

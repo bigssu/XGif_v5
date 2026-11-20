@@ -11,10 +11,38 @@ import contextlib
 import tempfile
 import logging
 import os
+import shutil
+import uuid
 from dataclasses import dataclass, fields
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _config_lock(path, *, reading=False):
+    # The INI is atomically replaced, so lock a stable sibling file.
+    lock_path = os.fspath(path) + ".lock"
+    try:
+        handle = open(lock_path, "a+b")  # noqa: SIM115
+    except PermissionError:
+        if not reading:
+            raise
+        # Read-only profiles created before locking may have no sidecar.
+        try:
+            handle = open(lock_path, "rb")  # noqa: SIM115
+        except FileNotFoundError:
+            yield
+            return
+    with handle:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
 
 
 def get_config_path() -> str:
@@ -55,6 +83,9 @@ class AppSettings:
     resolution_preset: str = "320 × 240"
     last_save_dir: str = ""
 
+    def __post_init__(self):
+        self._baseline = {f.name: f.default for f in fields(self)}
+
     # ─── 타입 안전 접근자 ───
 
     def get_bool(self, key: str) -> bool:
@@ -73,10 +104,12 @@ class AppSettings:
         """설정 값을 문자열로 반환 (configparser 호환)."""
         return str(getattr(self, key, fallback))
 
-    def set(self, key: str, value: str) -> None:
+    def set(self, key: str, value: str, *, force: bool = False) -> None:
         """설정 값 변경."""
-        if hasattr(self, key):
+        if self.has_key(key):
             setattr(self, key, value)
+            if force:
+                self._baseline.pop(key, None)
 
     # ─── 유효 키 검사 ───
 
@@ -101,26 +134,45 @@ class AppSettings:
         defaults = AppSettings()
         for f in fields(self):
             setattr(self, f.name, getattr(defaults, f.name))
+        self._baseline.clear()
 
     # ─── 직렬화 ───
 
-    def save(self, path: Optional[str] = None) -> None:
+    def save(self, path: Optional[str] = None, *, recover_invalid: bool = False) -> None:
         """INI 파일로 저장."""
         path = path or get_config_path()
         config_dir = os.path.dirname(path) or "."
         os.makedirs(config_dir, exist_ok=True)
 
+        with _config_lock(path):
+            self._save_locked(path, config_dir, recover_invalid)
+
+    def _save_locked(self, path, config_dir, recover_invalid):
         config = configparser.ConfigParser(interpolation=None)
         # 기존 파일이 있으면 읽어서 알 수 없는 키 보존
         if os.path.exists(path):
-            with open(path, encoding="utf-8") as fp:
-                config.read_file(fp)
+            try:
+                with open(path, encoding="utf-8") as fp:
+                    config.read_file(fp)
+            except (configparser.Error, UnicodeError):
+                if not recover_invalid:
+                    raise
+                backup = f"{path}.corrupt-{uuid.uuid4().hex}.bak"
+                try:
+                    shutil.copyfile(path, backup)
+                except OSError:
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(backup)
+                    raise
+                logger.warning("Preserved unreadable settings in %s", backup)
+                config = configparser.ConfigParser(interpolation=None)
 
         if not config.has_section("General"):
             config.add_section("General")
 
-        for f in fields(self):
-            config.set("General", f.name, str(getattr(self, f.name)))
+        for key, value in self.to_dict().items():
+            if value != self._baseline.get(key) or not config.has_option("General", key):
+                config.set("General", key, value)
 
         staged_path = None
         try:
@@ -132,10 +184,16 @@ class AppSettings:
                 fp.flush()
                 os.fsync(fp.fileno())
             os.replace(staged_path, path)
+            self._adopt(config)
         finally:
             if staged_path is not None:
                 with contextlib.suppress(FileNotFoundError):
                     os.remove(staged_path)
+
+    def _adopt(self, config):
+        for f in fields(self):
+            setattr(self, f.name, config.get("General", f.name, fallback=f.default))
+        self._baseline = self.to_dict()
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "AppSettings":
@@ -148,17 +206,14 @@ class AppSettings:
 
         config = configparser.ConfigParser(interpolation=None)
         try:
-            with open(path, encoding="utf-8") as fp:
+            with _config_lock(path, reading=True), open(path, encoding="utf-8") as fp:
                 config.read_file(fp)
         except (OSError, UnicodeError, configparser.Error) as exc:
             logger.warning("Settings could not be loaded; using defaults: %s", exc)
             return settings
 
         if config.has_section("General"):
-            for f in fields(settings):
-                val = config.get("General", f.name, fallback=None)
-                if val is not None:
-                    setattr(settings, f.name, val)
+            settings._adopt(config)
 
         return settings
 

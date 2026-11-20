@@ -4,7 +4,6 @@ Python(시스템), FFmpeg, CuPy, dxcam 설치 상태를 확인
 """
 
 import logging
-import os
 import sys
 import threading
 from enum import Enum
@@ -31,77 +30,24 @@ class DependencyStatus:
 
 def check_system_python(min_version=(3, 11)) -> DependencyStatus:
     """시스템 Python 설치 상태 확인 (frozen 앱에서 CuPy 설치용)"""
-    import shutil
-    import subprocess
-
     min_ver_str = f"{min_version[0]}.{min_version[1]}"
+    if getattr(sys, 'frozen', False):
+        from cupy_env import PYTHON_VERSION, find_compatible_python
+        version = ".".join(map(str, PYTHON_VERSION))
+        if find_compatible_python():
+            return DependencyStatus("Python", DependencyState.INSTALLED, version, version)
+        return DependencyStatus("Python", DependencyState.MISSING, required_version=version)
 
-    if not getattr(sys, 'frozen', False):
-        # 소스 실행: 현재 Python 버전 확인
-        ver = sys.version_info[:2]
-        if ver >= min_version:
-            return DependencyStatus("Python", DependencyState.INSTALLED,
-                                    f"{ver[0]}.{ver[1]}")
-        else:
-            return DependencyStatus("Python", DependencyState.VERSION_LOW,
-                                    f"{ver[0]}.{ver[1]}", min_ver_str)
-
-    # frozen 앱: PATH에서 시스템 Python 찾기
-    python_exe = shutil.which('python') or shutil.which('python3')
-    if not python_exe:
-        return DependencyStatus("Python", DependencyState.MISSING,
-                                "", min_ver_str)
-    try:
-        result = subprocess.run(
-            [python_exe, '-c',
-             'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'],
-            capture_output=True, text=True, timeout=5,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-        )
-        ver_str = result.stdout.strip()
-        parts = ver_str.split('.')
-        ver = (int(parts[0]), int(parts[1]))
-        if ver >= min_version:
-            return DependencyStatus("Python", DependencyState.INSTALLED, ver_str)
-        else:
-            return DependencyStatus("Python", DependencyState.VERSION_LOW,
-                                    ver_str, min_ver_str)
-    except Exception:
-        return DependencyStatus("Python", DependencyState.ERROR, "", "",
-                                "Python 버전 확인 실패")
-
-
-def find_system_python_exe():
-    """시스템 Python 실행 파일 경로 반환 (frozen 앱에서 사용)"""
-    import shutil
-    import subprocess
-
-    if not getattr(sys, 'frozen', False):
-        return sys.executable
-
-    python_exe = shutil.which('python') or shutil.which('python3')
-    if not python_exe:
-        return None
-    try:
-        # 실제 경로 확인
-        result = subprocess.run(
-            [python_exe, '-c', 'import sys; print(sys.executable)'],
-            capture_output=True, text=True, timeout=5,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-        )
-        path = result.stdout.strip()
-        if path and os.path.exists(path):
-            return path
-    except Exception:
-        pass
-    return python_exe
+    ver = sys.version_info[:2]
+    state = DependencyState.INSTALLED if ver >= min_version else DependencyState.VERSION_LOW
+    return DependencyStatus("Python", state, f"{ver[0]}.{ver[1]}", min_ver_str)
 
 
 def check_ffmpeg() -> DependencyStatus:
     """FFmpeg 설치 상태 확인"""
     try:
         from core.ffmpeg_installer import FFmpegManager
-        if FFmpegManager.is_available():
+        if not FFmpegManager.needs_installation():
             return DependencyStatus(
                 name="FFmpeg",
                 state=DependencyState.INSTALLED,
@@ -118,62 +64,47 @@ def check_ffmpeg() -> DependencyStatus:
         )
 
 
-def _invalidate_import_cache(module_name):
-    """모듈 import 캐시 초기화 — 새로 설치된 패키지를 감지하기 위해 필요"""
+def check_cupy(min_version="12.0", *, verify_compute=True) -> DependencyStatus:
+    """Check CuPy in the interpreter that will actually use the GPU."""
     import importlib
-    importlib.invalidate_caches()
-    # sys.modules에서 실패 캐시 제거
-    for key in list(sys.modules.keys()):
-        if key == module_name or key.startswith(module_name + '.'):
-            del sys.modules[key]
 
-
-def check_cupy(min_version="12.0") -> DependencyStatus:
-    """CuPy 설치 상태 확인"""
+    stage = "CuPy environment"
     try:
         from core.utils import ensure_system_site_packages
         ensure_system_site_packages()
-    except Exception:
-        pass
-
-    # 새로 설치된 패키지 감지를 위해 import 캐시 초기화
-    _invalidate_import_cache('cupy')
-
-    try:
+        # Running capture/editor code can still hold references to native modules.
+        importlib.invalidate_caches()
+        stage = "import cupy"
         import cupy
+
         installed = cupy.__version__
-        # 버전 비교 (tuple)
-        def _ver_tuple(v):
-            return tuple(int(x) for x in v.split(".")[:2])
-        if _ver_tuple(installed) < _ver_tuple(min_version):
-            return DependencyStatus(
-                name="CuPy",
-                state=DependencyState.VERSION_LOW,
-                installed_version=installed,
-                required_version=min_version,
-            )
-        return DependencyStatus(
-            name="CuPy",
-            state=DependencyState.INSTALLED,
-            installed_version=installed,
-        )
-    except ImportError:
-        return DependencyStatus(
-            name="CuPy",
-            state=DependencyState.MISSING,
-            error_message="CuPy가 설치되어 있지 않습니다. GPU 가속을 사용하려면 CuPy를 설치하세요.",
-        )
-    except Exception as e:
-        return DependencyStatus(
-            name="CuPy",
-            state=DependencyState.ERROR,
-            error_message=f"CuPy 초기화 실패: {str(e)[:200]}. CUDA 드라이버와 호환되는 버전인지 확인하세요.",
-        )
+        if tuple(map(int, installed.split(".")[:2])) < tuple(map(int, min_version.split(".")[:2])):
+            message = f"CuPy {installed} (required: CuPy >= {min_version})"
+            logger.info(message)
+            return DependencyStatus("CuPy", DependencyState.VERSION_LOW, installed, min_version, message)
+
+        stage = "cupy.cuda.runtime.getDeviceCount()"
+        if cupy.cuda.runtime.getDeviceCount() < 1:
+            raise RuntimeError("No CUDA devices found.")
+        if verify_compute:
+            stage = "CuPy CUDA computation"
+            values = cupy.asarray([1], dtype=cupy.int32)
+            if (values + 1).get().item() != 2:
+                raise RuntimeError("Unexpected CUDA computation result.")
+        return DependencyStatus("CuPy", DependencyState.INSTALLED, installed)
+    except Exception as exc:
+        missing = isinstance(exc, ModuleNotFoundError) and exc.name == "cupy" and stage == "import cupy"
+        state = DependencyState.MISSING if missing else DependencyState.ERROR
+        reason = exc.__cause__ or exc
+        message = f"{stage}: {type(reason).__name__}: {reason}"
+        logger.info("%s", message, exc_info=logger.isEnabledFor(logging.DEBUG))
+        return DependencyStatus("CuPy", state, error_message=message)
 
 
 def check_dxcam() -> DependencyStatus:
     """dxcam 설치 상태 확인"""
-    _invalidate_import_cache('dxcam')
+    import importlib
+    importlib.invalidate_caches()
     try:
         import dxcam  # noqa: F401
         return DependencyStatus(

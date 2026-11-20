@@ -115,6 +115,7 @@ def test_ffmpeg_failed_extraction_does_not_modify_old_install(tmp_path, monkeypa
         "paths": {"TEMP_DIR": str(tmp_path), "FFMPEG_DIR": str(target),
                   "FFMPEG_EXE": str(target / "ffmpeg.exe")},
         "deps_specs": {"FFMPEG_ZIP_URL": "unused"},
+        "deps_checker": {"check_ffmpeg": lambda *_: pytest.fail("checked a failed extraction")},
         "download_utils": {"download_file": lambda *args, **kwargs: True},
         "extract_utils": {"extract_zip": lambda *args, **kwargs: False},
         "logging_setup": {"log_and_ui": lambda message: None,

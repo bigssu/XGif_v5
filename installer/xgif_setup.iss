@@ -52,6 +52,7 @@ SolidCompression=yes
 WizardStyle=modern
 ; 최소 Windows 10
 MinVersion=10.0
+ArchitecturesAllowed=x64compatible
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"

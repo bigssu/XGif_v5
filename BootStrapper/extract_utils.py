@@ -13,9 +13,12 @@ from logging_setup import log_and_ui, get_logger
 def extract_zip(
     zip_path: str,
     final_dir: str,
-    expected_file: str | None = None,
+    expected_file: str | tuple[str, ...] | None = None,
     flatten_single_root: bool = True,
     progress_cb=None,
+    *,
+    flatten_bin=False,
+    check_staged=None,
 ) -> bool:
     """
     Extract and verify in a temp folder, then replace with rollback on failure.
@@ -58,8 +61,19 @@ def extract_zip(
                     logger.debug("Flattening single root dir: %s", entries[0])
                     staged = single
 
-        if not _verify(staged, expected_file):
+        if flatten_bin:
+            bin_dir = os.path.join(staged, "bin")
+            for entry in os.scandir(bin_dir):
+                os.rename(entry.path, os.path.join(staged, entry.name))
+            os.rmdir(bin_dir)
+        required = (expected_file,) if isinstance(expected_file, str) else expected_file or ()
+        if not all(_verify(staged, name) for name in required):
             return False
+        if check_staged:
+            ok, detail = check_staged(staged)
+            if not ok:
+                log_and_ui(detail)
+                return False
 
         if os.path.lexists(final_dir):
             previous = os.path.join(workspace, "previous")
@@ -88,12 +102,9 @@ def extract_zip(
             shutil.rmtree(workspace, ignore_errors=True)
 
 
-def _verify(final_dir: str, expected_file: str | None) -> bool:
-    if expected_file is None:
-        return True
+def _verify(final_dir: str, expected_file: str) -> bool:
     full = os.path.join(final_dir, expected_file)
-    if os.path.isfile(full):
+    if os.path.isfile(full) and os.path.getsize(full) > 0:
         return True
-    else:
-        log_and_ui(f"압축 해제 후 확인 실패: {expected_file} 없음")
-        return False
+    log_and_ui(f"압축 해제 후 확인 실패: {expected_file} 없음 또는 빈 파일")
+    return False

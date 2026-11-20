@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from typing import Optional
 
 import pytest
 
@@ -16,6 +17,8 @@ def window():
         'save_file', 'save_file_as', '_save_to_path', '_save_to_path_with_settings',
         '_on_save_finished', '_on_save_finished_ui', '_on_save_error', '_on_save_error_ui',
         '_on_save_cancelled', '_finish_save', '_stop_preview_before_save', '_duplicate_frame',
+        '_is_frame_export', '_apply_history', '_history_available', '_mark_untracked_edit',
+        '_run_undoable_with_progress', 'OnKeyDown',
     }
     cls = find_class(parse_module('editor/ui/editor_main_window_wx.py'), 'MainWindow')
     cls.bases = []
@@ -29,9 +32,13 @@ def window():
     wx.MessageBox = Mock()
     wx.CallAfter = lambda fn, *args: fn(*args)
     wx.CallLater = Mock()
+    wx.WXK_SPACE = 32
+    wx.Window = SimpleNamespace(FindFocus=lambda: None)
+    wx.TextCtrl = wx.ComboBox = wx.SpinCtrl = wx.SpinCtrlDouble = str
     manager = Mock()
     encoder = Mock()
-    namespace = dict(wx=wx, os=os, Path=Path, EncoderSettings=Mock(), GifEncoder=encoder,
+    namespace = dict(wx=wx, os=os, Path=Path, Optional=Optional,
+                     __package__='editor.ui', EncoderSettings=Mock(), GifEncoder=encoder,
                      FunctionWorker=lambda fn: SimpleNamespace(func=fn, signals=Mock()),
                      get_worker_manager=lambda: manager, SaveDialog=Mock(),
                      ensure_exit_if_no_primary_windows=Mock())
@@ -57,6 +64,116 @@ def window():
 
 def finish(obj, success=True):
     obj._on_save_finished_ui(SimpleNamespace(success=success, error_message='failed', file_size=1024))
+
+
+def test_save_multiframe_jpeg_offers_animation_destination(window):
+    obj, _, manager = window
+    obj._current_file_path = 'photo.jpg'
+    obj._frames.frame_count = 2
+    obj.save_file_as = Mock()
+    obj.save_file()
+    obj.save_file_as.assert_called_once()
+    manager.start.assert_not_called()
+
+
+def test_frame_export_keeps_document_and_cancels_pending_close(window):
+    obj, _, _ = window
+    obj._frames.frame_count = 2
+    obj._pending_save_action = obj.Close
+    obj._save_to_path_with_settings('preview.bmp', Mock())
+    finish(obj)
+    assert obj._current_file_path == 'original.gif' and obj._is_modified
+    obj.Close.assert_not_called()
+
+
+@pytest.mark.parametrize('large', [False, True])
+def test_batch_failure_preserves_document_or_marks_partial_result(window, monkeypatch, large):
+    from editor.utils import progress
+    from editor.core.frame_collection import FrameCollection
+    from editor.core.frame import Frame
+    obj, _, _ = window
+    obj._is_modified = False
+    obj._frames = FrameCollection()
+    obj._frames.add_frame(Frame.create_empty(1, 1, delay_ms=30))
+    monkeypatch.setattr(progress, 'run_with_progress', lambda **kw: (kw['work_func'](Mock()), False))
+    def fail(advance):
+        obj._frames[0].duration_ms = 80
+        advance(1, 2, 'first')
+        raise OSError('second frame failed')
+    obj._run_undoable_with_progress(title_key='t', description='edit', work_fn=fail,
+                                    large_threshold_mb=-1 if large else 100)
+    assert obj._frames[0].duration_ms == (80 if large else 30)
+    assert obj._is_modified == large
+    obj._refresh_all.assert_called_once()
+
+
+def test_history_commands_restore_and_reapply_document(window):
+    from editor.core.undo_manager import UndoManager
+    obj, _, _ = window
+    obj._undo_manager = UndoManager()
+    values = [1, 2]
+    obj._undo_manager.execute_lambda('delete', lambda: values.pop(), lambda: values.append(2))
+    obj._is_modified = False
+    key = Mock(ControlDown=lambda: True, ShiftDown=lambda: False)
+    key.GetKeyCode.return_value = ord('Z')
+    obj.OnKeyDown(key)
+    assert values == [1, 2] and obj._is_modified
+    key.GetKeyCode.return_value = ord('Y')
+    obj.OnKeyDown(key)
+    assert values == [1]
+
+
+def test_unrecorded_timing_edit_blocks_older_undo_and_redo(window):
+    from editor.core.frame import Frame
+    from editor.core.frame_collection import FrameCollection
+    from editor.core.undo_manager import UndoManager
+    from editor.ui.frame_list_widget_wx import FrameListWidget
+    obj, _, _ = window
+    obj._frames = FrameCollection()
+    obj._frames.add_frame(Frame.create_empty(2, 2, delay_ms=40))
+    type(obj).frames = property(lambda self: self._frames)
+    obj._undo_manager = UndoManager()
+    obj._duplicate_frame()
+    obj._duplicate_frame()
+    obj._apply_history(redo=False)
+    assert obj._undo_manager.can_undo and obj._undo_manager.can_redo
+    widget = SimpleNamespace(_main_window=obj, _get_selected_rows=lambda: [0], refresh=Mock())
+    FrameListWidget._set_selected_delay(widget, 90)
+    obj._apply_history(False)
+    obj._apply_history(True)
+    assert not obj._undo_manager.can_undo and not obj._undo_manager.can_redo
+    assert [frame.delay_ms for frame in obj._frames] == [90, 40]
+
+
+def test_active_inline_preview_does_not_dispatch_document_undo(window):
+    obj, _, _ = window
+    obj._active_inline_toolbar = object()
+    obj._apply_history(redo=False)
+    obj._undo_manager.undo.assert_not_called()
+
+
+@pytest.mark.parametrize("indices,current,expected_current", [
+    ([0], 3, 3), ([0, 2, 2, -1, 99], 3, 3), ([1, 3], 3, 4), ([0, 4], 4, 3),
+])
+def test_deletion_preserves_frame_identity_selection_and_return_order(indices, current, expected_current):
+    from editor.core.frame import Frame
+    from editor.core.frame_collection import FrameCollection
+
+    frames = FrameCollection()
+    originals = [Frame.create_empty(1, 1, (i, 2, 3, 255)) for i in range(5)]
+    for frame in originals:
+        frames.add_frame(frame)
+    frames.select_all()
+    frames.current_index = current
+    if len(indices) == 1:
+        deleted = [frames.delete_frame(indices[0])]
+    else:
+        deleted = frames.delete_frames(indices)
+    valid = sorted({i for i in indices if 0 <= i < 5}, reverse=True)
+    assert deleted == [originals[i] for i in valid]
+    assert list(frames) == [f for i, f in enumerate(originals) if i not in valid]
+    assert frames.current_frame is originals[expected_current]
+    assert frames.selected_indices == list(range(frames.frame_count))
 
 
 def test_new_waits_for_success(window):
@@ -128,7 +245,7 @@ def test_export_captures_snapshot_and_rejects_duplicate_actions(window):
     obj._frames = Mock()
     worker.func()
     namespace['GifEncoder'].save.assert_called_once_with(frames.clone.return_value, 'original.gif',
-                                                        namespace['EncoderSettings'].return_value)
+                                                        namespace['EncoderSettings'].return_value, overwrite=True)
 
 
 def test_worker_start_failure_keeps_document(window):

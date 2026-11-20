@@ -373,8 +373,8 @@ class CaptureOverlay(wx.Frame):
 
         # 녹화 중이 아닐 때만 핸들과 크기 표시
         if not self.recording_mode:
-            # 리사이즈 핸들 그리기 (외부)
-            self._draw_handles(gc)
+            if self.allow_resize:
+                self._draw_handles(gc)
 
             # 크기 표시 (오른쪽 하단 바깥쪽) - 모던 배지 스타일
             capture_w, capture_h = self.get_capture_size()
@@ -864,12 +864,13 @@ class CaptureOverlay(wx.Frame):
         height = max(height, self.min_capture_size)
 
         # 전체 창 크기 계산 (하단 텍스트 공간 포함)
-        total_width = width + 2 * self.padding + 2 * self.border_width
-        total_height = height + 2 * self.padding + 2 * self.border_width + self.bottom_extra
+        border_offset = (self.border_width + 1) // 2
+        total_width = width + 2 * self.padding + 2 * border_offset
+        total_height = height + 2 * self.padding + 2 * border_offset + self.bottom_extra
 
         # 창 위치 계산 (캡처 영역 기준)
-        win_x = x - self.padding - self.border_width
-        win_y = y - self.padding - self.border_width
+        win_x = x - self.padding - border_offset
+        win_y = y - self.padding - border_offset
 
         self.SetPosition((win_x, win_y))
         self.SetSize((total_width, total_height))

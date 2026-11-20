@@ -4,6 +4,7 @@ SpeedDialog - 속도 조절 다이얼로그 (wxPython 버전)
 PyQt6 QDialog를 wx.Dialog로 마이그레이션
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 from typing import TYPE_CHECKING
 
 from ..style_constants_wx import Colors, ThemedDialog
@@ -26,11 +27,12 @@ class SpeedDialog(ThemedDialog):
     def _setup_ui(self):
         """UI 초기화"""
         # 메인 레이아웃
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 
         # 현재 정보
-        self._info_label = wx.StaticText(self, label="")
+        self._info_label = wx.StaticText(body, label="")
         self._info_label.SetForegroundColour(Colors.TEXT_MUTED)
         font = self._info_label.GetFont()
         font.SetPointSize(10)
@@ -38,7 +40,7 @@ class SpeedDialog(ThemedDialog):
         main_sizer.Add(self._info_label, 0, wx.ALL | wx.EXPAND, 20)
 
         # 속도 배율 그룹
-        speed_box = wx.StaticBox(self, label=tr("speed_multiplier"))
+        speed_box = wx.StaticBox(body, label=tr("speed_multiplier"))
         speed_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         speed_sizer = wx.StaticBoxSizer(speed_box, wx.VERTICAL)
         speed_sizer.AddSpacer(10)
@@ -47,7 +49,7 @@ class SpeedDialog(ThemedDialog):
         slider_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         self._speed_slider = wx.Slider(
-            self, value=100, minValue=10, maxValue=400,
+            body, value=100, minValue=10, maxValue=400,
             style=wx.SL_HORIZONTAL
         )
         self._speed_slider.SetBackgroundColour(Colors.BG_PRIMARY)
@@ -55,7 +57,7 @@ class SpeedDialog(ThemedDialog):
         slider_sizer.Add(self._speed_slider, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
         self._speed_spin = wx.SpinCtrlDouble(
-            self, value="1.0", min=0.1, max=4.0, inc=0.1
+            body, value="1.0", min=0.1, max=4.0, inc=0.1
         )
         self._speed_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._speed_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
@@ -69,7 +71,7 @@ class SpeedDialog(ThemedDialog):
 
         # 설명
         desc_label = wx.StaticText(
-            self,
+            body,
             label=tr("speed_hint")
         )
         desc_label.SetForegroundColour(Colors.TEXT_MUTED)
@@ -86,7 +88,7 @@ class SpeedDialog(ThemedDialog):
         preset_sizer.AddSpacer(20)
 
         for speed in [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]:
-            btn = wx.Button(self, label=f"{speed}x")
+            btn = wx.Button(body, label=f"{speed}x")
             btn.SetMinSize((60, -1))
             btn.SetBackgroundColour(Colors.BORDER)
             btn.SetForegroundColour(Colors.TEXT_PRIMARY)
@@ -98,7 +100,7 @@ class SpeedDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 결과 예상
-        self._result_label = wx.StaticText(self, label="")
+        self._result_label = wx.StaticText(body, label="")
         self._result_label.SetForegroundColour(Colors.INFO)
         font = self._result_label.GetFont()
         font.SetPointSize(11)
@@ -123,9 +125,8 @@ class SpeedDialog(ThemedDialog):
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 20)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def _load_current_info(self):
         """현재 정보 로드"""

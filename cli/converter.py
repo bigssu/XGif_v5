@@ -4,11 +4,51 @@ import re
 import sys
 import logging
 import contextlib
+import subprocess
 import tempfile
 
 from cli import EXIT_SUCCESS, EXIT_USER_ERROR, EXIT_DEPENDENCY, EXIT_RUNTIME_ERROR
 
 logger = logging.getLogger(__name__)
+
+
+def _run_ffmpeg(cmd, env):
+    return subprocess.run(
+        cmd, capture_output=True, text=True, encoding='utf-8', errors='replace',
+        env=env, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+        timeout=600,
+    )
+
+
+def _encode_gif(cmd, staged, args, resize_filter, env):
+    # A split graph queues the whole video until palettegen emits its final palette.
+    # Reading the input twice keeps both passes bounded by their processing buffers.
+    colors = 128 if args.quality == 'low' else 256
+    scale = f'{resize_filter},' if resize_filter else ''
+    loop = 0
+    with open(args.input, 'rb') as source:
+        if source.read(6) in (b'GIF87a', b'GIF89a'):
+            from PIL import Image
+            try:
+                with Image.open(source) as gif:
+                    loop = gif.info.get('loop', -1)
+            except Image.DecompressionBombError as exc:
+                raise ValueError(str(exc)) from exc
+    with tempfile.TemporaryDirectory(prefix='xgif-palette-') as temp:
+        palette = os.path.join(temp, 'palette.png')
+        result = _run_ffmpeg([*cmd, '-map', '0:v:0', '-vf', f'{scale}palettegen=max_colors={colors}',
+                              '-frames:v', '1', palette], env)
+        if result.returncode:
+            return result
+        if args.fps:
+            timing = f'fps={min(100, args.fps)}:eof_action=pass'
+        else:
+            # Assign fast inputs to 10 ms GIF slots. Sparse frames keep their own timestamps.
+            timing = ("setpts='if(gt(FRAME_RATE,100),round(floor(T*100+0.000001)/(100*TB)),PTS)',"
+                      "settb=1/100,select='isnan(prev_selected_pts)+gt(pts,prev_selected_pts)'")
+        graph = f'[0:v:0]{scale}{timing}[video];[video][1:v:0]paletteuse[gif]'
+        return _run_ffmpeg([*cmd, '-i', palette, '-filter_complex', graph, '-map', '[gif]',
+                            '-fps_mode', 'passthrough', '-enc_time_base', '1:100', '-loop', str(loop), staged], env)
 
 
 def run_convert(args) -> int:
@@ -67,21 +107,20 @@ def run_convert(args) -> int:
         return EXIT_USER_ERROR
 
     # 변환 실행
-    import subprocess
+    from core.utils import publish_output
 
     cmd = [ffmpeg_exe, "-hide_banner", "-loglevel", "error", "-y", "-i", input_path]
+    env = FFmpegManager.get_ffmpeg_env()
 
     # 리사이즈 필터 (나중에 다른 필터와 결합)
     resize_filter = None
     if args.resize:
         resize_filter = f"scale={args.resize.replace('x', ':')}"
 
-    # FPS
-    if args.fps:
-        cmd.extend(["-r", str(args.fps)])
-
     retry_cpu = False
     if output_format == "mp4":
+        if args.fps:
+            cmd.extend(["-r", str(args.fps)])
         # MP4 인코딩 설정
         from core.gif_encoder import GifEncoder
         enc = GifEncoder()
@@ -99,21 +138,9 @@ def run_convert(args) -> int:
 
         cmd.extend(["-pix_fmt", "yuv420p"])
 
-        # MP4에서 리사이즈가 있으면 -vf 추가
-        if resize_filter:
-            cmd.extend(["-vf", resize_filter])
-    else:
-        # GIF 인코딩 (2-pass) — 리사이즈와 결합
-        quality_map = {"high": 256, "medium": 256, "low": 128}
-        max_colors = quality_map.get(args.quality, 256)
-        palette_filter = f"split[s0][s1];[s0]palettegen=max_colors={max_colors}[p];[s1][p]paletteuse"
-        if resize_filter:
-            # 리사이즈 필터를 팔레트 필터 앞에 결합
-            combined = f"{resize_filter},split[s0][s1];[s0]palettegen=max_colors={max_colors}[p];[s1][p]paletteuse"
-            cmd.extend(["-vf", combined])
-        else:
-            cmd.extend(["-vf", palette_filter])
-        cmd.extend(["-loop", "0"])
+        # yuv420p needs even dimensions. Pad after resizing to preserve all source pixels.
+        pad = 'format=yuv444p,pad=ceil(iw/2)*2:ceil(ih/2)*2'
+        cmd.extend(['-vf', f'{resize_filter},{pad}' if resize_filter else pad])
 
     print(f"  변환: {input_path} -> {output_path} ({output_format.upper()})")
 
@@ -124,27 +151,19 @@ def run_convert(args) -> int:
             dir=os.path.dirname(os.path.abspath(output_path)),
         )
         os.close(fd)
-        cmd.append(staged)
         hardware_failure = None
-        for attempt in range(2):
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                env=FFmpegManager.get_ffmpeg_env(),
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                timeout=600,
-            )
-            if (result.returncode == 0 or not retry_cpu or attempt == 1
-                    or not enc._is_hardware_encoder_failure(encoder, result.stderr)):
-                break
-            cpu_encoder = 'libx265' if args.codec == 'h265' else 'libx264'
-            hardware_failure = f"{encoder} (exit {result.returncode}): {result.stderr[-1500:]}"
-            logger.warning("%s failed (exit %s); retrying with %s. FFmpeg stderr:\n%s",
-                           encoder, result.returncode, cpu_encoder, result.stderr)
-            cmd[encoder_start:encoder_end] = enc._video_encoder_options(cpu_encoder, crf)
+        if output_format == 'gif':
+            result = _encode_gif(cmd, staged, args, resize_filter, env)
+        else:
+            cmd.append(staged)
+            result = _run_ffmpeg(cmd, env)
+            if result.returncode and retry_cpu and enc._is_hardware_encoder_failure(encoder, result.stderr):
+                cpu_encoder = 'libx265' if args.codec == 'h265' else 'libx264'
+                hardware_failure = f"{encoder} (exit {result.returncode}): {result.stderr[-1500:]}"
+                logger.warning("%s failed (exit %s); retrying with %s. FFmpeg stderr:\n%s",
+                               encoder, result.returncode, cpu_encoder, result.stderr)
+                cmd[encoder_start:encoder_end] = enc._video_encoder_options(cpu_encoder, crf)
+                result = _run_ffmpeg(cmd, env)
         if result.returncode != 0:
             details = f"FFmpeg (exit {result.returncode}): {result.stderr[-1500:] or '알 수 없는 오류'}"
             if hardware_failure:
@@ -153,8 +172,11 @@ def run_convert(args) -> int:
         file_size = os.path.getsize(staged)
         if file_size == 0:
             raise RuntimeError("인코딩 결과 파일이 비어 있습니다.")
-        os.replace(staged, output_path)
-    except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+        publish_output(staged, output_path, overwrite=args.overwrite)
+    except FileExistsError:
+        print(f"xgif: 출력 파일이 이미 있습니다. 기존 파일을 보존했습니다 -- '{output_path}'", file=sys.stderr)
+        return EXIT_USER_ERROR
+    except (OSError, ValueError, subprocess.TimeoutExpired, RuntimeError) as exc:
         print(f"xgif: 에러: 변환 실패 -- {exc}", file=sys.stderr)
         logger.error("FFmpeg conversion failed: %s", exc)
         return EXIT_RUNTIME_ERROR

@@ -4,6 +4,7 @@ ResizeDialog - 이미지 크기 조절 다이얼로그 (wxPython 버전)
 PyQt6 QDialog를 wx.Dialog로 마이그레이션
 """
 import wx
+from editor.ui.dialog_body_wx import DialogBody
 from PIL import Image
 from typing import TYPE_CHECKING, Tuple
 from ..style_constants_wx import Colors, ThemedDialog
@@ -49,11 +50,12 @@ class ResizeDialog(ThemedDialog):
     def _setup_ui(self):
         """UI 초기화"""
         # 메인 레이아웃
+        body = DialogBody(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.AddSpacer(20)
 
         # 현재 크기 표시
-        self._info_label = wx.StaticText(self, label="")
+        self._info_label = wx.StaticText(body, label="")
         self._info_label.SetForegroundColour(Colors.TEXT_MUTED)
         font = self._info_label.GetFont()
         font.SetPointSize(10)
@@ -61,25 +63,25 @@ class ResizeDialog(ThemedDialog):
         main_sizer.Add(self._info_label, 0, wx.ALL, 20)
 
         # 크기 설정 그룹
-        size_box = wx.StaticBox(self, label=tr("resize_new_size"))
+        size_box = wx.StaticBox(body, label=tr("resize_new_size"))
         size_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         size_sizer = wx.StaticBoxSizer(size_box, wx.VERTICAL)
         size_sizer.AddSpacer(10)
 
         # 너비
         width_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        width_label = wx.StaticText(self, label=tr("common_width_label"))
+        width_label = wx.StaticText(body, label=tr("common_width_label"))
         width_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         width_sizer.Add(width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._width_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._width_spin = wx.SpinCtrl(body, min=1, max=10000, initial=100)
         self._width_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._width_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._width_spin.SetSize((100, -1))
         self._width_spin.Bind(wx.EVT_SPINCTRL, self._on_width_changed)
         width_sizer.Add(self._width_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        px_label1 = wx.StaticText(self, label="px")
+        px_label1 = wx.StaticText(body, label="px")
         px_label1.SetForegroundColour(Colors.TEXT_SECONDARY)
         width_sizer.Add(px_label1, 0, wx.ALIGN_CENTER_VERTICAL)
 
@@ -87,25 +89,25 @@ class ResizeDialog(ThemedDialog):
 
         # 높이
         height_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        height_label = wx.StaticText(self, label=tr("common_height_label"))
+        height_label = wx.StaticText(body, label=tr("common_height_label"))
         height_label.SetForegroundColour(Colors.TEXT_SECONDARY)
         height_sizer.Add(height_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 
-        self._height_spin = wx.SpinCtrl(self, min=1, max=10000, initial=100)
+        self._height_spin = wx.SpinCtrl(body, min=1, max=10000, initial=100)
         self._height_spin.SetBackgroundColour(Colors.BG_TERTIARY)
         self._height_spin.SetForegroundColour(Colors.TEXT_PRIMARY)
         self._height_spin.SetSize((100, -1))
         self._height_spin.Bind(wx.EVT_SPINCTRL, self._on_height_changed)
         height_sizer.Add(self._height_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
-        px_label2 = wx.StaticText(self, label="px")
+        px_label2 = wx.StaticText(body, label="px")
         px_label2.SetForegroundColour(Colors.TEXT_SECONDARY)
         height_sizer.Add(px_label2, 0, wx.ALIGN_CENTER_VERTICAL)
 
         size_sizer.Add(height_sizer, 0, wx.ALL, 10)
 
         # 비율 유지 체크박스
-        self._keep_ratio_check = wx.CheckBox(self, label=tr("resize_keep_ratio_full"))
+        self._keep_ratio_check = wx.CheckBox(body, label=tr("resize_keep_ratio_full"))
         self._keep_ratio_check.SetValue(True)
         self._keep_ratio_check.SetForegroundColour(Colors.TEXT_SECONDARY)
         size_sizer.Add(self._keep_ratio_check, 0, wx.ALL, 10)
@@ -114,7 +116,7 @@ class ResizeDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 리샘플링 방법 그룹
-        method_box = wx.StaticBox(self, label=tr("resize_resample"))
+        method_box = wx.StaticBox(body, label=tr("resize_resample"))
         method_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         method_sizer = wx.StaticBoxSizer(method_box, wx.VERTICAL)
         method_sizer.AddSpacer(10)
@@ -122,7 +124,7 @@ class ResizeDialog(ThemedDialog):
         # 콤보박스 레이블을 id 순서대로 tr()로 생성
         resample_labels = [tr(self._RESAMPLE_LABEL_KEYS[rid]) for rid in self._RESAMPLE_IDS]
         self._method_combo = wx.ComboBox(
-            self, style=wx.CB_READONLY,
+            body, style=wx.CB_READONLY,
             choices=resample_labels
         )
         self._method_combo.SetBackgroundColour(Colors.BG_TERTIARY)
@@ -135,13 +137,13 @@ class ResizeDialog(ThemedDialog):
         main_sizer.AddSpacer(10)
 
         # 프리셋 그룹
-        preset_box = wx.StaticBox(self, label=tr("resize_size_presets"))
+        preset_box = wx.StaticBox(body, label=tr("resize_size_presets"))
         preset_box.SetForegroundColour(Colors.TEXT_PRIMARY)
         preset_sizer = wx.StaticBoxSizer(preset_box, wx.VERTICAL)
         preset_sizer.AddSpacer(10)
 
         self._preset_combo = wx.ComboBox(
-            self, style=wx.CB_READONLY,
+            body, style=wx.CB_READONLY,
             choices=["50%", "75%", "100%", "150%", "200%"]
         )
         self._preset_combo.SetBackgroundColour(Colors.BG_TERTIARY)
@@ -170,9 +172,8 @@ class ResizeDialog(ThemedDialog):
         cancel_btn.SetMinSize((80, 32))
         button_sizer.Add(cancel_btn, 0, wx.ALL, 5)
 
-        main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 20)
 
-        self.SetSizer(main_sizer)
+        body.install(main_sizer, button_sizer)
 
     def _load_current_size(self):
         """현재 크기 로드"""

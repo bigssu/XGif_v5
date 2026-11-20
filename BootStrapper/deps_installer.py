@@ -16,12 +16,9 @@ import subprocess
 import sys
 import threading
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
-
-from cupy_policy import GPU_REQUIREMENTS_FILE, cupy_packages_for_cuda_major, should_use_gpu_requirements
 import paths
+from deps_checker import check_ffmpeg
+from cupy_policy import GPU_REQUIREMENTS_FILE, cupy_packages_for_cuda_major, should_use_gpu_requirements
 import deps_specs
 from download_utils import download_file
 from extract_utils import extract_zip
@@ -45,14 +42,20 @@ def _stream_run(cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT_LONG, cwd=None
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            errors="replace",
             cwd=cwd,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
+        last_line = ""
+
         def _reader():
+            nonlocal last_line
             try:
                 for line in proc.stdout:
                     log_subprocess_output(line)
+                    if line.strip():
+                        last_line = line.strip()
             except (OSError, ValueError):
                 pass  # stdout closed or process terminated
 
@@ -60,6 +63,8 @@ def _stream_run(cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT_LONG, cwd=None
         t.start()
         proc.wait(timeout=timeout)
         t.join(timeout=10)
+        if proc.returncode != 0 and last_line:
+            log_and_ui(last_line)
         return proc.returncode
     except subprocess.TimeoutExpired:
         if proc:
@@ -171,66 +176,37 @@ def install_pip(progress_cb=None) -> bool:
 # ──────────────────────────────────────────────────────────────────
 #  venv
 # ──────────────────────────────────────────────────────────────────
-def _is_venv_healthy() -> bool:
-    """venv가 존재하고 python/pip가 정상 작동하는지 확인"""
-    if not os.path.isfile(paths.VENV_PYTHON):
-        return False
-    try:
-        result = subprocess.run(
-            [paths.VENV_PYTHON, "-m", "pip", "--version"],
-            capture_output=True, text=True, timeout=15,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
 def install_venv(progress_cb=None, force: bool = False) -> bool:
-    log_and_ui("가상 환경 확인 중…")
+    env_dir = paths.get_venv_dir()
+    env_python = str(env_dir / "Scripts" / "python.exe")
+    if paths.is_compatible_venv(env_dir):
+        if not force and _stream_run([env_python, "-I", "-m", "pip", "--version"]) == 0:
+            log_and_ui(f"기존 가상 환경 확인 완료: {env_dir}")
+            return True
+        return _stream_run([
+            paths.PY311_EXE, "-m", "pip", "--python", env_python,
+            "install", "--upgrade", "pip>=24.0",
+        ]) == 0
 
-    # 기존 venv가 정상이면 pip 업그레이드만 수행 (CuPy 등 기존 패키지 보존)
-    if not force and _is_venv_healthy():
-        log_and_ui("기존 가상 환경이 정상입니다 — pip만 업그레이드합니다.")
-        rc = _stream_run([
-            paths.VENV_PYTHON, "-m", "pip", "install",
-            "--upgrade", "pip>=24.0", "--quiet",
-        ])
-        if rc != 0:
-            log_and_ui("pip 업그레이드 실패 (계속 진행)")
-        log_and_ui("가상 환경 확인 완료")
-        return True
+    if os.path.lexists(env_dir):
+        log_and_ui(f"기존 경로를 보존합니다. 호환되는 가상 환경을 만들 수 없습니다: {env_dir}")
+        return False
 
-    log_and_ui("가상 환경 생성 중…")
-
-    # Use the embedded Python's pip to install virtualenv,
-    # then create the venv. (Embedded Python does not ship with venv module.)
-    # Step 1: install virtualenv into the embedded python
-    rc = _stream_run([paths.PY311_EXE, "-m", "pip", "install", "virtualenv", "--quiet"])
-    if rc != 0:
+    # The embeddable distribution does not include the stdlib venv module.
+    if _stream_run([paths.PY311_EXE, "-m", "pip", "install", "virtualenv", "--quiet"]) != 0:
         log_and_ui("virtualenv 설치 실패")
         return False
-
-    # Step 2: create venv (기존 venv가 있으면 삭제)
-    if os.path.exists(paths.VENV_DIR):
-        log_and_ui("손상된 기존 venv를 삭제합니다…")
-        shutil.rmtree(paths.VENV_DIR, ignore_errors=True)
-
-    rc = _stream_run([paths.PY311_EXE, "-m", "virtualenv", paths.VENV_DIR])
-    if rc != 0:
-        log_and_ui("가상 환경 생성 실패")
+    try:
+        env_dir.mkdir(parents=True, exist_ok=False)
+    except OSError as exc:
+        log_and_ui(f"가상 환경 경로 생성 실패: {exc}")
         return False
 
-    # Step 3: upgrade pip inside venv to 24.x
-    log_and_ui("venv 내 pip 업그레이드 중…")
-    rc = _stream_run([
-        paths.VENV_PYTHON, "-m", "pip", "install",
-        "--upgrade", "pip>=24.0", "--quiet",
-    ])
-    if rc != 0:
-        log_and_ui("pip 업그레이드 실패 (계속 진행)")
-
-    log_and_ui("가상 환경 생성 완료")
+    if _stream_run([paths.PY311_EXE, "-m", "virtualenv", str(env_dir)]) != 0 or not paths.is_compatible_venv(env_dir):
+        log_and_ui(f"가상 환경 생성 실패: {env_dir}")
+        shutil.rmtree(env_dir, ignore_errors=True)  # Only the directory reserved by this attempt.
+        return False
+    log_and_ui(f"가상 환경 생성 완료: {env_dir}")
     return True
 
 
@@ -253,9 +229,13 @@ def install_cupy(progress_cb=None) -> bool:
     requirements_path = _find_gpu_requirements_file() if should_use_gpu_requirements(cuda_major) else None
     pip_args = ["-r", str(requirements_path)] if requirements_path else packages
 
+    env_dir = paths.get_venv_dir()
+    if not paths.is_compatible_venv(env_dir):
+        log_and_ui(f"Python 3.11 64비트 가상 환경이 필요합니다: {env_dir}")
+        return False
     rc = _stream_run(
         [
-            paths.VENV_PYTHON, "-m", "pip", "install",
+            str(env_dir / "Scripts" / "python.exe"), "-m", "pip", "install",
             *pip_args,
             "--no-cache-dir",
         ],
@@ -292,15 +272,9 @@ def _detect_cuda_major() -> int | None:
 
 def _find_gpu_requirements_file() -> Path | None:
     """Locate the canonical GPU requirements file for source or bundled runs."""
-    candidates = [
-        Path(paths.get_exe_dir()) / GPU_REQUIREMENTS_FILE,
-        Path(__file__).resolve().parents[1] / GPU_REQUIREMENTS_FILE,
-        Path.cwd() / GPU_REQUIREMENTS_FILE,
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    return None
+    root = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
+    candidate = root / GPU_REQUIREMENTS_FILE
+    return candidate if candidate.is_file() else None
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -312,57 +286,21 @@ def install_ffmpeg(progress_cb=None) -> bool:
 
     zip_dest = os.path.join(paths.TEMP_DIR, "ffmpeg.zip")
 
-    ok = download_file(deps_specs.FFMPEG_ZIP_URL, zip_dest, progress_cb=progress_cb)
-    if not ok:
-        # fallback URL 시도
-        fallback_url = getattr(deps_specs, "FFMPEG_ZIP_URL_FALLBACK", None)
-        if fallback_url:
-            log_and_ui("대체 서버에서 FFmpeg 다운로드 시도 중…")
-            ok = download_file(fallback_url, zip_dest, progress_cb=progress_cb)
-        if not ok:
-            return False
-
-    log_and_ui("FFmpeg 압축 해제 중… (파일이 많아 시간이 걸릴 수 있습니다)")
-
-    ok = extract_zip(
-        zip_dest,
-        paths.FFMPEG_DIR,
-        expected_file=os.path.join("bin", "ffmpeg.exe"),
-        flatten_single_root=True,
-        progress_cb=progress_cb,
-    )
-    if not ok:
+    try:
+        for index, url in enumerate((deps_specs.FFMPEG_ZIP_URL, getattr(deps_specs, "FFMPEG_ZIP_URL_FALLBACK", None))):
+            if not url:
+                continue
+            if index:
+                log_and_ui("대체 서버에서 FFmpeg 다운로드 시도 중…")
+            if not download_file(url, zip_dest, progress_cb=progress_cb):
+                continue
+            if extract_zip(zip_dest, paths.FFMPEG_DIR, expected_file=("ffmpeg.exe", "ffprobe.exe"),
+                           flatten_single_root=True, progress_cb=progress_cb, flatten_bin=True,
+                           check_staged=check_ffmpeg):
+                log_and_ui("FFmpeg 설치 완료")
+                return True
+        log_and_ui("FFmpeg 다운로드 또는 설치 검증 실패")
         return False
-
-    # XGif 앱은 {ffmpeg_dir}/ffmpeg.exe 를 기대하므로 bin/ 내용을 상위로 이동
-    bin_dir = os.path.join(paths.FFMPEG_DIR, "bin")
-    if os.path.isdir(bin_dir):
-        for fname in os.listdir(bin_dir):
-            src = os.path.join(bin_dir, fname)
-            dst = os.path.join(paths.FFMPEG_DIR, fname)
-            if os.path.isfile(src):
-                shutil.move(src, dst)
-        shutil.rmtree(bin_dir, ignore_errors=True)
-        log_and_ui("FFmpeg bin → ffmpeg 폴더로 플래튼 완료")
-        ok = os.path.isfile(paths.FFMPEG_EXE)
-
-    if not ok:
-        # Fallback: ffmpeg.exe를 재귀 탐색
-        for root, _dirs, files in os.walk(paths.FFMPEG_DIR):
-            if "ffmpeg.exe" in files:
-                src = os.path.join(root, "ffmpeg.exe")
-                dst = os.path.join(paths.FFMPEG_DIR, "ffmpeg.exe")
-                if src != dst:
-                    shutil.move(src, dst)
-                    log_and_ui("FFmpeg 재배치 완료")
-                ok = True
-                break
-    if not ok:
-        return False
-
-    # Cleanup zip
-    with contextlib.suppress(OSError):
-        os.remove(zip_dest)
-
-    log_and_ui("FFmpeg 설치 완료")
-    return True
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(zip_dest)

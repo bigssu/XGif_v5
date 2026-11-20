@@ -474,8 +474,10 @@ class InlineToolbarBase(wx.Panel):
         if hasattr(self._main_window, '_update_info_bar'):
             self._main_window._update_info_bar()
 
-    def _finish_apply(self):
+    def _finish_apply(self, *, keep_history=False):
         """Finalize a successful apply with shared editor bookkeeping."""
+        if not keep_history:
+            self._main_window._mark_untracked_edit()
         self._mark_editor_modified()
         self._safe_canvas_update()
         wx.PostEvent(self, ToolbarAppliedEvent())

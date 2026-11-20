@@ -170,14 +170,9 @@ class XGifApp(wx.App):
         if self.checker.IsAnotherRunning():
             # 언어 설정만 미리 로드
             from ui.i18n import get_trans_manager, tr
-            import configparser
-            config = configparser.ConfigParser()
-            config_path = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), APP_SETTINGS_NAME, 'config.ini')
-            if os.path.exists(config_path):
-                config.read(config_path, encoding='utf-8')
-            trans = get_trans_manager()
-            language = config.get('General', 'language', fallback='ko') if config.has_section('General') else 'ko'
-            trans.set_language(str(language))
+            from core.settings import AppSettings
+            from core.app_shutdown import request_recorder_close
+            get_trans_manager().set_language(AppSettings.load().language)
 
             dlg = wx.MessageDialog(
                 None,
@@ -192,25 +187,19 @@ class XGifApp(wx.App):
             if result != wx.ID_YES:
                 return False
 
-            # 기존 인스턴스 종료 대기 — 자기 자신의 락을 해제한 뒤 재검사
+            # The owner may veto a normal close to keep an unsaved recording.
+            requested = request_recorder_close()
             del self.checker
-            for _ in range(25):
-                time.sleep(0.2)
-                probe = SingleInstanceChecker(APP_UNIQUE_NAME)
-                still_running = probe.IsAnotherRunning()
-                del probe
-                if not still_running:
+            for attempt in range(26):
+                self.checker = SingleInstanceChecker(APP_UNIQUE_NAME)
+                if not self.checker.IsAnotherRunning():
                     break
-
-            # 락 재취득
-            self.checker = SingleInstanceChecker(APP_UNIQUE_NAME)
-            if self.checker.IsAnotherRunning():
-                wx.MessageBox(
-                    tr('already_running_quit_failed'),
-                    tr('already_running_ask_title'),
-                    wx.OK | wx.ICON_ERROR
-                )
-                return False
+                if not requested or attempt == 25:
+                    wx.MessageBox(tr('already_running_quit_failed'), tr('already_running_ask_title'),
+                                  wx.OK | wx.ICON_INFORMATION)
+                    return False
+                del self.checker
+                time.sleep(0.2)
 
         # UI 모듈 지연 로딩
         try:
@@ -227,6 +216,8 @@ class XGifApp(wx.App):
         # 메인 윈도우 생성 및 표시
         try:
             window = MainWindow(None)
+            from core.app_shutdown import register_recorder_window
+            register_recorder_window(window)
             window.Show()
             self.SetTopWindow(window)
             logger.info("Main window created and shown")
